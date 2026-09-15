@@ -1,0 +1,250 @@
+{
+  "contract_version": "0.1.0",
+  "project": {
+    "id": "project_demo",
+    "name": "Synthetic contract example"
+  },
+  "material_version": {
+    "id": "version_1",
+    "project_id": "project_demo",
+    "label": "Before (mock)",
+    "document_ids": [
+      "doc_1",
+      "doc_2"
+    ]
+  },
+  "rubric": {
+    "id": "rubric_demo",
+    "revision": 1,
+    "title": "Demo rubric — not official AIC",
+    "source_note": "Artificial fixture; no source files were parsed.",
+    "criteria": [
+      {
+        "id": "c_accuracy",
+        "title": "Accuracy evidence",
+        "requirement": "Report consistent accuracy under identical conditions.",
+        "required_evidence": [
+          "test result"
+        ]
+      },
+      {
+        "id": "c_reliability",
+        "title": "Reliability",
+        "requirement": "Provide a repeatable reliability test.",
+        "required_evidence": [
+          "reliability test"
+        ]
+      }
+    ]
+  },
+  "run": {
+    "id": "run_1",
+    "project_id": "project_demo",
+    "material_version_id": "version_1",
+    "rubric_id": "rubric_demo",
+    "rubric_revision": 1,
+    "mode": "mock",
+    "status": "completed",
+    "stage": "done",
+    "provider": null,
+    "model": null,
+    "prompt_version": "fixture-only",
+    "error": null
+  },
+  "documents": [
+    {
+      "id": "doc_1",
+      "material_version_id": "version_1",
+      "logical_key": "presentation",
+      "filename": "demo.pptx",
+      "format": "pptx",
+      "sha256": "ee926a2e026c05ef7104c1adb84717b5dd29c6074a9ee863c50483b80957533f",
+      "parse_status": "ready"
+    },
+    {
+      "id": "doc_2",
+      "material_version_id": "version_1",
+      "logical_key": "test_report",
+      "filename": "test_report.pdf",
+      "format": "pdf",
+      "sha256": "d11738304f7ab75691e4aa768934ea3cc58492351443954013eb9ba9f0af79cf",
+      "parse_status": "ready"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "block_1",
+      "document_id": "doc_1",
+      "ordinal": 0,
+      "text": "Accuracy 95% on demo-set v1.",
+      "locator": {
+        "kind": "slide",
+        "index": 3,
+        "end_index": null,
+        "block_index": 1
+      }
+    },
+    {
+      "id": "block_2",
+      "document_id": "doc_2",
+      "ordinal": 0,
+      "text": "Accuracy 89.7% on demo-set v1.",
+      "locator": {
+        "kind": "page",
+        "index": 17,
+        "end_index": null,
+        "block_index": 1
+      }
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim_1",
+      "criterion_ids": [
+        "c_accuracy"
+      ],
+      "text": "Accuracy 95% on demo-set v1.",
+      "source": {
+        "block_id": "block_1",
+        "start": 0,
+        "end": 28,
+        "quote": "Accuracy 95% on demo-set v1."
+      },
+      "comparison_key": "accuracy:demo-set:v1"
+    },
+    {
+      "id": "claim_2",
+      "criterion_ids": [
+        "c_accuracy"
+      ],
+      "text": "Accuracy 89.7% on demo-set v1.",
+      "source": {
+        "block_id": "block_2",
+        "start": 0,
+        "end": 30,
+        "quote": "Accuracy 89.7% on demo-set v1."
+      },
+      "comparison_key": "accuracy:demo-set:v1"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence_1",
+      "criterion_id": "c_accuracy",
+      "claim_id": "claim_1",
+      "source": {
+        "block_id": "block_1",
+        "start": 0,
+        "end": 28,
+        "quote": "Accuracy 95% on demo-set v1."
+      },
+      "relation": "context",
+      "citation_valid": true,
+      "validation_error": null
+    },
+    {
+      "id": "evidence_2",
+      "criterion_id": "c_accuracy",
+      "claim_id": "claim_1",
+      "source": {
+        "block_id": "block_2",
+        "start": 0,
+        "end": 30,
+        "quote": "Accuracy 89.7% on demo-set v1."
+      },
+      "relation": "contradicts",
+      "citation_valid": true,
+      "validation_error": null
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding_conflict",
+      "fingerprint": "c_accuracy:conflict:accuracy:demo-set:v1:presentation:test_report",
+      "criterion_id": "c_accuracy",
+      "kind": "cross_document_conflict",
+      "severity": "critical",
+      "title": "Accuracy differs",
+      "explanation": "95% versus 89.7% under the same stated conditions.",
+      "claim_ids": [
+        "claim_1",
+        "claim_2"
+      ],
+      "evidence_ids": [
+        "evidence_1",
+        "evidence_2"
+      ],
+      "searched_document_ids": [
+        "doc_1",
+        "doc_2"
+      ]
+    },
+    {
+      "id": "finding_missing",
+      "fingerprint": "c_reliability:missing_evidence",
+      "criterion_id": "c_reliability",
+      "kind": "missing_evidence",
+      "severity": "warning",
+      "title": "Reliability test missing",
+      "explanation": "No reliability test in the mock search scope.",
+      "claim_ids": [],
+      "evidence_ids": [],
+      "searched_document_ids": [
+        "doc_1",
+        "doc_2"
+      ]
+    }
+  ],
+  "repairs": [
+    {
+      "id": "repair_1",
+      "finding_id": "finding_conflict",
+      "instruction": "Verify the test result and update the presentation, then rerun.",
+      "status": "todo"
+    }
+  ],
+  "assessments": [
+    {
+      "criterion_id": "c_accuracy",
+      "status": "conflict",
+      "evidence_ids": [
+        "evidence_1",
+        "evidence_2"
+      ],
+      "finding_ids": [
+        "finding_conflict"
+      ]
+    },
+    {
+      "criterion_id": "c_reliability",
+      "status": "missing",
+      "evidence_ids": [],
+      "finding_ids": [
+        "finding_missing"
+      ]
+    }
+  ],
+  "metrics": {
+    "submission_readiness": "blocked",
+    "rubric_coverage": 0.0,
+    "verified_evidence": 2,
+    "critical_risks": 1,
+    "resolved_risks": null
+  },
+  "review_questions": [
+    {
+      "id": "question_1",
+      "finding_id": "finding_conflict",
+      "question": "Which accuracy is correct?",
+      "why": "The two materials disagree.",
+      "outline": [
+        "Check the shared evaluation conditions",
+        "Cite the corrected result"
+      ],
+      "evidence_ids": [
+        "evidence_1",
+        "evidence_2"
+      ]
+    }
+  ]
+}

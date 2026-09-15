@@ -1,0 +1,1045 @@
+{
+  "$defs": {
+    "ApiError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "details": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Details",
+          "type": "array"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "details"
+      ],
+      "title": "ApiError",
+      "type": "object"
+    },
+    "Block": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "ordinal": {
+          "minimum": 0,
+          "title": "Ordinal",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
+        }
+      },
+      "required": [
+        "id",
+        "document_id",
+        "ordinal",
+        "text",
+        "locator"
+      ],
+      "title": "Block",
+      "type": "object"
+    },
+    "Claim": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "criterion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Criterion Ids",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Span"
+        },
+        "comparison_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comparison Key"
+        }
+      },
+      "required": [
+        "id",
+        "criterion_ids",
+        "text",
+        "source"
+      ],
+      "title": "Claim",
+      "type": "object"
+    },
+    "Criterion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "requirement": {
+          "title": "Requirement",
+          "type": "string"
+        },
+        "required_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "requirement",
+        "required_evidence"
+      ],
+      "title": "Criterion",
+      "type": "object"
+    },
+    "CriterionAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "supported",
+            "weak",
+            "missing",
+            "critical",
+            "conflict",
+            "not_evaluated"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "finding_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Finding Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "status",
+        "evidence_ids",
+        "finding_ids"
+      ],
+      "title": "CriterionAssessment",
+      "type": "object"
+    },
+    "DiffEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "resolved",
+            "new",
+            "unchanged"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "before_finding_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before Finding Id"
+        },
+        "after_finding_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After Finding Id"
+        }
+      },
+      "required": [
+        "fingerprint",
+        "status",
+        "before_finding_id",
+        "after_finding_id"
+      ],
+      "title": "DiffEntry",
+      "type": "object"
+    },
+    "Document": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "material_version_id": {
+          "title": "Material Version Id",
+          "type": "string"
+        },
+        "logical_key": {
+          "title": "Logical Key",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "pdf",
+            "pptx",
+            "docx",
+            "md"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "parse_status": {
+          "enum": [
+            "pending",
+            "ready",
+            "rejected",
+            "failed"
+          ],
+          "title": "Parse Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "material_version_id",
+        "logical_key",
+        "filename",
+        "format",
+        "sha256",
+        "parse_status"
+      ],
+      "title": "Document",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "claim_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Id"
+        },
+        "source": {
+          "$ref": "#/$defs/Span"
+        },
+        "relation": {
+          "enum": [
+            "supports",
+            "contradicts",
+            "context"
+          ],
+          "title": "Relation",
+          "type": "string"
+        },
+        "citation_valid": {
+          "title": "Citation Valid",
+          "type": "boolean"
+        },
+        "validation_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Error"
+        }
+      },
+      "required": [
+        "id",
+        "criterion_id",
+        "source",
+        "relation",
+        "citation_valid"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "missing_evidence",
+            "weak_evidence",
+            "unsupported_claim",
+            "cross_document_conflict",
+            "overclaim"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "warning",
+            "info"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        },
+        "claim_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Claim Ids",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "searched_document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Searched Document Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "fingerprint",
+        "criterion_id",
+        "kind",
+        "severity",
+        "title",
+        "explanation",
+        "claim_ids",
+        "evidence_ids",
+        "searched_document_ids"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "Locator": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "page",
+            "slide",
+            "paragraph",
+            "line"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "index": {
+          "minimum": 1,
+          "title": "Index",
+          "type": "integer"
+        },
+        "end_index": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Index"
+        },
+        "block_index": {
+          "minimum": 1,
+          "title": "Block Index",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "index",
+        "block_index"
+      ],
+      "title": "Locator",
+      "type": "object"
+    },
+    "MaterialVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "document_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Document Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "project_id",
+        "label",
+        "document_ids"
+      ],
+      "title": "MaterialVersion",
+      "type": "object"
+    },
+    "Metrics": {
+      "additionalProperties": false,
+      "properties": {
+        "submission_readiness": {
+          "enum": [
+            "not_evaluated",
+            "blocked",
+            "needs_review",
+            "ready"
+          ],
+          "title": "Submission Readiness",
+          "type": "string"
+        },
+        "rubric_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rubric Coverage"
+        },
+        "verified_evidence": {
+          "minimum": 0,
+          "title": "Verified Evidence",
+          "type": "integer"
+        },
+        "critical_risks": {
+          "minimum": 0,
+          "title": "Critical Risks",
+          "type": "integer"
+        },
+        "resolved_risks": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resolved Risks"
+        }
+      },
+      "required": [
+        "submission_readiness",
+        "rubric_coverage",
+        "verified_evidence",
+        "critical_risks",
+        "resolved_risks"
+      ],
+      "title": "Metrics",
+      "type": "object"
+    },
+    "Project": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Project",
+      "type": "object"
+    },
+    "Repair": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "instruction": {
+          "title": "Instruction",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "todo",
+            "done"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "finding_id",
+        "instruction",
+        "status"
+      ],
+      "title": "Repair",
+      "type": "object"
+    },
+    "ReviewQuestion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        },
+        "outline": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Outline",
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "finding_id",
+        "question",
+        "why",
+        "outline",
+        "evidence_ids"
+      ],
+      "title": "ReviewQuestion",
+      "type": "object"
+    },
+    "Rubric": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "source_note": {
+          "title": "Source Note",
+          "type": "string"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/Criterion"
+          },
+          "title": "Criteria",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "title",
+        "source_note",
+        "criteria"
+      ],
+      "title": "Rubric",
+      "type": "object"
+    },
+    "Run": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "project_id": {
+          "title": "Project Id",
+          "type": "string"
+        },
+        "material_version_id": {
+          "title": "Material Version Id",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "mock",
+            "live",
+            "replay"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "completed",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "pending",
+            "extract",
+            "retrieve",
+            "adjudicate",
+            "verify",
+            "aggregate",
+            "done"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "id",
+        "project_id",
+        "material_version_id",
+        "rubric_id",
+        "rubric_revision",
+        "mode",
+        "status",
+        "stage",
+        "prompt_version"
+      ],
+      "title": "Run",
+      "type": "object"
+    },
+    "RunReport": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {
+          "const": "0.1.0",
+          "title": "Contract Version",
+          "type": "string"
+        },
+        "project": {
+          "$ref": "#/$defs/Project"
+        },
+        "material_version": {
+          "$ref": "#/$defs/MaterialVersion"
+        },
+        "rubric": {
+          "$ref": "#/$defs/Rubric"
+        },
+        "run": {
+          "$ref": "#/$defs/Run"
+        },
+        "documents": {
+          "items": {
+            "$ref": "#/$defs/Document"
+          },
+          "title": "Documents",
+          "type": "array"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "title": "Blocks",
+          "type": "array"
+        },
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/Claim"
+          },
+          "title": "Claims",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "repairs": {
+          "items": {
+            "$ref": "#/$defs/Repair"
+          },
+          "title": "Repairs",
+          "type": "array"
+        },
+        "assessments": {
+          "items": {
+            "$ref": "#/$defs/CriterionAssessment"
+          },
+          "title": "Assessments",
+          "type": "array"
+        },
+        "metrics": {
+          "$ref": "#/$defs/Metrics"
+        },
+        "review_questions": {
+          "items": {
+            "$ref": "#/$defs/ReviewQuestion"
+          },
+          "title": "Review Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_version",
+        "project",
+        "material_version",
+        "rubric",
+        "run",
+        "documents",
+        "blocks",
+        "claims",
+        "evidence",
+        "findings",
+        "repairs",
+        "assessments",
+        "metrics",
+        "review_questions"
+      ],
+      "title": "RunReport",
+      "type": "object"
+    },
+    "RunRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "material_version_id": {
+          "title": "Material Version Id",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "live",
+            "replay"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_version_id",
+        "rubric_id",
+        "rubric_revision",
+        "mode"
+      ],
+      "title": "RunRequest",
+      "type": "object"
+    },
+    "Span": {
+      "additionalProperties": false,
+      "properties": {
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "start",
+        "end",
+        "quote"
+      ],
+      "title": "Span",
+      "type": "object"
+    },
+    "VersionDiff": {
+      "additionalProperties": false,
+      "properties": {
+        "before_run_id": {
+          "title": "Before Run Id",
+          "type": "string"
+        },
+        "after_run_id": {
+          "title": "After Run Id",
+          "type": "string"
+        },
+        "comparable": {
+          "title": "Comparable",
+          "type": "boolean"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reason"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/DiffEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        }
+      },
+      "required": [
+        "before_run_id",
+        "after_run_id",
+        "comparable",
+        "reason",
+        "entries"
+      ],
+      "title": "VersionDiff",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "report": {
+      "$ref": "#/$defs/RunReport"
+    },
+    "diff": {
+      "$ref": "#/$defs/VersionDiff"
+    },
+    "run_request": {
+      "$ref": "#/$defs/RunRequest"
+    },
+    "error": {
+      "$ref": "#/$defs/ApiError"
+    }
+  },
+  "required": [
+    "report",
+    "diff",
+    "run_request",
+    "error"
+  ],
+  "title": "ContractBundle",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

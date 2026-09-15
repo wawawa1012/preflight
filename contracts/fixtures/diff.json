@@ -1,0 +1,7 @@
+{
+  "before_run_id": "run_1",
+  "after_run_id": "run_pending",
+  "comparable": false,
+  "reason": "The after run is not completed; D1 will add full three-act fixtures.",
+  "entries": []
+}
