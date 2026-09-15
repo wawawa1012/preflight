@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import ProjectCard from '../components/ProjectCard.vue'
+
+// 本页唯一的 mock 项目数据：readiness 使用 contract 的 Metrics.submission_readiness 枚举，不用自创百分制。
+const project = {
+  name: 'Preflight · AIC 2026',
+  readiness: 'blocked',
+  rubricCoverage: '0 / 3',
+  criticalRisks: 1,
+}
 
 const status = ref('尚未检查')
 const checking = ref(false)
@@ -24,6 +33,13 @@ async function checkBackend() {
     <p class="mb-4 text-sm font-medium text-violet-400">PREFLIGHT / PHASE 0</p>
     <h1 class="text-4xl font-semibold tracking-tight">参赛材料的 CI</h1>
     <p class="mt-5 text-slate-400">提交之前，让重要结论回到真实证据。</p>
+    <ProjectCard
+      class="mt-10"
+      :name="project.name"
+      :readiness="project.readiness"
+      :rubric-coverage="project.rubricCoverage"
+      :critical-risks="project.criticalRisks"
+    />
     <UCard class="mt-10">
       <h2 class="text-lg font-medium">工程骨架已就绪</h2>
       <p class="mt-2 text-sm text-slate-400">当前为空壳；Mock 演示在下一阶段实现。</p>
