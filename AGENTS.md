@@ -2,7 +2,7 @@
 
 - 唯一仓库：F:\project\Preflight（用户于 2026-09-15 更正原 Prompt 的 D: 路径）。
 - 唯一蓝图入口：docs/MASTER_PLAN.md。原始冻结需求优先，用户后续明确修正优先于本文。
-- 只有当前 Lead Engineer 施工；其他模型仅顾问，不并行修改代码。
+- 施工权（Preflight Development Operating Model v1）：任意时刻只能有一个 current implementer；可以显式在 AI 之间交接。Reviewer 默认只读。不得多个 AI 同时修改同一工作区。
 - 本轮仅 Phase 0：文档、目录、核心契约、可启动空壳和首次提交。
 - 不提前实现 RubricMatrix、解析、RAG、LLM pipeline。以后按阶段验收。
 - Vue 3 + Vite + TS + Nuxt UI v4 纯 Vue；禁止第二套设计系统。
