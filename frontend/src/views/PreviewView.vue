@@ -16,6 +16,8 @@ function onFileChange(event: Event) {
 }
 
 async function upload() {
+  // 上传进行中不允许再次提交；选择控件同时被禁用。
+  if (loading.value) return
   const file = selectedFile.value
   if (!file) {
     error.value = '请先选择一份 .md 文件'
@@ -64,11 +66,14 @@ async function upload() {
       <input
         type="file"
         accept=".md,text/markdown"
-        class="mt-4 block w-full text-sm text-slate-400 file:mr-4 file:rounded-md file:border-0 file:bg-slate-700 file:px-4 file:py-2 file:text-sm file:text-slate-100"
+        :disabled="loading"
+        class="mt-4 block w-full text-sm text-slate-400 file:mr-4 file:rounded-md file:border-0 file:bg-slate-700 file:px-4 file:py-2 file:text-sm file:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
         @change="onFileChange"
       />
       <div class="mt-4 flex items-center gap-4">
-        <UButton icon="i-lucide-upload" :loading="loading" :disabled="!selectedFile" @click="upload">生成预览</UButton>
+        <UButton icon="i-lucide-upload" :loading="loading" :disabled="!selectedFile || loading" @click="upload">
+          {{ loading ? '正在上传…' : '生成预览' }}
+        </UButton>
         <p class="text-sm text-slate-400">{{ selectedFile ? selectedFile.name : '尚未选择文件' }}</p>
       </div>
       <p v-if="error" class="mt-4 text-sm text-red-400" role="alert">{{ error }}</p>
