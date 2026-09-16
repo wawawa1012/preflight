@@ -1,11 +1,21 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 
 from . import storage
-from .contracts import ApiError, MarkdownPreview, MaterialSummary, RunReport, SavedMaterial
+from .contracts import (
+    ApiError,
+    EvidenceAnnotation,
+    EvidenceAnnotationCreate,
+    MarkdownPreview,
+    MaterialSummary,
+    RunReport,
+    SavedMaterial,
+)
+from .evidence import QuoteNotFound
 from .markdown_preview import MAX_BYTES, PreviewRejected, build_preview
 from .mock_report import MOCK_REPORT
 
@@ -86,9 +96,51 @@ def material_by_id(material_id: str) -> SavedMaterial:
     return material
 
 
+# 证据标注：quote 服务端校验必须来自 Block 原文；material_id 由服务端从 block 行派生。
+@app.post("/api/v1/evidence-annotations", response_model=EvidenceAnnotation, status_code=201)
+def create_evidence_annotation(payload: EvidenceAnnotationCreate) -> EvidenceAnnotation:
+    annotation = storage.save_evidence_annotation(
+        payload.block_id, payload.quote, payload.note, payload.proposed_by
+    )
+    if annotation is None:
+        raise LookupFailed("block_not_found", "找不到该 Block", [f"block_id={payload.block_id}"])
+    return annotation
+
+
+@app.get("/api/v1/materials/{material_id}/evidence-annotations", response_model=list[EvidenceAnnotation])
+def material_evidence_annotations(material_id: str) -> list[EvidenceAnnotation]:
+    if not storage.material_exists(material_id):
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return storage.list_evidence_annotations(material_id)
+
+
+@app.get("/api/v1/evidence-annotations/{annotation_id}", response_model=EvidenceAnnotation)
+def evidence_annotation_by_id(annotation_id: str) -> EvidenceAnnotation:
+    annotation = storage.get_evidence_annotation(annotation_id)
+    if annotation is None:
+        raise LookupFailed("annotation_not_found", "找不到该证据标注", [f"id={annotation_id}"])
+    return annotation
+
+
 @app.exception_handler(PreviewRejected)
 async def preview_rejected(request: Request, exc: PreviewRejected) -> JSONResponse:
     error = ApiError(code=exc.code, message=exc.message, details=exc.details)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(QuoteNotFound)
+async def quote_not_found(request: Request, exc: QuoteNotFound) -> JSONResponse:
+    error = ApiError(code="quote_not_found", message=exc.message, details=[])
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(RequestValidationError)
+async def request_invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
+    details = [
+        f"{'.'.join(str(part) for part in item.get('loc', []))}: {item.get('msg', 'invalid')}"
+        for item in exc.errors()
+    ]
+    error = ApiError(code="invalid_request", message="请求体校验失败", details=details)
     return JSONResponse(status_code=400, content=error.model_dump())
 
 
