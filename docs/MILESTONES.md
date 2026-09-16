@@ -19,6 +19,7 @@
 - Phase 0、Iteration 1（report mock）、Iteration 2A（Markdown 预览）已完成并提交；2A 竞态修复已收口（8e42335）。
 - Iteration 2B（Markdown 保存与恢复，SQLite）：已验收并提交（48ec6f6）。
 - Materials UX Slice 浏览器验收失败（导航 loop、宽屏空白、初始态像工程表单）；已按冻结 IA 重做为 /materials Hub、/materials/new 工作流、/preview 兼容重定向，实现完成，待人工验收。
+- Iteration 3（Evidence Layer MVP）：实现完成并分步提交（fa548b1..2aec98b），待人工验收。
 
 ## 保底顺序
 

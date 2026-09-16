@@ -21,7 +21,7 @@
 
 - /materials：Materials Hub。主区紧凑行列表（整行可点击进详情）；右侧单个概览面板，只显示由列表响应直接计算的真实数据（已保存数量、总 Block 数、最近保存时间、支持格式）；空态只有一句说明和一个主按钮。
 - /materials/new：添加材料工作流。未选文件时是唯一任务区（步骤说明 + 点击/拖入选择区）；生成预览后上传表单退场，顶部面包屑 + 低权重“更换文件”，保存动作固定在 sticky Material Header。
-- /materials/:materialId：已保存材料详情。F5/深链按 ID 从 API 恢复；emerald 已保存徽章、本地保存时间、截断 sha256；无上传控件、无临时状态、无保存按钮、不以完整 material ID 为视觉主体。
+- /materials/:materialId：已保存材料详情。F5/深链按 ID 从 API 恢复；emerald 已保存徽章、本地保存时间、截断 sha256；无上传控件、无临时状态、无保存按钮、不以完整 material ID 为视觉主体。证据区在 Block 列表上方：显示已保存标注（quote + line + note）；在任意 Block 行点击“标注”展开行内表单（quote 预填整块原文、可改窄，note 可选），保存后由服务端校验并进入列表。
 - /preview：兼容重定向到 /materials/new，不再是平级导航目标。
 
 全局 invariant：Secondary workspaces must always provide an explicit route back to Workbench; browser history is not product navigation.

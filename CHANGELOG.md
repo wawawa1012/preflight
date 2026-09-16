@@ -1,5 +1,27 @@
 # Progress log
 
+## 2026-09-16 — Iteration 3：Evidence Layer MVP（实现完成，待人工验收）
+
+完成：
+
+- 契约：EvidenceAnnotation / EvidenceAnnotationCreate（source 复用冻结 Span；proposed_by: Literal["human"] 为 Agent 版本化扩展点）；中文 fixture + check_contracts 负例（篡改 quote 被拒）。
+- 验证门：backend/app/evidence.py 纯函数 resolve_span(text, quote)——精确子串、Unicode 代码点索引、重复取第一次；未命中抛 QuoteNotFound → 400 quote_not_found。
+- 存储：evidence_annotations 表，materials/blocks 双外键（FK CASCADE）；material_id 由服务端从 block 行派生；quote 校验与插入同一事务，未命中不留下任何行。
+- API：POST /api/v1/evidence-annotations（201）、GET /api/v1/materials/{id}/evidence-annotations、GET /api/v1/evidence-annotations/{id}；RequestValidationError → 400 invalid_request；错误统一 ApiError 机器可读码。
+- UI：MaterialDetailView 证据区（标注列表显示 quote + line + note；Block 行内表单 quote 预填整块可改窄 + 可选 note；保存互斥沿用 preview race 纪律）；BlockList 新增可选 cite 槽，preview 流不传、行为不变；无新路由，Workbench 导航不变量保持。
+- 检查脚本：frontend/scripts/check-evidence-annotation.mjs（SSR 渲染 + setup 行为级：quote 预填、保存互斥、quote_not_found 不落列表、cite 槽差异）。
+
+自检证据：
+
+- backend unittest：38 例通过（新增 14：代码点/首末整块/重复、未命中无残行、未知 block/material/annotation 404、FK 级联、跨连接、按材料隔离）。
+- 契约管线：export_contracts.py / npm.cmd run contracts / check_contracts.py 通过。
+- frontend build/typecheck 通过；check-materials-nav 12/12、check-preview-race 23/23、check-evidence-annotation 14/14。
+- 冒烟（真实 HTTP）：建材料 201 → 合法标注 201（span 5..14、material_id 由服务端派生）→ 非法 quote 400 quote_not_found → 未知 block 404 → 缺字段 400 invalid_request → 列表/详情一致 → 未知 annotation/material 404；9/9 通过。冒烟后已恢复数据库备份（未在材料库留下测试记录）。
+
+待办：
+
+- 人工验收通过后提交最终收口。
+
 ## 2026-09-16 — Materials IA 重做：Hub 与 Add Workflow（实现完成，待人工验收）
 
 背景：上一版 Materials UX Slice 浏览器验收失败（/materials 与 /preview 形成导航 loop、宽屏大面积空白、/preview 初始态像工程表单、路由暴露实现概念），本轮按冻结 IA 重做。

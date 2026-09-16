@@ -28,7 +28,7 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 
 ## API 冻结边界
 
-已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化）。以下业务接口是后续目标，不能当作可用服务。
+已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化）、POST /api/v1/evidence-annotations 与 GET /api/v1/materials/{id}/evidence-annotations、/api/v1/evidence-annotations/{id}（Iteration 3 证据层）。以下业务接口是后续目标，不能当作可用服务。
 
 | 方法/路径 | 请求 | 响应 |
 | --- | --- | --- |
@@ -39,6 +39,9 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 | GET /api/v1/materials | 无 | MaterialSummary[]（已实现，摘要列表，按 created_at 倒序，不含 blocks） |
 | GET /api/v1/materials/{id} | 无 | SavedMaterial；未知 ID 返回 404 + ApiError |
 | GET /api/v1/materials/recent | 无 | SavedMaterial；无记录返回 404 + ApiError（工程能力，当前 UI 不消费） |
+| POST /api/v1/evidence-annotations | {block_id, quote, note?} | EvidenceAnnotation，201；quote 未命中 400 quote_not_found、未知 block 404 block_not_found、缺字段 400 invalid_request |
+| GET /api/v1/materials/{id}/evidence-annotations | 无 | EvidenceAnnotation[]（未知材料 404 material_not_found） |
+| GET /api/v1/evidence-annotations/{id} | 无 | EvidenceAnnotation（未知 404 annotation_not_found） |
 | GET /api/v1/projects | 无 | Project[] |
 | POST /api/v1/projects | {name} | Project，201 |
 | GET /api/v1/projects/:id/rubric | 无 | Rubric |
@@ -55,6 +58,12 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 MarkdownPreview 是临时预览响应：只含文件身份（document_id、filename、size_bytes、sha256）与 blocks，不构成 Document 或 MaterialVersion，不写入任何存储。每个非空行一个 Block：kind=line、index 为 1 开始的行号、end_index=null、block_index=1；ordinal 从 0 连续递增。空行严格定义为去掉 LF/CRLF 后长度为 0 的行：空行不生成 Block 但计入 line_count；只含空格或 Tab 的行不是空行，必须生成 Block。UTF-8 BOM 合法，BOM 不属于第一行的 Block text。
 SavedMaterial 是 2B 的最小持久化实体：materials（id、filename、size_bytes、sha256、line_count、created_at）与 blocks（id、material_id 外键、ordinal、line_number、text、block_index）两张表，加一个单行 recent_material 指针；不使用 INSERT OR REPLACE。保存与指针更新在同一事务内完成。blocks[].document_id 指向材料 id（当前只有 Material → Block 两级，不是 Document/MaterialVersion，也不是已完成的 Run 或 VersionDiff）。Save 接口服务端重新校验并重新解析上传文件，不信任浏览器回传的 blocks/locator/sha256。
 MaterialSummary 是列表摘要（id、filename、created_at、block_count），不包含 blocks；文件类型由 filename 后缀展示。
+EvidenceAnnotation 是 Iteration 3 最小证据层：source 复用冻结 Span（block_id/start/end/quote），服务端用纯函数 resolve_span(text, quote) 校验后才能写入（精确子串、Unicode 代码点索引、重复取第一次出现）；未命中返回 400 quote_not_found，同一事务回滚，库中不存在无效引用。material_id 由服务端从 blocks 行派生，不接受客户端提交；evidence_annotations 对 materials/blocks 双外键（FK CASCADE）。本迭代只表示“引用了真实原文”，尚无 relation/citation_valid，不与 Claim/Finding 关联。
+
+## Agent Integration Note
+
+proposed_by: Literal["human"] = "human" 是预留的版本化扩展点（DB 已有列）：未来 Agent pipeline 只能通过同一 resolve_span 验证门提交标注、同样由服务端派生 material_id/span，不得绕过 quote 校验；到来时扩展该枚举并保持 ApiError 机器可读码不变。当前不实现任何 Agent 生成逻辑。
+
 API 返回 RunReport 内联 blocks 足够支持 MVP Drawer，不创建复杂检索 API。分页和大文件优化等有真实负载再加。
 
 ## 生成与验收
