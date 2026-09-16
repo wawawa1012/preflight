@@ -5,7 +5,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.contracts import ContractBundle, RunReport, VersionDiff
+from app.contracts import ContractBundle, EvidenceAnnotation, RunReport, VersionDiff
 from pydantic import ValidationError
 
 
@@ -92,4 +92,19 @@ except ValidationError:
     pass
 else:
     raise AssertionError("Unknown field was accepted")
-print("PASS: schema freshness, fixture structure/references, quote checks, negative cases")
+
+# Evidence annotation fixture：block 引用一致、quote 与代码点区间一致、篡改必须被拒。
+annotation_raw = json.loads((ROOT / "contracts/fixtures/evidence_annotation.json").read_text(encoding="utf-8"))
+annotation = EvidenceAnnotation.model_validate(annotation_raw["annotation"])
+text = annotation_raw["text"]
+assert annotation.block_id == annotation_raw["block_id"] == annotation.source.block_id
+assert text[annotation.source.start:annotation.source.end] == annotation.source.quote
+tampered = annotation.model_copy(deep=True)
+tampered.source.quote = "不存在的引用"
+try:
+    assert text[tampered.source.start:tampered.source.end] == tampered.source.quote
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Tampered evidence quote was accepted")
+print("PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, negative cases")

@@ -130,6 +130,16 @@ export type Id13 = string;
 export type Filename3 = string;
 export type CreatedAt1 = string;
 export type BlockCount = number;
+export type Id14 = string;
+export type MaterialId = string;
+export type BlockId1 = string;
+export type Note = string | null;
+export type ProposedBy = "human";
+export type CreatedAt2 = string;
+export type BlockId2 = string;
+export type Quote1 = string;
+export type Note1 = string | null;
+export type ProposedBy1 = "human";
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -141,6 +151,8 @@ export interface ContractBundle {
   preview: MarkdownPreview;
   saved_material: SavedMaterial;
   material_summary: MaterialSummary;
+  evidence_annotation: EvidenceAnnotation;
+  evidence_annotation_create: EvidenceAnnotationCreate;
   error: ApiError;
 }
 export interface RunReport {
@@ -320,6 +332,21 @@ export interface MaterialSummary {
   filename: Filename3;
   created_at: CreatedAt1;
   block_count: BlockCount;
+}
+export interface EvidenceAnnotation {
+  id: Id14;
+  material_id: MaterialId;
+  block_id: BlockId1;
+  source: Span;
+  note?: Note;
+  proposed_by?: ProposedBy;
+  created_at: CreatedAt2;
+}
+export interface EvidenceAnnotationCreate {
+  block_id: BlockId2;
+  quote: Quote1;
+  note?: Note1;
+  proposed_by?: ProposedBy1;
 }
 export interface ApiError {
   code: Code;

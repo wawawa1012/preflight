@@ -216,6 +216,26 @@ class MaterialSummary(Contract):
     block_count: int = Field(ge=0)
 
 
+class EvidenceAnnotation(Contract):
+    # Iteration 3 最小证据层：引用真实 Block 的一段原文（Span 复用冻结结构）。
+    # material_id 由服务端从 block 行派生，不接受客户端提交。
+    id: str
+    material_id: str
+    block_id: str
+    source: Span
+    note: str | None = None
+    proposed_by: Literal["human"] = "human"
+    created_at: str
+
+
+class EvidenceAnnotationCreate(Contract):
+    # 请求体：只提交 block 与 quote；proposed_by 是留给未来 Agent pipeline 的版本化扩展点。
+    block_id: str
+    quote: str = Field(min_length=1)
+    note: str | None = None
+    proposed_by: Literal["human"] = "human"
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -229,4 +249,6 @@ class ContractBundle(Contract):
     preview: MarkdownPreview
     saved_material: SavedMaterial
     material_summary: MaterialSummary
+    evidence_annotation: EvidenceAnnotation
+    evidence_annotation_create: EvidenceAnnotationCreate
     error: ApiError

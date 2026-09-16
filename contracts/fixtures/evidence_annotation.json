@@ -1,0 +1,18 @@
+{
+  "block_id": "block_zh_1",
+  "text": "中文语料：准确率达到 95%，整体稳定。",
+  "annotation": {
+    "id": "annotation_zh_1",
+    "material_id": "mat_fixture",
+    "block_id": "block_zh_1",
+    "source": {
+      "block_id": "block_zh_1",
+      "start": 5,
+      "end": 14,
+      "quote": "准确率达到 95%"
+    },
+    "note": "fixture：中文引用，验证 code point 索引",
+    "proposed_by": "human",
+    "created_at": "2026-09-16T00:00:00+00:00"
+  }
+}

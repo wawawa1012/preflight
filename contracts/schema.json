@@ -346,6 +346,95 @@
       "title": "Evidence",
       "type": "object"
     },
+    "EvidenceAnnotation": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/Span"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "proposed_by": {
+          "const": "human",
+          "default": "human",
+          "title": "Proposed By",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "material_id",
+        "block_id",
+        "source",
+        "created_at"
+      ],
+      "title": "EvidenceAnnotation",
+      "type": "object"
+    },
+    "EvidenceAnnotationCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "proposed_by": {
+          "const": "human",
+          "default": "human",
+          "title": "Proposed By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "quote"
+      ],
+      "title": "EvidenceAnnotationCreate",
+      "type": "object"
+    },
     "Finding": {
       "additionalProperties": false,
       "properties": {
@@ -1166,6 +1255,12 @@
     "material_summary": {
       "$ref": "#/$defs/MaterialSummary"
     },
+    "evidence_annotation": {
+      "$ref": "#/$defs/EvidenceAnnotation"
+    },
+    "evidence_annotation_create": {
+      "$ref": "#/$defs/EvidenceAnnotationCreate"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -1177,6 +1272,8 @@
     "preview",
     "saved_material",
     "material_summary",
+    "evidence_annotation",
+    "evidence_annotation_create",
     "error"
   ],
   "title": "ContractBundle",
