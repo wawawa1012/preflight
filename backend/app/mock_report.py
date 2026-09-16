@@ -14,14 +14,14 @@ _BLOCKS = [
         "id": "blk_ppt_12",
         "document_id": "doc_ppt",
         "ordinal": 11,
-        "text": "在统一的评测集 v2 上，模型准确率达到 95%，优于基线 7 个百分点。",
+        "text": "本材料版本 v3：在统一评测集 v2、标准推理设置（standard inference settings）下，模型准确率（Accuracy）达到 95%，优于基线 7 个百分点。",
         "locator": {"kind": "slide", "index": 12, "end_index": None, "block_index": 3},
     },
     {
         "id": "blk_report_17",
         "document_id": "doc_report",
         "ordinal": 40,
-        "text": "Table 4: Accuracy = 89.7% (test-set v2, standard inference settings).",
+        "text": "本材料版本 v3 — Table 4: Accuracy = 89.7% (same test-set v2, standard inference settings).",
         "locator": {"kind": "page", "index": 17, "end_index": None, "block_index": 2},
     },
     {
@@ -130,8 +130,8 @@ MOCK_REPORT = RunReport.model_validate(
             {
                 "id": "claim_accuracy",
                 "criterion_ids": ["c_accuracy"],
-                "text": "模型准确率达到 95%",
-                "source": _span(_BLOCK_INDEX, "blk_ppt_12", "模型准确率达到 95%"),
+                "text": "模型准确率（Accuracy）达到 95%",
+                "source": _span(_BLOCK_INDEX, "blk_ppt_12", "模型准确率（Accuracy）达到 95%"),
                 "comparison_key": "accuracy / test-set v2 / standard inference / version v3",
             },
             {
@@ -147,8 +147,8 @@ MOCK_REPORT = RunReport.model_validate(
                 "id": "evidence_ppt_95",
                 "criterion_id": "c_accuracy",
                 "claim_id": "claim_accuracy",
-                "source": _span(_BLOCK_INDEX, "blk_ppt_12", "模型准确率达到 95%"),
-                "relation": "supports",
+                "source": _span(_BLOCK_INDEX, "blk_ppt_12", "模型准确率（Accuracy）达到 95%"),
+                "relation": "context",
                 "citation_valid": True,
                 "validation_error": None,
             },

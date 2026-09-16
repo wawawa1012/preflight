@@ -28,11 +28,12 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 
 ## API 冻结边界
 
-仅健康接口本轮已实现，以下业务接口是后续目标，不能当作可用服务。
+已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）。以下业务接口是后续目标，不能当作可用服务。
 
 | 方法/路径 | 请求 | 响应 |
 | --- | --- | --- |
 | GET /api/v1/health | 无 | {status: "ok", contract_version: "0.1.0"}（已实现） |
+| GET /api/v1/report | 无 | RunReport（已实现，只读 mock） |
 | GET /api/v1/projects | 无 | Project[] |
 | POST /api/v1/projects | {name} | Project，201 |
 | GET /api/v1/projects/:id/rubric | 无 | Rubric |
