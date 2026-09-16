@@ -12,13 +12,15 @@ defineProps<{ blocks: MarkdownPreview['blocks'] }>()
     <div
       v-for="block in blocks"
       :key="block.id"
-      class="flex items-start gap-3 px-3 py-2 hover:bg-slate-800/40"
+      class="flex flex-wrap items-start gap-3 px-3 py-2 hover:bg-slate-800/40"
     >
       <span class="w-24 shrink-0 whitespace-nowrap pt-0.5 font-mono text-xs">
         <span class="text-slate-300">line {{ block.locator.index }}</span>
         <span class="ml-1 text-slate-600">#{{ block.ordinal }}</span>
       </span>
       <p class="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-sm text-slate-200">{{ block.text }}</p>
+      <!-- 可选 cite 槽：只有调用方提供内容时才渲染（preview 流不传，行为不变）。 -->
+      <slot name="cite" :block="block" />
     </div>
   </div>
 </template>
