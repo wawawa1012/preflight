@@ -1,9 +1,10 @@
 """SQLite 持久化：Material 1 → N Blocks，原子保存；不用 ORM、不做迁移、不写业务外键以外的表。
 
-表结构只服务当前 2B：
+表结构只服务当前 iteration：
 - materials：材料身份与文件元信息，主键持久稳定。
 - blocks：Block 文本与 line locator；material_id 外键指向 materials。
 - recent_material：单行指针，指向最后一次成功保存的材料。
+- evidence_annotations：引用真实 Block 的一段原文；material_id/block_id 双外键（CASCADE）。
 """
 import sqlite3
 import uuid
@@ -11,7 +12,8 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .contracts import Block, Locator, MarkdownPreview, MaterialSummary, SavedMaterial
+from .contracts import Block, EvidenceAnnotation, Locator, MarkdownPreview, MaterialSummary, SavedMaterial, Span
+from .evidence import resolve_span
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "preflight.db"
 
@@ -36,6 +38,17 @@ CREATE TABLE IF NOT EXISTS blocks (
 CREATE TABLE IF NOT EXISTS recent_material (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     material_id TEXT NOT NULL REFERENCES materials(id)
+);
+CREATE TABLE IF NOT EXISTS evidence_annotations (
+    id TEXT PRIMARY KEY,
+    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+    start INTEGER NOT NULL,
+    end INTEGER NOT NULL,
+    quote TEXT NOT NULL,
+    note TEXT,
+    proposed_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 """
 
@@ -148,3 +161,70 @@ def list_materials(db_path: Path = DEFAULT_DB_PATH) -> list[MaterialSummary]:
         )
         for row in rows
     ]
+
+
+def material_exists(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
+    with closing(connect(db_path)) as connection:
+        row = connection.execute("SELECT 1 FROM materials WHERE id = ?", (material_id,)).fetchone()
+    return row is not None
+
+
+def _annotation_from_row(row: sqlite3.Row) -> EvidenceAnnotation:
+    return EvidenceAnnotation(
+        id=row["id"],
+        material_id=row["material_id"],
+        block_id=row["block_id"],
+        source=Span(block_id=row["block_id"], start=row["start"], end=row["end"], quote=row["quote"]),
+        note=row["note"],
+        proposed_by=row["proposed_by"],
+        created_at=row["created_at"],
+    )
+
+
+def save_evidence_annotation(
+    block_id: str,
+    quote: str,
+    note: str | None = None,
+    proposed_by: str = "human",
+    db_path: Path = DEFAULT_DB_PATH,
+) -> EvidenceAnnotation | None:
+    """服务端解析 quote 并派生 material_id；Block 不存在返回 None，quote 未命中抛 QuoteNotFound。
+
+    quote 校验与写入在同一连接内完成：未命中时异常回滚，库中不会留下无效引用。
+    """
+    with closing(connect(db_path)) as connection, connection:
+        block = connection.execute("SELECT id, material_id, text FROM blocks WHERE id = ?", (block_id,)).fetchone()
+        if block is None:
+            return None
+        start, end = resolve_span(block["text"], quote)
+        annotation_id = f"ev_{uuid.uuid4().hex}"
+        created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        connection.execute(
+            "INSERT INTO evidence_annotations"
+            " (id, material_id, block_id, start, end, quote, note, proposed_by, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (annotation_id, block["material_id"], block_id, start, end, quote, note, proposed_by, created_at),
+        )
+    return EvidenceAnnotation(
+        id=annotation_id,
+        material_id=block["material_id"],
+        block_id=block_id,
+        source=Span(block_id=block_id, start=start, end=end, quote=quote),
+        note=note,
+        proposed_by=proposed_by,
+        created_at=created_at,
+    )
+
+
+def get_evidence_annotation(annotation_id: str, db_path: Path = DEFAULT_DB_PATH) -> EvidenceAnnotation | None:
+    with closing(connect(db_path)) as connection:
+        row = connection.execute("SELECT * FROM evidence_annotations WHERE id = ?", (annotation_id,)).fetchone()
+    return _annotation_from_row(row) if row is not None else None
+
+
+def list_evidence_annotations(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> list[EvidenceAnnotation]:
+    with closing(connect(db_path)) as connection:
+        rows = connection.execute(
+            "SELECT * FROM evidence_annotations WHERE material_id = ? ORDER BY rowid ASC", (material_id,)
+        ).fetchall()
+    return [_annotation_from_row(row) for row in rows]
