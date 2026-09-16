@@ -109,7 +109,11 @@ async function saveAnnotation() {
       )
     }
     annotations.value = [...annotations.value, body as EvidenceAnnotation]
-    cancelSelection()
+    // 成功路径直接清空（此时 saving 仍为 true，不能走带 guard 的 cancelSelection）。
+    selectedBlock.value = null
+    quoteInput.value = ''
+    noteInput.value = ''
+    annotationError.value = ''
     annotationNotice.value = '已保存证据标注'
   } catch (cause) {
     annotationError.value = cause instanceof Error ? cause.message : '未知错误'
