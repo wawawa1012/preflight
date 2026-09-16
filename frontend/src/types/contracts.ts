@@ -113,6 +113,12 @@ export type MaterialVersionId2 = string;
 export type RubricId1 = string;
 export type RubricRevision1 = number;
 export type Mode1 = "live" | "replay";
+export type DocumentId1 = string;
+export type Filename1 = string;
+export type SizeBytes = number;
+export type Sha2561 = string;
+export type LineCount = number;
+export type Blocks1 = Block[];
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -121,6 +127,7 @@ export interface ContractBundle {
   report: RunReport;
   diff: VersionDiff;
   run_request: RunRequest;
+  preview: MarkdownPreview;
   error: ApiError;
 }
 export interface RunReport {
@@ -277,6 +284,14 @@ export interface RunRequest {
   rubric_id: RubricId1;
   rubric_revision: RubricRevision1;
   mode: Mode1;
+}
+export interface MarkdownPreview {
+  document_id: DocumentId1;
+  filename: Filename1;
+  size_bytes: SizeBytes;
+  sha256: Sha2561;
+  line_count: LineCount;
+  blocks: Blocks1;
 }
 export interface ApiError {
   code: Code;

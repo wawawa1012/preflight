@@ -41,6 +41,13 @@ async function checkBackend() {
       :critical-risks="project.criticalRisks"
     />
     <UCard class="mt-10">
+      <h2 class="text-lg font-medium">材料预览（临时）</h2>
+      <p class="mt-2 text-sm text-slate-400">
+        上传一份 Markdown，查看程序生成的 Block 与原文件行号；不保存，不生成预检结论。
+      </p>
+      <UButton class="mt-6" to="/preview" icon="i-lucide-file-text" color="neutral" variant="subtle">打开材料预览</UButton>
+    </UCard>
+    <UCard class="mt-10">
       <h2 class="text-lg font-medium">工程骨架已就绪</h2>
       <p class="mt-2 text-sm text-slate-400">当前为空壳；Mock 演示在下一阶段实现。</p>
       <UButton class="mt-6" icon="i-lucide-plug" :loading="checking" @click="checkBackend">检查后端连接</UButton>

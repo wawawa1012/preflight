@@ -471,6 +471,52 @@
       "title": "Locator",
       "type": "object"
     },
+    "MarkdownPreview": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "line_count": {
+          "minimum": 0,
+          "title": "Line Count",
+          "type": "integer"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "title": "Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "document_id",
+        "filename",
+        "size_bytes",
+        "sha256",
+        "line_count",
+        "blocks"
+      ],
+      "title": "MarkdownPreview",
+      "type": "object"
+    },
     "MaterialVersion": {
       "additionalProperties": false,
       "properties": {
@@ -1029,6 +1075,9 @@
     "run_request": {
       "$ref": "#/$defs/RunRequest"
     },
+    "preview": {
+      "$ref": "#/$defs/MarkdownPreview"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -1037,6 +1086,7 @@
     "report",
     "diff",
     "run_request",
+    "preview",
     "error"
   ],
   "title": "ContractBundle",

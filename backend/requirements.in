@@ -1,4 +1,5 @@
 fastapi>=0.115,<1
 pydantic>=2.10,<3
+python-multipart>=0.0.20,<1
 uvicorn>=0.34,<1
 # 文档解析依赖在解析阶段安装；Phase 0 不加载解析器。

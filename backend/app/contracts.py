@@ -186,6 +186,16 @@ class RunRequest(Contract):
     mode: Literal["live", "replay"]
 
 
+class MarkdownPreview(Contract):
+    # 临时预览响应：documents 尚未入库，因此只有文件身份和只读 blocks。
+    document_id: str
+    filename: str = Field(min_length=1)
+    size_bytes: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    line_count: int = Field(ge=0)
+    blocks: list[Block]
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -196,4 +206,5 @@ class ContractBundle(Contract):
     report: RunReport
     diff: VersionDiff
     run_request: RunRequest
+    preview: MarkdownPreview
     error: ApiError

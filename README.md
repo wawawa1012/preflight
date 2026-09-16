@@ -1,6 +1,6 @@
 # Preflight
 
-参赛材料的 CI。当前仅 Phase 0：唯一蓝图、核心契约、可启动前后端空壳。
+参赛材料的 CI。当前已实现 Report mock 与 Markdown 临时预览；进度见 [docs/MILESTONES.md](docs/MILESTONES.md)。
 唯一仓库：`F:\project\Preflight`。从 [Master Plan](docs/MASTER_PLAN.md) 开始；施工规则见 [AGENTS.md](AGENTS.md)。
 
 ## Windows 原生启动
@@ -24,7 +24,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-打开 http://127.0.0.1:5173，点击“检查后端连接”。API 文档：http://127.0.0.1:8000/docs。
+打开 http://127.0.0.1:5173，点击“检查后端连接”。首页可进入“材料预览（临时）”：上传 .md 查看 Block 与原始行号，不保存。API 文档：http://127.0.0.1:8000/docs。
 Ctrl+C 停止对应服务。端口被占用时先检查已有服务，不强制结束未知进程。
 npm.cmd 避免 PowerShell 执行策略阻止 npm.ps1；Python -X utf8 避免 Windows GBK 读取 UTF-8 配置失败。
 
@@ -42,7 +42,7 @@ npm.cmd --prefix frontend run build
 
 ```text
 frontend/src/       Vue 空壳；views、router、types、components、stores、services
-backend/app/        FastAPI health 和 Pydantic contracts；无业务 pipeline
+backend/app/        FastAPI：health、report mock、Markdown 临时预览、Pydantic contracts；无持久化 pipeline
 contracts/         JSON Schema、人工 fixture
 docs/              冻结蓝图与阶段计划
 scripts/           契约导出和 fixture 检查
@@ -50,5 +50,5 @@ benchmark/cases/   后续八套 case（当前占位）
 data/              本地材料、数据库、缓存（Git 忽略）
 ```
 
-只有 GET /api/v1/health 已实现。契约中的业务对象/接口是后续实现目标；没有文档解析、检索、模型调用或比赛评分。
+已实现：GET /api/v1/health、GET /api/v1/report（只读 mock）、POST /api/v1/preview/markdown（临时预览，不保存）。契约中的其余业务接口是后续实现目标；没有检索、模型调用或比赛评分。
 依赖锁：frontend/package-lock.json、backend/requirements.txt；requirements.in 表示直接依赖范围。
