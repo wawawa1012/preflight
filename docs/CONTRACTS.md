@@ -28,13 +28,16 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 
 ## API 冻结边界
 
-已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）。以下业务接口是后续目标，不能当作可用服务。
+已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）、POST /api/v1/materials 与 GET /api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化）。以下业务接口是后续目标，不能当作可用服务。
 
 | 方法/路径 | 请求 | 响应 |
 | --- | --- | --- |
 | GET /api/v1/health | 无 | {status: "ok", contract_version: "0.1.0"}（已实现） |
 | GET /api/v1/report | 无 | RunReport（已实现，只读 mock） |
 | POST /api/v1/preview/markdown | multipart：file（仅 .md，UTF-8，≤1 MiB） | MarkdownPreview（已实现，临时预览，不保存；错误返回 400 + ApiError） |
+| POST /api/v1/materials | multipart：file（同上，服务端重新解析） | SavedMaterial，201（已实现，原子写入 SQLite） |
+| GET /api/v1/materials/{id} | 无 | SavedMaterial；未知 ID 返回 404 + ApiError |
+| GET /api/v1/materials/recent | 无 | SavedMaterial；无记录返回 404 + ApiError |
 | GET /api/v1/projects | 无 | Project[] |
 | POST /api/v1/projects | {name} | Project，201 |
 | GET /api/v1/projects/:id/rubric | 无 | Rubric |
@@ -47,8 +50,9 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 | PATCH /api/v1/runs/:id/repairs/:repair_id | {status: "todo"或"done"} | Repair |
 | GET /api/v1/projects/:id/diff?before=…&after=… | run IDs | VersionDiff |
 
-业务错误统一 ApiError {code,message,details}；400 输入、404 不存在、409 状态冲突、422 校验、500 内部错误。预览接口已按此返回 400 + ApiError；其余业务接口后续统一。
+业务错误统一 ApiError {code,message,details}；400 输入、404 不存在、409 状态冲突、422 校验、500 内部错误。预览接口按此返回 400，材料读取按此返回 404；其余业务接口后续统一。
 MarkdownPreview 是临时预览响应：只含文件身份（document_id、filename、size_bytes、sha256）与 blocks，不构成 Document 或 MaterialVersion，不写入任何存储。每个非空行一个 Block：kind=line、index 为 1 开始的行号、end_index=null、block_index=1；ordinal 从 0 连续递增。空行严格定义为去掉 LF/CRLF 后长度为 0 的行：空行不生成 Block 但计入 line_count；只含空格或 Tab 的行不是空行，必须生成 Block。UTF-8 BOM 合法，BOM 不属于第一行的 Block text。
+SavedMaterial 是 2B 的最小持久化实体：materials（id、filename、size_bytes、sha256、line_count、created_at）与 blocks（id、material_id 外键、ordinal、line_number、text、block_index）两张表，加一个单行 recent_material 指针；不使用 INSERT OR REPLACE。保存与指针更新在同一事务内完成。blocks[].document_id 指向材料 id（当前只有 Material → Block 两级，不是 Document/MaterialVersion，也不是已完成的 Run 或 VersionDiff）。Save 接口服务端重新校验并重新解析上传文件，不信任浏览器回传的 blocks/locator/sha256。
 API 返回 RunReport 内联 blocks 足够支持 MVP Drawer，不创建复杂检索 API。分页和大文件优化等有真实负载再加。
 
 ## 生成与验收

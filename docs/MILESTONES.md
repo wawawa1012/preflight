@@ -14,9 +14,10 @@
 
 每阶段结束：检查 → 更新 CHANGELOG → Git commit。未验收不记完成。
 
-## 接下来：Iteration 1（9/16）
+## 进度备注（2026-09-16）
 
-Report 通过 FastAPI 读取统一契约 Mock。具体切片和验收在当日任务中定义。
+- Phase 0、Iteration 1（report mock）、Iteration 2A（Markdown 预览）已完成并提交；2A 竞态修复已收口（8e42335）。
+- Iteration 2B（Markdown 保存与恢复，SQLite）：实现完成，待人工重启验收；通过后提交收口。
 
 ## 保底顺序
 

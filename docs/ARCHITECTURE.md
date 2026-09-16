@@ -47,6 +47,12 @@ replay 仅精确缓存命中，miss 明确失败，不联网回退。mock 是人
 | ReviewQuestion | Review Questions |
 | Benchmark 结果、限制 | Methodology / Benchmark |
 
+## Deferred hardening（明确但不实现）
+
+- Format-specific Locator：Markdown → line；PPTX → slide；DOCX → paragraph + heading/section context；PDF → page + textual span/section context。section 如 §3.1.2 是人类可读上下文，不作为唯一稳定定位键。当前 SQLite persistence 只支持 Markdown line Locator；接入其他格式前扩展，不在 2B 实现。
+- Upload lifecycle：当前 preview/save 各上传一次原文件，用于维持 server-side trust boundary。未来只有实际文件规模/延迟证明有必要时，考虑 server-side staged upload / temporary upload token，消除重复上传，同时仍不信任客户端提交的 Block/Locator。
+- Persistence performance：当前首先保证 correctness。后续先测 save latency、load latency、DB size、Block count scaling、lock contention；有数据后再决定 executemany / batch insert、additional indexes、WAL、sha256 dedup、FTS5。不在本轮实现这些优化。
+
 ## 依赖与范围
 
 不引入 LangChain、LangGraph、CrewAI、AutoGen、MCP、Chroma/Pinecone/Weaviate、Redis、Celery、微服务、Kubernetes、知识图谱、插件系统、本地大模型、微调。

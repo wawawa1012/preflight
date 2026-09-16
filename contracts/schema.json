@@ -987,6 +987,57 @@
       "title": "RunRequest",
       "type": "object"
     },
+    "SavedMaterial": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "line_count": {
+          "minimum": 0,
+          "title": "Line Count",
+          "type": "integer"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "title": "Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "size_bytes",
+        "sha256",
+        "line_count",
+        "created_at",
+        "blocks"
+      ],
+      "title": "SavedMaterial",
+      "type": "object"
+    },
     "Span": {
       "additionalProperties": false,
       "properties": {
@@ -1078,6 +1129,9 @@
     "preview": {
       "$ref": "#/$defs/MarkdownPreview"
     },
+    "saved_material": {
+      "$ref": "#/$defs/SavedMaterial"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -1087,6 +1141,7 @@
     "diff",
     "run_request",
     "preview",
+    "saved_material",
     "error"
   ],
   "title": "ContractBundle",

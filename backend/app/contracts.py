@@ -196,6 +196,18 @@ class MarkdownPreview(Contract):
     blocks: list[Block]
 
 
+class SavedMaterial(Contract):
+    # 2B 最小持久化实体：一份材料 + 全部 Blocks；不是 RunReport 的 Document/MaterialVersion。
+    # blocks[].document_id 指向本材料 id（当前只有 Material → Block 两级）。
+    id: str
+    filename: str = Field(min_length=1)
+    size_bytes: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    line_count: int = Field(ge=0)
+    created_at: str
+    blocks: list[Block]
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -207,4 +219,5 @@ class ContractBundle(Contract):
     diff: VersionDiff
     run_request: RunRequest
     preview: MarkdownPreview
+    saved_material: SavedMaterial
     error: ApiError

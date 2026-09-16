@@ -119,6 +119,13 @@ export type SizeBytes = number;
 export type Sha2561 = string;
 export type LineCount = number;
 export type Blocks1 = Block[];
+export type Id12 = string;
+export type Filename2 = string;
+export type SizeBytes1 = number;
+export type Sha2562 = string;
+export type LineCount1 = number;
+export type CreatedAt = string;
+export type Blocks2 = Block[];
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -128,6 +135,7 @@ export interface ContractBundle {
   diff: VersionDiff;
   run_request: RunRequest;
   preview: MarkdownPreview;
+  saved_material: SavedMaterial;
   error: ApiError;
 }
 export interface RunReport {
@@ -292,6 +300,15 @@ export interface MarkdownPreview {
   sha256: Sha2561;
   line_count: LineCount;
   blocks: Blocks1;
+}
+export interface SavedMaterial {
+  id: Id12;
+  filename: Filename2;
+  size_bytes: SizeBytes1;
+  sha256: Sha2562;
+  line_count: LineCount1;
+  created_at: CreatedAt;
+  blocks: Blocks2;
 }
 export interface ApiError {
   code: Code;
