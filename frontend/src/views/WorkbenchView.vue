@@ -30,7 +30,7 @@ async function checkBackend() {
 
 <template>
   <main class="mx-auto max-w-3xl px-6 py-20">
-    <p class="mb-4 text-sm font-medium text-violet-400">PREFLIGHT / PHASE 0</p>
+    <p class="mb-4 text-sm font-medium text-violet-400">WORKBENCH / MOCK</p>
     <h1 class="text-4xl font-semibold tracking-tight">参赛材料的 CI</h1>
     <p class="mt-5 text-slate-400">提交之前，让重要结论回到真实证据。</p>
     <ProjectCard
@@ -48,9 +48,9 @@ async function checkBackend() {
       <UButton class="mt-6" to="/preview" icon="i-lucide-file-text" color="neutral" variant="subtle">打开材料预览</UButton>
     </UCard>
     <UCard class="mt-10">
-      <h2 class="text-lg font-medium">工程骨架已就绪</h2>
-      <p class="mt-2 text-sm text-slate-400">当前为空壳；Mock 演示在下一阶段实现。</p>
-      <UButton class="mt-6" icon="i-lucide-plug" :loading="checking" @click="checkBackend">检查后端连接</UButton>
+      <h2 class="text-lg font-medium">开发诊断</h2>
+      <p class="mt-2 text-sm text-slate-400">后端连通性检查，仅用于本地开发；不是产品功能。</p>
+      <UButton class="mt-6" color="neutral" variant="subtle" icon="i-lucide-plug" :loading="checking" @click="checkBackend">检查后端连接</UButton>
       <p class="mt-3 text-sm text-slate-400" role="status">{{ status }}</p>
     </UCard>
   </main>

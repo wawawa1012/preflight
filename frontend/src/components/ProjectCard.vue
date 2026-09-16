@@ -27,6 +27,6 @@ defineProps<{
         <p class="mt-1 text-2xl font-semibold">{{ criticalRisks }}</p>
       </div>
     </div>
-    <UButton class="mt-6" to="/report" icon="i-lucide-folder-open">Open Project</UButton>
+    <UButton class="mt-6" to="/report" icon="i-lucide-folder-open">查看 Mock 报告</UButton>
   </UCard>
 </template>

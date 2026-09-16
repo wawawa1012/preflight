@@ -20,7 +20,7 @@ const kindLabels: Record<Finding['kind'], string> = {
 }
 
 const kindColors: Record<Finding['kind'], 'error' | 'warning' | 'neutral'> = {
-  missing_evidence: 'warning',
+  missing_evidence: 'error',
   weak_evidence: 'warning',
   unsupported_claim: 'warning',
   cross_document_conflict: 'error',
@@ -109,6 +109,13 @@ function searchedDocuments(finding: Finding) {
   return finding.searched_document_ids.map(id => current.documents.find(item => item.id === id)?.filename ?? id)
 }
 
+function rubricCoverageLabel() {
+  const current = report.value
+  if (!current || current.metrics.rubric_coverage === null) return '未评估'
+  const supported = current.assessments.filter(item => item.status === 'supported').length
+  return `${supported} / ${current.rubric.criteria.length}`
+}
+
 loadReport()
 </script>
 
@@ -125,18 +132,18 @@ loadReport()
       <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">返回 Workbench</UButton>
     </div>
 
-    <UCard v-if="loading" class="mt-10">
+    <UCard v-if="loading" class="mt-6">
       <p class="text-sm text-slate-400">正在从后端读取报告…</p>
     </UCard>
 
-    <UCard v-else-if="error" class="mt-10">
+    <UCard v-else-if="error" class="mt-6">
       <h2 class="text-lg font-medium">无法加载报告</h2>
       <p class="mt-2 text-sm text-slate-400">请求 /api/v1/report 失败：{{ error }}</p>
       <p class="mt-1 text-sm text-slate-400">请按 README 启动后端后重试；页面不会退回本地 mock。</p>
       <UButton class="mt-6" icon="i-lucide-refresh-cw" @click="loadReport">重试</UButton>
     </UCard>
 
-    <div v-else-if="report" class="mt-10">
+    <div v-else-if="report" class="mt-6">
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div class="rounded-lg border border-slate-800 p-3">
           <p class="text-xs text-slate-400">Submission readiness</p>
@@ -144,7 +151,7 @@ loadReport()
         </div>
         <div class="rounded-lg border border-slate-800 p-3">
           <p class="text-xs text-slate-400">Rubric coverage</p>
-          <p class="mt-1 font-medium">{{ report.metrics.rubric_coverage }}</p>
+          <p class="mt-1 font-medium">{{ rubricCoverageLabel() }}</p>
         </div>
         <div class="rounded-lg border border-slate-800 p-3">
           <p class="text-xs text-slate-400">Verified evidence</p>
@@ -167,7 +174,10 @@ loadReport()
           >
             <div class="flex items-start justify-between gap-4">
               <h2 class="font-medium">{{ finding.title }}</h2>
-              <UBadge :color="kindColors[finding.kind]" variant="subtle">{{ kindLabels[finding.kind] }}</UBadge>
+              <div class="flex shrink-0 items-center gap-2">
+                <UBadge v-if="finding.severity === 'critical'" color="error" variant="solid" size="sm">Critical</UBadge>
+                <UBadge :color="kindColors[finding.kind]" variant="subtle">{{ kindLabels[finding.kind] }}</UBadge>
+              </div>
             </div>
             <p class="mt-1 text-sm text-violet-400">{{ criterionOf(finding)?.title ?? finding.criterion_id }}</p>
             <p class="mt-3 text-sm text-slate-400">{{ finding.explanation }}</p>
@@ -180,7 +190,6 @@ loadReport()
               <h2 class="text-lg font-medium">Evidence</h2>
               <UBadge :color="kindColors[selectedFinding.kind]" variant="subtle">{{ kindLabels[selectedFinding.kind] }}</UBadge>
             </div>
-            <p class="mt-2 text-sm text-slate-400">{{ selectedFinding.title }}</p>
 
             <div v-if="evidenceRows(selectedFinding).length > 0" class="mt-6 space-y-4">
               <p

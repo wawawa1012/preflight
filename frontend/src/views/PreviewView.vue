@@ -44,7 +44,7 @@ async function upload() {
 </script>
 
 <template>
-  <main class="mx-auto max-w-4xl px-6 py-16">
+  <main class="mx-auto max-w-6xl px-6 py-16">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <p class="text-sm font-medium text-violet-400">MATERIAL PREVIEW / TEMPORARY</p>
@@ -85,12 +85,19 @@ async function upload() {
       <p v-if="preview.blocks.length === 0" class="mt-6 text-sm text-slate-400">
         这个文件没有生成任何 Block：只有长度为 0 的空行不生成 Block（但仍计入行号）。
       </p>
-      <ol v-else class="mt-6 space-y-3">
-        <li v-for="block in preview.blocks" :key="block.id" class="rounded-lg border border-slate-800 p-4">
-          <p class="text-xs text-slate-500">Block #{{ block.ordinal }} · 原文件第 {{ block.locator.index }} 行</p>
-          <p class="mt-2 whitespace-pre-wrap font-mono text-sm text-slate-200">{{ block.text }}</p>
-        </li>
-      </ol>
+      <div v-else class="mt-4 divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">
+        <div
+          v-for="block in preview.blocks"
+          :key="block.id"
+          class="flex items-start gap-3 px-3 py-2 hover:bg-slate-800/40"
+        >
+          <span class="w-24 shrink-0 whitespace-nowrap pt-0.5 font-mono text-xs">
+            <span class="text-slate-300">line {{ block.locator.index }}</span>
+            <span class="ml-1 text-slate-600">#{{ block.ordinal }}</span>
+          </span>
+          <p class="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-sm text-slate-200">{{ block.text }}</p>
+        </div>
+      </div>
     </UCard>
   </main>
 </template>
