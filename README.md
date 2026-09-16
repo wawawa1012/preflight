@@ -24,7 +24,7 @@ npm.cmd ci
 npm.cmd run dev
 ```
 
-打开 http://127.0.0.1:5173，点击“检查后端连接”。首页可进入“材料预览（临时）”：上传 .md 查看 Block 与原始行号；点“保存材料”写入本地 SQLite（data/preflight.db，Git 忽略），刷新或重启后端后用“读取最近保存的材料”恢复。API 文档：http://127.0.0.1:8000/docs。
+打开 http://127.0.0.1:5173，点击“检查后端连接”。Materials 卡提供“添加材料”（/materials/new：上传 .md 查看 Block 与原始行号，保存后写入本地 SQLite data/preflight.db 并跳转到材料页）与“查看材料库”（/materials：列表，点击进入 /materials/:id，刷新或重启后端后仍可读取）。旧 /preview 兼容重定向到 /materials/new。API 文档：http://127.0.0.1:8000/docs。
 Ctrl+C 停止对应服务。端口被占用时先检查已有服务，不强制结束未知进程。
 npm.cmd 避免 PowerShell 执行策略阻止 npm.ps1；Python -X utf8 避免 Windows GBK 读取 UTF-8 配置失败。
 
@@ -50,6 +50,6 @@ benchmark/cases/   后续八套 case（当前占位）
 data/              本地材料、数据库、缓存（Git 忽略）
 ```
 
-已实现：GET /api/v1/health、GET /api/v1/report（只读 mock）、POST /api/v1/preview/markdown（临时预览，不保存）、POST /api/v1/materials（保存材料）、GET /api/v1/materials/{id} 与 GET /api/v1/materials/recent（读取；未知 ID/无记录返回 404 + ApiError）。契约中的其余业务接口是后续实现目标；没有检索、模型调用或比赛评分。
+已实现：GET /api/v1/health、GET /api/v1/report（只读 mock）、POST /api/v1/preview/markdown（临时预览，不保存）、POST /api/v1/materials（保存材料）、GET /api/v1/materials（摘要列表）、GET /api/v1/materials/{id} 与 GET /api/v1/materials/recent（读取；未知 ID/无记录返回 404 + ApiError）。契约中的其余业务接口是后续实现目标；没有检索、模型调用或比赛评分。
 数据：SQLite 位于 data/preflight.db（Git 忽略），只有 materials → blocks 两张业务表和一个 recent 指针，无 Run/VersionDiff 语义。
 依赖锁：frontend/package-lock.json、backend/requirements.txt；requirements.in 表示直接依赖范围。

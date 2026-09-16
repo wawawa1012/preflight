@@ -208,6 +208,14 @@ class SavedMaterial(Contract):
     blocks: list[Block]
 
 
+class MaterialSummary(Contract):
+    # 列表专用：不含 blocks，避免列表接口返回全量内容；文件类型由 filename 后缀展示。
+    id: str
+    filename: str = Field(min_length=1)
+    created_at: str
+    block_count: int = Field(ge=0)
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -220,4 +228,5 @@ class ContractBundle(Contract):
     run_request: RunRequest
     preview: MarkdownPreview
     saved_material: SavedMaterial
+    material_summary: MaterialSummary
     error: ApiError

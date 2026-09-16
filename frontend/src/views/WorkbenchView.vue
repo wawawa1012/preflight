@@ -41,11 +41,14 @@ async function checkBackend() {
       :critical-risks="project.criticalRisks"
     />
     <UCard class="mt-10">
-      <h2 class="text-lg font-medium">材料预览（临时）</h2>
+      <h2 class="text-lg font-medium">Materials</h2>
       <p class="mt-2 text-sm text-slate-400">
-        上传一份 Markdown，查看程序生成的 Block 与原文件行号；不保存，不生成预检结论。
+        上传 Markdown 生成 Block 预览并保存；已保存材料可随时打开，刷新或重启后端后仍在。
       </p>
-      <UButton class="mt-6" to="/preview" icon="i-lucide-file-text" color="neutral" variant="subtle">打开材料预览</UButton>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <UButton to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
+        <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">查看材料库</UButton>
+      </div>
     </UCard>
     <UCard class="mt-10">
       <h2 class="text-lg font-medium">开发诊断</h2>

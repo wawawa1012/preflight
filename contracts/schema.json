@@ -517,6 +517,37 @@
       "title": "MarkdownPreview",
       "type": "object"
     },
+    "MaterialSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "block_count": {
+          "minimum": 0,
+          "title": "Block Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "created_at",
+        "block_count"
+      ],
+      "title": "MaterialSummary",
+      "type": "object"
+    },
     "MaterialVersion": {
       "additionalProperties": false,
       "properties": {
@@ -1132,6 +1163,9 @@
     "saved_material": {
       "$ref": "#/$defs/SavedMaterial"
     },
+    "material_summary": {
+      "$ref": "#/$defs/MaterialSummary"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -1142,6 +1176,7 @@
     "run_request",
     "preview",
     "saved_material",
+    "material_summary",
     "error"
   ],
   "title": "ContractBundle",

@@ -17,6 +17,15 @@
 | Review Questions | /runs/:id/questions | 风险来源、为什么可能被问、应答提纲，无聊天框 |
 | Methodology | /methodology | 三臂测评、样本量、限制和来源 |
 
+当前已实现的 Materials 路由（项目作用域路由落地前的正式 IA）：
+
+- /materials：Materials Hub。主区紧凑行列表（整行可点击进详情）；右侧单个概览面板，只显示由列表响应直接计算的真实数据（已保存数量、总 Block 数、最近保存时间、支持格式）；空态只有一句说明和一个主按钮。
+- /materials/new：添加材料工作流。未选文件时是唯一任务区（步骤说明 + 点击/拖入选择区）；生成预览后上传表单退场，顶部面包屑 + 低权重“更换文件”，保存动作固定在 sticky Material Header。
+- /materials/:materialId：已保存材料详情。F5/深链按 ID 从 API 恢复；emerald 已保存徽章、本地保存时间、截断 sha256；无上传控件、无临时状态、无保存按钮、不以完整 material ID 为视觉主体。
+- /preview：兼容重定向到 /materials/new，不再是平级导航目标。
+
+全局 invariant：Secondary workspaces must always provide an explicit route back to Workbench; browser history is not product navigation.
+
 ## 三个重点页面
 
 Report：顶部工程指标，主体 RubricMatrix（criterion、状态、证据数、风险数），选择行后看 Evidence Card / Repair Checklist。

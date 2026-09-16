@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Literal
 
 from . import storage
-from .contracts import ApiError, MarkdownPreview, RunReport, SavedMaterial
+from .contracts import ApiError, MarkdownPreview, MaterialSummary, RunReport, SavedMaterial
 from .markdown_preview import MAX_BYTES, PreviewRejected, build_preview
 from .mock_report import MOCK_REPORT
 
@@ -64,6 +64,12 @@ async def save_material(file: UploadFile = File(...)) -> SavedMaterial:
 
 
 # 注意：/recent 必须先于 /{material_id} 注册，否则会被当作 ID。
+@app.get("/api/v1/materials", response_model=list[MaterialSummary])
+def saved_materials() -> list[MaterialSummary]:
+    # 列表摘要：不返回 blocks，避免列表接口携带全量内容。
+    return storage.list_materials()
+
+
 @app.get("/api/v1/materials/recent", response_model=SavedMaterial)
 def recent_material() -> SavedMaterial:
     material = storage.get_recent_material()

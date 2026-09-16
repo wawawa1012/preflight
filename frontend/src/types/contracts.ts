@@ -126,6 +126,10 @@ export type Sha2562 = string;
 export type LineCount1 = number;
 export type CreatedAt = string;
 export type Blocks2 = Block[];
+export type Id13 = string;
+export type Filename3 = string;
+export type CreatedAt1 = string;
+export type BlockCount = number;
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -136,6 +140,7 @@ export interface ContractBundle {
   run_request: RunRequest;
   preview: MarkdownPreview;
   saved_material: SavedMaterial;
+  material_summary: MaterialSummary;
   error: ApiError;
 }
 export interface RunReport {
@@ -309,6 +314,12 @@ export interface SavedMaterial {
   line_count: LineCount1;
   created_at: CreatedAt;
   blocks: Blocks2;
+}
+export interface MaterialSummary {
+  id: Id13;
+  filename: Filename3;
+  created_at: CreatedAt1;
+  block_count: BlockCount;
 }
 export interface ApiError {
   code: Code;

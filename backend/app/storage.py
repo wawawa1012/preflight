@@ -11,7 +11,7 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .contracts import Block, Locator, MarkdownPreview, SavedMaterial
+from .contracts import Block, Locator, MarkdownPreview, MaterialSummary, SavedMaterial
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "preflight.db"
 
@@ -131,3 +131,20 @@ def get_recent_material(db_path: Path = DEFAULT_DB_PATH) -> SavedMaterial | None
     if pointer is None:
         return None
     return get_material(pointer["material_id"], db_path)
+
+
+def list_materials(db_path: Path = DEFAULT_DB_PATH) -> list[MaterialSummary]:
+    """列表摘要：不返回 blocks；按保存时间倒序（同秒用 rowid 兜底）。"""
+    with closing(connect(db_path)) as connection:
+        rows = connection.execute(
+            "SELECT m.id, m.filename, m.created_at, COUNT(b.id) AS block_count"
+            " FROM materials m LEFT JOIN blocks b ON b.material_id = m.id"
+            " GROUP BY m.id"
+            " ORDER BY m.created_at DESC, m.rowid DESC"
+        ).fetchall()
+    return [
+        MaterialSummary(
+            id=row["id"], filename=row["filename"], created_at=row["created_at"], block_count=row["block_count"]
+        )
+        for row in rows
+    ]

@@ -141,6 +141,17 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(storage.get_material(saved.id, self.db).model_dump(), saved.model_dump())
         self.assertEqual(storage.get_recent_material(self.db).id, saved.id)
 
+    def test_list_materials_is_newest_first_with_block_counts(self) -> None:
+        self.assertEqual(storage.list_materials(self.db), [])
+
+        first = storage.save_material(make_preview("A\nA2\n", "a.md"), self.db)
+        second = storage.save_material(make_preview("B\n", "b.md"), self.db)
+
+        listed = storage.list_materials(self.db)
+        self.assertEqual([item.id for item in listed], [second.id, first.id])  # 最新在前
+        self.assertEqual([item.block_count for item in listed], [1, 2])
+        self.assertEqual([item.filename for item in listed], ["b.md", "a.md"])
+
 
 if __name__ == "__main__":
     unittest.main()

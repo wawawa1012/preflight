@@ -11,4 +11,6 @@ data/*
 !data/.gitkeep
 frontend/auto-imports.d.ts
 frontend/components.d.ts
+.vite/
+.zcode/
 *.log
