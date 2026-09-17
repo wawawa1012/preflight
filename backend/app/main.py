@@ -7,6 +7,8 @@ from typing import Literal
 
 from . import llm, rubric_store, storage
 from .contracts import (
+    AgentProposal,
+    AgentProposalCreate,
     ApiError,
     CriterionEvidenceLink,
     CriterionEvidenceLinkCreate,
@@ -14,6 +16,9 @@ from .contracts import (
     EvidenceAnnotationCreate,
     MarkdownPreview,
     MaterialSummary,
+    ProposalAcceptance,
+    ProposalCandidate,
+    ProposalCandidateReject,
     Rubric,
     RubricBinding,
     RubricBindingCreate,
@@ -23,7 +28,7 @@ from .contracts import (
 from .evidence import QuoteNotFound
 from .markdown_preview import MAX_BYTES, PreviewRejected, build_preview
 from .mock_report import MOCK_REPORT
-from .storage import RubricNotBound, SpanMismatch, StorageConflict
+from .storage import CandidateInput, InvalidCandidate, RubricNotBound, SpanMismatch, StorageConflict
 
 
 @asynccontextmanager
@@ -207,6 +212,117 @@ def delete_criterion_link(material_id: str, link_id: str) -> Response:
     return Response(status_code=204)
 
 
+# —— Agent 提案（单 criterion 预检）：LLM 只提出候选，服务端验证，人工裁决 ——
+
+
+def _save_failed_proposal(material: SavedMaterial, criterion_id: str, binding: RubricBinding, message: str, raw):
+    settings = llm.load_settings()
+    return storage.save_agent_proposal(
+        material,
+        criterion_id,
+        binding.rubric_id,
+        binding.rubric_revision,
+        settings.base_url or "",
+        settings.model or "",
+        llm.PROMPT_VERSION,
+        "failed",
+        message,
+        raw,
+        [],
+    )
+
+
+@app.post("/api/v1/materials/{material_id}/agent-proposals", response_model=AgentProposal, status_code=201)
+def create_agent_proposal(material_id: str, payload: AgentProposalCreate) -> AgentProposal:
+    material = storage.get_material(material_id)
+    if material is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    binding = storage.get_binding(material_id)
+    if binding is None:
+        raise RubricNotBound("该材料尚未绑定评分标准")
+    rubric = rubric_store.get_rubric(binding.rubric_id, binding.rubric_revision)
+    if rubric is None:
+        raise RubricNotBound("绑定的评分标准版本已不可用", [f"{binding.rubric_id} rev{binding.rubric_revision}"])
+    criterion = next((item for item in rubric.criteria if item.id == payload.criterion_id), None)
+    if criterion is None:
+        raise LookupFailed("criterion_not_found", "找不到该评分要求", [f"criterion_id={payload.criterion_id}"])
+
+    try:
+        raw_candidates, raw_content, provider, model = llm.propose_candidates(criterion, material.blocks)
+    except llm.PromptTooLarge as exc:
+        _save_failed_proposal(material, criterion.id, binding, f"material_too_large: {exc.message}", None)
+        raise
+    except llm.LlmNotConfigured as exc:
+        _save_failed_proposal(material, criterion.id, binding, f"llm_unconfigured: {exc.message}", None)
+        raise
+    except llm.LlmTimeout as exc:
+        _save_failed_proposal(material, criterion.id, binding, f"llm_timeout: {exc.message}", None)
+        raise
+    except llm.LlmUnavailable as exc:
+        _save_failed_proposal(material, criterion.id, binding, f"llm_unavailable: {exc.message}", None)
+        raise
+    except llm.LlmInvalidResponse as exc:
+        _save_failed_proposal(material, criterion.id, binding, f"llm_invalid_response: {exc.message}", exc.raw_response)
+        raise
+
+    candidates = [
+        CandidateInput(item.block_id, item.quote, item.rationale, item.risk_note) for item in raw_candidates
+    ]
+    return storage.save_agent_proposal(
+        material,
+        criterion.id,
+        binding.rubric_id,
+        binding.rubric_revision,
+        provider,
+        model,
+        llm.PROMPT_VERSION,
+        "completed",
+        None,
+        raw_content,
+        candidates,
+    )
+
+
+@app.get("/api/v1/materials/{material_id}/agent-proposals", response_model=list[AgentProposal])
+def material_agent_proposals(material_id: str, criterion_id: str | None = None) -> list[AgentProposal]:
+    if not storage.material_exists(material_id):
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return storage.list_agent_proposals(material_id, criterion_id)
+
+
+@app.get("/api/v1/agent-proposals/{proposal_id}", response_model=AgentProposal)
+def agent_proposal_by_id(proposal_id: str) -> AgentProposal:
+    proposal = storage.get_agent_proposal(proposal_id)
+    if proposal is None:
+        raise LookupFailed("proposal_not_found", "找不到该提案", [f"id={proposal_id}"])
+    return proposal
+
+
+@app.post(
+    "/api/v1/materials/{material_id}/proposal-candidates/{candidate_id}/accept",
+    response_model=ProposalAcceptance,
+    status_code=201,
+)
+def accept_proposal_candidate(material_id: str, candidate_id: str) -> ProposalAcceptance:
+    acceptance = storage.accept_candidate(material_id, candidate_id)
+    if acceptance is None:
+        raise LookupFailed("candidate_not_found", "找不到该候选", [f"id={candidate_id}"])
+    return acceptance
+
+
+@app.post(
+    "/api/v1/materials/{material_id}/proposal-candidates/{candidate_id}/reject",
+    response_model=ProposalCandidate,
+)
+def reject_proposal_candidate(
+    material_id: str, candidate_id: str, payload: ProposalCandidateReject
+) -> ProposalCandidate:
+    candidate = storage.reject_candidate(material_id, candidate_id, payload.reason)
+    if candidate is None:
+        raise LookupFailed("candidate_not_found", "找不到该候选", [f"id={candidate_id}"])
+    return candidate
+
+
 @app.exception_handler(PreviewRejected)
 async def preview_rejected(request: Request, exc: PreviewRejected) -> JSONResponse:
     error = ApiError(code=exc.code, message=exc.message, details=exc.details)
@@ -244,4 +360,40 @@ async def storage_conflict(request: Request, exc: StorageConflict) -> JSONRespon
 @app.exception_handler(SpanMismatch)
 async def span_mismatch(request: Request, exc: SpanMismatch) -> JSONResponse:
     error = ApiError(code="span_mismatch", message=exc.message, details=[])
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(InvalidCandidate)
+async def invalid_candidate(request: Request, exc: InvalidCandidate) -> JSONResponse:
+    error = ApiError(code="invalid_candidate", message=exc.message, details=[])
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(llm.LlmNotConfigured)
+async def llm_unconfigured(request: Request, exc: llm.LlmNotConfigured) -> JSONResponse:
+    error = ApiError(code="llm_unconfigured", message=exc.message, details=["配置 backend/.env 后重启后端"])
+    return JSONResponse(status_code=503, content=error.model_dump())
+
+
+@app.exception_handler(llm.LlmUnavailable)
+async def llm_unavailable(request: Request, exc: llm.LlmUnavailable) -> JSONResponse:
+    error = ApiError(code="llm_unavailable", message=exc.message, details=[])
+    return JSONResponse(status_code=502, content=error.model_dump())
+
+
+@app.exception_handler(llm.LlmTimeout)
+async def llm_timeout(request: Request, exc: llm.LlmTimeout) -> JSONResponse:
+    error = ApiError(code="llm_timeout", message=exc.message, details=[])
+    return JSONResponse(status_code=504, content=error.model_dump())
+
+
+@app.exception_handler(llm.LlmInvalidResponse)
+async def llm_invalid_response(request: Request, exc: llm.LlmInvalidResponse) -> JSONResponse:
+    error = ApiError(code="llm_invalid_response", message=exc.message, details=[])
+    return JSONResponse(status_code=502, content=error.model_dump())
+
+
+@app.exception_handler(llm.PromptTooLarge)
+async def prompt_too_large(request: Request, exc: llm.PromptTooLarge) -> JSONResponse:
+    error = ApiError(code="material_too_large", message=exc.message, details=[f"上限 {llm.MAX_PROMPT_CHARS} 字符"])
     return JSONResponse(status_code=400, content=error.model_dump())
