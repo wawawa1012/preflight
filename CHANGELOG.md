@@ -1,5 +1,27 @@
 # Progress log
 
+## 2026-09-16 — Iteration 4 Phase A：Evidence→Criterion 人工关联（实现完成，待人工验收）
+
+完成：
+
+- 契约：RubricBinding / RubricBindingCreate / CriterionEvidenceLink / CriterionEvidenceLinkCreate（rationale 非空校验），四键入 ContractBundle；合成 fixture + check_contracts 负例（引用一致、篡改 span 被拒）。
+- 只读 rubric 文件仓 backend/app/rubric_store.py：启动时加载 data/rubrics/*.json，逐份用冻结 Rubric 模型校验；非法/重复 (id, revision) fail-fast 拒绝启动；空目录合法；Criterion ID 写在文件里；新增 scripts/validate_rubrics.py 预检。当前 data/rubrics 为空 → GET /api/v1/rubrics 返回 []。
+- 存储：material_rubric_bindings（材料唯一绑定，幂等 / 换绑冲突）、criterion_evidence_links（material_id/annotation_id 双外键 CASCADE、UNIQUE(annotation_id, criterion_id, rubric_revision)、material 索引）；create_link 单事务：annotation 身份 → 绑定 → span 复验 → 查重 → 插入。
+- API：GET /api/v1/rubrics、材料绑定 GET/PUT、关联 GET/POST/DELETE、annotation DELETE；错误映射 404 *_not_found / 409 rubric_not_bound·duplicate_link·binding_conflict / 400 span_mismatch·invalid_request。
+- UI（MaterialDetailView，无新路由）：评分标准区（未绑定列表或“尚未配置评分标准”；已绑定 Criterion 列表 + 关联引用 + 查看原文 + 移除关联）；证据列表加关联（Criterion + rationale 表单）与删除（确认）；BlockList 增加 annotatedCounts 徽章/高亮与 #block-* 锚点定位（找不到明确提示）；操作互斥沿用 preview race 纪律。
+- 文档：CONTRACTS（两层区分 + Agent note 扩展）、UI_SPEC、MILESTONES、README。
+
+自检证据：
+
+- backend unittest：61 例通过（新增 23：rubric 仓加载/fail-fast/幂等、绑定幂等与换绑 409、跨材料/未知 criterion/篡改 span/重复/级联/跨连接/隔离、API 错误码与 handler）。
+- 契约管线 export/npm contracts/check_contracts PASS。
+- frontend build 通过；check-materials-nav 12/12、check-preview-race 23/23、check-evidence-annotation 14/14、新增 check-rubric-link 24/24。
+- 隔离冒烟（复制 backend 到临时目录 + 合成标准 + 独立 DB，端口 8010）：建材料 → 绑定 201 → 幂等 200 → 换绑 409 → 关联 201 → 重复 409 → 重启后绑定/关联保留 → 篡改 span 400 → 移除关联 204/404 → 删除标注 204 且关联清空、材料与 Block 完整 → 重复删除 404；17/17。另实际观察到非法 rubric 文件导致启动被拒（fail-fast）。
+
+状态：
+
+- Phase A 已由用户验收通过并收口提交；Phase B 等待用户确认评分原文后逐字转录、预检与保真核对。
+
 ## 2026-09-16 — Iteration 3：Evidence Layer MVP（实现完成，待人工验收）
 
 完成：

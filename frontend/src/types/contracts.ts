@@ -140,6 +140,24 @@ export type BlockId2 = string;
 export type Quote1 = string;
 export type Note1 = string | null;
 export type ProposedBy1 = "human";
+export type MaterialId1 = string;
+export type RubricId2 = string;
+export type RubricRevision2 = number;
+export type CreatedAt3 = string;
+export type RubricId3 = string;
+export type RubricRevision3 = number;
+export type Id15 = string;
+export type MaterialId2 = string;
+export type AnnotationId = string;
+export type RubricId4 = string;
+export type RubricRevision4 = number;
+export type CriterionId3 = string;
+export type Rationale = string;
+export type ProposedBy2 = "human";
+export type CreatedAt4 = string;
+export type AnnotationId1 = string;
+export type CriterionId4 = string;
+export type Rationale1 = string;
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -153,6 +171,10 @@ export interface ContractBundle {
   material_summary: MaterialSummary;
   evidence_annotation: EvidenceAnnotation;
   evidence_annotation_create: EvidenceAnnotationCreate;
+  rubric_binding: RubricBinding;
+  rubric_binding_create: RubricBindingCreate;
+  criterion_evidence_link: CriterionEvidenceLink;
+  criterion_evidence_link_create: CriterionEvidenceLinkCreate;
   error: ApiError;
 }
 export interface RunReport {
@@ -347,6 +369,32 @@ export interface EvidenceAnnotationCreate {
   quote: Quote1;
   note?: Note1;
   proposed_by?: ProposedBy1;
+}
+export interface RubricBinding {
+  material_id: MaterialId1;
+  rubric_id: RubricId2;
+  rubric_revision: RubricRevision2;
+  created_at: CreatedAt3;
+}
+export interface RubricBindingCreate {
+  rubric_id: RubricId3;
+  rubric_revision: RubricRevision3;
+}
+export interface CriterionEvidenceLink {
+  id: Id15;
+  material_id: MaterialId2;
+  annotation_id: AnnotationId;
+  rubric_id: RubricId4;
+  rubric_revision: RubricRevision4;
+  criterion_id: CriterionId3;
+  rationale: Rationale;
+  proposed_by?: ProposedBy2;
+  created_at: CreatedAt4;
+}
+export interface CriterionEvidenceLinkCreate {
+  annotation_id: AnnotationId1;
+  criterion_id: CriterionId4;
+  rationale: Rationale1;
 }
 export interface ApiError {
   code: Code;

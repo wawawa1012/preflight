@@ -1,0 +1,30 @@
+{
+  "test_only": true,
+  "comment": "synthetic fixture：不是真实评分标准或用户材料，仅用于契约与负例检查。",
+  "text": "合成语料：准确率达到 95%，整体稳定。",
+  "annotation": {
+    "id": "annotation_syn_1",
+    "material_id": "mat_synthetic",
+    "block_id": "block_syn_1",
+    "source": {
+      "block_id": "block_syn_1",
+      "start": 5,
+      "end": 14,
+      "quote": "准确率达到 95%"
+    },
+    "note": "synthetic",
+    "proposed_by": "human",
+    "created_at": "2026-09-16T00:00:00+00:00"
+  },
+  "link": {
+    "id": "cel_syn_1",
+    "material_id": "mat_synthetic",
+    "annotation_id": "annotation_syn_1",
+    "rubric_id": "rubric_synthetic",
+    "rubric_revision": 1,
+    "criterion_id": "c_synthetic_1",
+    "rationale": "synthetic：人工判断该引用与该项相关",
+    "proposed_by": "human",
+    "created_at": "2026-09-16T00:00:00+00:00"
+  }
+}

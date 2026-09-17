@@ -3,7 +3,7 @@
 Edit here, export JSON Schema, then regenerate frontend types. IDs are opaque.
 """
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Contract(BaseModel):
@@ -236,6 +236,45 @@ class EvidenceAnnotationCreate(Contract):
     proposed_by: Literal["human"] = "human"
 
 
+class RubricBinding(Contract):
+    # 材料 ↔ 只读评分标准的绑定：每份材料最多一条，不换绑、不解绑。
+    material_id: str
+    rubric_id: str
+    rubric_revision: int = Field(ge=1)
+    created_at: str
+
+
+class RubricBindingCreate(Contract):
+    rubric_id: str
+    rubric_revision: int = Field(ge=1)
+
+
+class CriterionEvidenceLink(Contract):
+    # adjudication 层：人工判断“这条引用与某评分要求相关”，只记录用途，不做满足/覆盖判定。
+    id: str
+    material_id: str
+    annotation_id: str
+    rubric_id: str
+    rubric_revision: int = Field(ge=1)
+    criterion_id: str
+    rationale: str = Field(min_length=1)
+    proposed_by: Literal["human"] = "human"
+    created_at: str
+
+
+class CriterionEvidenceLinkCreate(Contract):
+    annotation_id: str
+    criterion_id: str
+    rationale: str = Field(min_length=1)
+
+    @field_validator("rationale")
+    @classmethod
+    def rationale_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("rationale 不能为空白")
+        return value
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -251,4 +290,8 @@ class ContractBundle(Contract):
     material_summary: MaterialSummary
     evidence_annotation: EvidenceAnnotation
     evidence_annotation_create: EvidenceAnnotationCreate
+    rubric_binding: RubricBinding
+    rubric_binding_create: RubricBindingCreate
+    criterion_evidence_link: CriterionEvidenceLink
+    criterion_evidence_link_create: CriterionEvidenceLinkCreate
     error: ApiError

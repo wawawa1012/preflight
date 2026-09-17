@@ -5,7 +5,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.contracts import ContractBundle, EvidenceAnnotation, RunReport, VersionDiff
+from app.contracts import ContractBundle, CriterionEvidenceLink, EvidenceAnnotation, RunReport, VersionDiff
 from pydantic import ValidationError
 
 
@@ -107,4 +107,24 @@ except AssertionError:
     pass
 else:
     raise AssertionError("Tampered evidence quote was accepted")
-print("PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, negative cases")
+# Criterion evidence link fixture（synthetic/test-only）：引用一致、rationale 非空、篡改 span 必须被拒。
+link_raw = json.loads((ROOT / "contracts/fixtures/criterion_evidence_link.json").read_text(encoding="utf-8"))
+link_annotation = EvidenceAnnotation.model_validate(link_raw["annotation"])
+link = CriterionEvidenceLink.model_validate(link_raw["link"])
+link_text = link_raw["text"]
+assert link_raw["test_only"] is True
+assert link.annotation_id == link_annotation.id and link.material_id == link_annotation.material_id
+assert link_text[link_annotation.source.start:link_annotation.source.end] == link_annotation.source.quote
+assert link.rationale.strip(), "rationale must not be blank"
+tampered_annotation = link_annotation.model_copy(deep=True)
+tampered_annotation.source.end += 1
+try:
+    assert link_text[tampered_annotation.source.start:tampered_annotation.source.end] == tampered_annotation.source.quote
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Tampered link fixture span was accepted")
+print(
+    "PASS: schema freshness, fixture structure/references, quote checks, "
+    "evidence annotation checks, criterion link checks, negative cases"
+)

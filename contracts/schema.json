@@ -179,6 +179,88 @@
       "title": "CriterionAssessment",
       "type": "object"
     },
+    "CriterionEvidenceLink": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "annotation_id": {
+          "title": "Annotation Id",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "proposed_by": {
+          "const": "human",
+          "default": "human",
+          "title": "Proposed By",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "material_id",
+        "annotation_id",
+        "rubric_id",
+        "rubric_revision",
+        "criterion_id",
+        "rationale",
+        "created_at"
+      ],
+      "title": "CriterionEvidenceLink",
+      "type": "object"
+    },
+    "CriterionEvidenceLinkCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "annotation_id": {
+          "title": "Annotation Id",
+          "type": "string"
+        },
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "annotation_id",
+        "criterion_id",
+        "rationale"
+      ],
+      "title": "CriterionEvidenceLinkCreate",
+      "type": "object"
+    },
     "DiffEntry": {
       "additionalProperties": false,
       "properties": {
@@ -863,6 +945,56 @@
       "title": "Rubric",
       "type": "object"
     },
+    "RubricBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id",
+        "rubric_id",
+        "rubric_revision",
+        "created_at"
+      ],
+      "title": "RubricBinding",
+      "type": "object"
+    },
+    "RubricBindingCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rubric_id",
+        "rubric_revision"
+      ],
+      "title": "RubricBindingCreate",
+      "type": "object"
+    },
     "Run": {
       "additionalProperties": false,
       "properties": {
@@ -1261,6 +1393,18 @@
     "evidence_annotation_create": {
       "$ref": "#/$defs/EvidenceAnnotationCreate"
     },
+    "rubric_binding": {
+      "$ref": "#/$defs/RubricBinding"
+    },
+    "rubric_binding_create": {
+      "$ref": "#/$defs/RubricBindingCreate"
+    },
+    "criterion_evidence_link": {
+      "$ref": "#/$defs/CriterionEvidenceLink"
+    },
+    "criterion_evidence_link_create": {
+      "$ref": "#/$defs/CriterionEvidenceLinkCreate"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -1274,6 +1418,10 @@
     "material_summary",
     "evidence_annotation",
     "evidence_annotation_create",
+    "rubric_binding",
+    "rubric_binding_create",
+    "criterion_evidence_link",
+    "criterion_evidence_link_create",
     "error"
   ],
   "title": "ContractBundle",

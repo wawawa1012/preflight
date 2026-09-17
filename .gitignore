@@ -9,6 +9,8 @@ __pycache__/
 *.sqlite*
 data/*
 !data/.gitkeep
+!data/rubrics/
+data/rubrics/*.json
 frontend/auto-imports.d.ts
 frontend/components.d.ts
 .vite/
