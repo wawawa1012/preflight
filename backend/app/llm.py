@@ -45,8 +45,9 @@ class LlmTimeout(Exception):
 
 
 class LlmInvalidResponse(Exception):
-    def __init__(self, message: str = "LLM 响应不符合 schema") -> None:
+    def __init__(self, message: str = "LLM 响应不符合 schema", raw_response: str | None = None) -> None:
         self.message = message
+        self.raw_response = raw_response
         super().__init__(message)
 
 
@@ -184,11 +185,16 @@ def complete(settings: LlmSettings, messages: list[dict[str, str]]) -> str:
     return content
 
 
-def propose_candidates(criterion: Criterion, blocks: list[Block]) -> tuple[list[RawCandidate], str, str]:
-    """配置检查 → 构建 prompt → 单次调用 → 严格解析；返回 (candidates, provider, model)。"""
+def propose_candidates(criterion: Criterion, blocks: list[Block]) -> tuple[list[RawCandidate], str, str, str]:
+    """配置检查 → 构建 prompt → 单次调用 → 严格解析；返回 (candidates, raw_content, provider, model)。"""
     settings = load_settings()
     if not settings.configured:
         raise LlmNotConfigured()
     messages = build_messages(criterion, blocks)
     content = complete(settings, messages)
-    return parse_candidates(content), settings.base_url or "", settings.model or ""
+    try:
+        candidates = parse_candidates(content)
+    except LlmInvalidResponse as exc:
+        exc.raw_response = content
+        raise
+    return candidates, content, settings.base_url or "", settings.model or ""
