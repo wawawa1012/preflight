@@ -2,9 +2,12 @@
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type {
+  AgentProposal,
   Block,
   CriterionEvidenceLink,
   EvidenceAnnotation,
+  ProposalAcceptance,
+  ProposalCandidate,
   Rubric,
   RubricBinding,
   SavedMaterial,
@@ -55,6 +58,18 @@ const linkError = ref('')
 const linkNotice = ref('')
 const deletingLinkId = ref('')
 
+// —— Agent 提案（单 criterion AI 预检；LLM 只提出候选，服务端验证，人工裁决） ——
+const proposals = ref<AgentProposal[]>([])
+const proposalsLoading = ref(false)
+const proposalsError = ref('')
+const proposingCriterionId = ref('')
+const acceptingCandidateId = ref('')
+const rejectingCandidateId = ref('')
+const rejectFormId = ref('')
+const rejectReasonInput = ref('')
+const proposalError = ref('')
+const proposalNotice = ref('')
+
 // —— 锚点导航 ——
 const highlightedBlockId = ref('')
 const anchorNotice = ref('')
@@ -66,7 +81,10 @@ const busy = computed(
     savingLink.value ||
     bindingBusy.value ||
     deletingAnnotationId.value !== '' ||
-    deletingLinkId.value !== '',
+    deletingLinkId.value !== '' ||
+    proposingCriterionId.value !== '' ||
+    acceptingCandidateId.value !== '' ||
+    rejectingCandidateId.value !== '',
 )
 
 const boundRubric = computed(() => {
@@ -375,6 +393,122 @@ async function deleteLink(link: CriterionEvidenceLink) {
   }
 }
 
+// —— Agent 提案操作（AI 预检 / 接受 / 拒绝） ——
+
+async function loadProposals() {
+  proposalsLoading.value = true
+  proposalsError.value = ''
+  try {
+    proposals.value = (await requestJson(
+      `/api/v1/materials/${encodeURIComponent(materialId)}/agent-proposals`,
+    )) as AgentProposal[]
+  } catch (cause) {
+    proposalsError.value = cause instanceof Error ? cause.message : '未知错误'
+  } finally {
+    proposalsLoading.value = false
+  }
+}
+
+function latestProposalFor(criterionId: string) {
+  return proposals.value.find(item => item.criterion_id === criterionId) ?? null
+}
+
+function lineForBlock(blockId: string) {
+  const block = material.value?.blocks.find(item => item.id === blockId)
+  return block ? block.locator.index : '?'
+}
+
+async function runPreflight(criterion: Rubric['criteria'][number]) {
+  // 未绑定评分标准时不允许发起；任一操作进行中也互斥。
+  if (busy.value || !boundRubric.value) return
+  proposingCriterionId.value = criterion.id
+  proposalError.value = ''
+  proposalNotice.value = ''
+  try {
+    const proposal = (await requestJson(
+      `/api/v1/materials/${encodeURIComponent(materialId)}/agent-proposals`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ criterion_id: criterion.id }),
+      },
+    )) as AgentProposal
+    proposals.value = [proposal, ...proposals.value.filter(item => item.id !== proposal.id)]
+    if (proposal.status === 'completed') {
+      proposalNotice.value = `预检完成：${proposal.candidates.length} 个候选`
+    } else {
+      proposalError.value = `预检失败：${proposal.error ?? '未知错误'}`
+    }
+  } catch (cause) {
+    proposalError.value = cause instanceof Error ? cause.message : '未知错误'
+  } finally {
+    proposingCriterionId.value = ''
+  }
+}
+
+async function acceptCandidate(candidate: ProposalCandidate) {
+  if (busy.value) return
+  if (candidate.validation_status !== 'passed') {
+    proposalError.value = '未通过验证门的候选不能接受'
+    return
+  }
+  acceptingCandidateId.value = candidate.id
+  proposalError.value = ''
+  proposalNotice.value = ''
+  try {
+    const acceptance = (await requestJson(
+      `/api/v1/materials/${encodeURIComponent(materialId)}/proposal-candidates/${encodeURIComponent(candidate.id)}/accept`,
+      { method: 'POST' },
+    )) as ProposalAcceptance
+    annotations.value = [...annotations.value, acceptance.annotation]
+    links.value = [...links.value, acceptance.link]
+    await loadProposals()
+    proposalNotice.value = '已接受候选并物化为引用（agent）'
+  } catch (cause) {
+    proposalError.value = cause instanceof Error ? cause.message : '未知错误'
+  } finally {
+    acceptingCandidateId.value = ''
+  }
+}
+
+function askReject(candidate: ProposalCandidate) {
+  if (busy.value) return
+  rejectFormId.value = candidate.id
+  rejectReasonInput.value = ''
+  proposalError.value = ''
+}
+
+function cancelReject() {
+  if (busy.value) return
+  rejectFormId.value = ''
+  rejectReasonInput.value = ''
+}
+
+async function rejectCandidate(candidate: ProposalCandidate) {
+  if (busy.value) return
+  rejectingCandidateId.value = candidate.id
+  proposalError.value = ''
+  proposalNotice.value = ''
+  try {
+    await requestJson(
+      `/api/v1/materials/${encodeURIComponent(materialId)}/proposal-candidates/${encodeURIComponent(candidate.id)}/reject`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: rejectReasonInput.value || null }),
+      },
+    )
+    await loadProposals()
+    rejectFormId.value = ''
+    rejectReasonInput.value = ''
+    proposalNotice.value = '已拒绝该候选'
+  } catch (cause) {
+    proposalError.value = cause instanceof Error ? cause.message : '未知错误'
+  } finally {
+    rejectingCandidateId.value = ''
+  }
+}
+
 // —— 锚点导航：定位并短暂高亮；找不到时明确提示 ——
 
 function goToBlock(blockId: string) {
@@ -407,7 +541,7 @@ const meta = computed(() => {
 })
 
 async function init() {
-  await Promise.all([loadMaterial(), loadAnnotations(), loadRubrics(), loadBinding(), loadLinks()])
+  await Promise.all([loadMaterial(), loadAnnotations(), loadRubrics(), loadBinding(), loadLinks(), loadProposals()])
   // 带 #block-* 打开/刷新：等材料与标注装载完成后再定位。
   if (route.hash.startsWith('#block-')) {
     goToBlock(route.hash.slice('#block-'.length))
@@ -508,7 +642,12 @@ init()
                     <p class="font-mono text-xs text-slate-300">
                       “{{ annotationFor(link.annotation_id)?.source.quote ?? '（引用已删除）' }}”
                     </p>
-                    <p class="mt-1 text-xs text-slate-500">用途：{{ link.rationale }}</p>
+                    <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>用途：{{ link.rationale }}</span>
+                      <UBadge :color="link.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
+                        {{ link.proposed_by }}
+                      </UBadge>
+                    </p>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
                       <UButton
                         size="xs"
@@ -533,6 +672,109 @@ init()
                     </div>
                   </div>
                   <p v-if="linksFor(criterion.id).length === 0" class="text-xs text-slate-500">尚未关联引用</p>
+                </div>
+
+                <!-- AI 预检：只产生候选；接受/拒绝由人裁决。 -->
+                <div class="mt-3 border-t border-slate-800 pt-3">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-xs text-slate-500">
+                      最新预检：{{ latestProposalFor(criterion.id) ? latestProposalFor(criterion.id)!.status : '尚未运行' }}
+                    </p>
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="subtle"
+                      icon="i-lucide-sparkles"
+                      :loading="proposingCriterionId === criterion.id"
+                      :disabled="busy || !boundRubric"
+                      @click="runPreflight(criterion)"
+                    >
+                      {{ proposingCriterionId === criterion.id ? '正在预检…' : 'AI 预检' }}
+                    </UButton>
+                  </div>
+                  <template v-if="latestProposalFor(criterion.id)">
+                    <p
+                      v-if="latestProposalFor(criterion.id)!.status === 'failed'"
+                      class="mt-2 text-xs text-red-400"
+                    >
+                      上次预检失败：{{ latestProposalFor(criterion.id)!.error }}
+                    </p>
+                    <ul v-else class="mt-2 space-y-2">
+                      <li
+                        v-for="candidate in latestProposalFor(criterion.id)!.candidates"
+                        :key="candidate.id"
+                        class="rounded-md border border-slate-800 p-2"
+                      >
+                        <p class="font-mono text-xs text-slate-300">
+                          “{{ candidate.quote }}” · line {{ lineForBlock(candidate.block_id) }}
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500">
+                          {{ candidate.rationale }}
+                          <span v-if="candidate.risk_note"> · 风险：{{ candidate.risk_note }}</span>
+                        </p>
+                        <div class="mt-1 flex flex-wrap items-center gap-2">
+                          <UBadge
+                            v-if="candidate.validation_status === 'passed'"
+                            color="success"
+                            variant="subtle"
+                            size="sm"
+                          >
+                            通过验证
+                          </UBadge>
+                          <UBadge
+                            v-else-if="candidate.validation_status === 'invalid'"
+                            color="error"
+                            variant="subtle"
+                            size="sm"
+                          >
+                            无效：{{ candidate.validation_code }}
+                          </UBadge>
+                          <UBadge v-else color="neutral" variant="subtle" size="sm">待验证</UBadge>
+                          <UBadge color="neutral" variant="subtle" size="sm">{{ candidate.review_status }}</UBadge>
+                        </div>
+                        <div v-if="candidate.review_status === 'unreviewed'" class="mt-2 flex flex-wrap items-center gap-2">
+                          <UButton
+                            size="xs"
+                            :loading="acceptingCandidateId === candidate.id"
+                            :disabled="busy || candidate.validation_status !== 'passed'"
+                            :title="candidate.validation_status === 'passed' ? undefined : '未通过验证门的候选不能接受'"
+                            @click="acceptCandidate(candidate)"
+                          >
+                            接受
+                          </UButton>
+                          <template v-if="rejectFormId === candidate.id">
+                            <input
+                              v-model="rejectReasonInput"
+                              placeholder="拒绝原因（可选）"
+                              class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+                            />
+                            <UButton
+                              size="xs"
+                              color="neutral"
+                              variant="subtle"
+                              :loading="rejectingCandidateId === candidate.id"
+                              @click="rejectCandidate(candidate)"
+                            >
+                              确认拒绝
+                            </UButton>
+                            <UButton size="xs" color="neutral" variant="ghost" :disabled="busy" @click="cancelReject">
+                              取消
+                            </UButton>
+                          </template>
+                          <UButton
+                            v-else
+                            size="xs"
+                            color="neutral"
+                            variant="ghost"
+                            :disabled="busy"
+                            @click="askReject(candidate)"
+                          >
+                            拒绝
+                          </UButton>
+                        </div>
+                      </li>
+                    </ul>
+                  </template>
                 </div>
               </div>
             </div>
@@ -562,6 +804,12 @@ init()
           {{ bindingNotice }}
         </p>
         <p v-if="linkNotice" class="border-t border-slate-800 px-3 py-2 text-xs text-emerald-400">{{ linkNotice }}</p>
+        <p v-if="proposalError" class="border-t border-slate-800 px-3 py-2 text-xs text-red-400" role="alert">
+          {{ proposalError }}
+        </p>
+        <p v-if="proposalNotice" class="border-t border-slate-800 px-3 py-2 text-xs text-emerald-400">
+          {{ proposalNotice }}
+        </p>
       </section>
 
       <!-- 证据区：标注列表 + 反馈；表单在选中的 Block 行内展开。 -->
@@ -579,8 +827,12 @@ init()
           <ul v-else class="divide-y divide-slate-800">
             <li v-for="item in annotations" :key="item.id" class="px-3 py-2">
               <p class="font-mono text-sm text-slate-200">“{{ item.source.quote }}”</p>
-              <p class="mt-1 text-xs text-slate-500">
-                line {{ lineFor(item) }} · {{ item.proposed_by }}<span v-if="item.note"> · {{ item.note }}</span>
+              <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>line {{ lineFor(item) }}</span>
+                <UBadge :color="item.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
+                  {{ item.proposed_by }}
+                </UBadge>
+                <span v-if="item.note">{{ item.note }}</span>
               </p>
               <div class="mt-2 flex flex-wrap items-center gap-2">
                 <UButton

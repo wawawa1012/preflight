@@ -118,6 +118,7 @@ globalThis.fetch = async (url, options = {}) => {
   if (method === 'GET' && target.endsWith('/rubric-binding')) return jsonResponse(state.binding)
   if (method === 'GET' && target.endsWith('/evidence-annotations')) return jsonResponse(state.annotations)
   if (method === 'GET' && target.endsWith('/criterion-evidence-links')) return jsonResponse(state.links)
+  if (method === 'GET' && target.endsWith('/agent-proposals')) return jsonResponse([])
   if (method === 'GET' && target.startsWith('/api/v1/materials/')) return jsonResponse(MATERIAL)
   if (method === 'PUT' && target.endsWith('/rubric-binding')) {
     state.puts += 1

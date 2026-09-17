@@ -103,6 +103,7 @@ try {
       return send()
     }
     if (target.includes('/evidence-annotations')) return jsonResponse([])
+    if (target.endsWith('/agent-proposals')) return jsonResponse([])
     if (target.startsWith('/api/v1/materials/')) return jsonResponse(material)
     throw new Error(`unexpected fetch: ${method} ${target}`)
   }
