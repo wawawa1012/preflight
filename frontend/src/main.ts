@@ -1,3 +1,4 @@
+//前端入口。创建 Vue 应用，安装插件
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ui from '@nuxt/ui/vue-plugin'
