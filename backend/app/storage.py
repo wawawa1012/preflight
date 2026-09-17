@@ -7,25 +7,30 @@
 - evidence_annotations：引用真实 Block 的一段原文；material_id/block_id 双外键（CASCADE）。
 - material_rubric_bindings：材料 ↔ 只读评分标准绑定，每份材料最多一条。
 - criterion_evidence_links：人工判断“引用与某项评分要求相关”（adjudication 层）；双外键 CASCADE。
+- agent_proposals / proposal_candidates：单 criterion AI 预检及其候选；候选须过验证门，accept 原子物化。
 """
 import sqlite3
 import uuid
 from contextlib import closing
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .contracts import (
+    AgentProposal,
     Block,
     CriterionEvidenceLink,
     EvidenceAnnotation,
     Locator,
     MarkdownPreview,
     MaterialSummary,
+    ProposalAcceptance,
+    ProposalCandidate,
     RubricBinding,
     SavedMaterial,
     Span,
 )
-from .evidence import resolve_span
+from .evidence import QuoteNotFound, resolve_span
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "preflight.db"
 
@@ -59,6 +64,28 @@ class SpanMismatch(Exception):
     def __init__(self, message: str = "annotation span 与原文不一致") -> None:
         self.message = message
         super().__init__(message)
+
+
+class InvalidCandidate(Exception):
+    """候选未通过验证门，不能 accept（400 invalid_candidate）。"""
+
+    def __init__(self, message: str = "候选未通过验证，不能接受") -> None:
+        self.message = message
+        super().__init__(message)
+
+
+class CandidateAlreadyReviewed(StorageConflict):
+    code = "candidate_already_reviewed"
+
+
+@dataclass(frozen=True)
+class CandidateInput:
+    """写入前的候选输入（来自 LLM 解析层）；验证由 save_agent_proposal 完成。"""
+
+    block_id: str
+    quote: str
+    rationale: str
+    risk_note: str | None = None
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS materials (
@@ -112,6 +139,39 @@ CREATE TABLE IF NOT EXISTS criterion_evidence_links (
     UNIQUE (annotation_id, criterion_id, rubric_revision)
 );
 CREATE INDEX IF NOT EXISTS idx_criterion_evidence_links_material ON criterion_evidence_links(material_id);
+CREATE TABLE IF NOT EXISTS agent_proposals (
+    id TEXT PRIMARY KEY,
+    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    criterion_id TEXT NOT NULL,
+    rubric_id TEXT NOT NULL,
+    rubric_revision INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    raw_response TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS proposal_candidates (
+    id TEXT PRIMARY KEY,
+    proposal_id TEXT NOT NULL REFERENCES agent_proposals(id) ON DELETE CASCADE,
+    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL,
+    block_id TEXT NOT NULL,
+    quote TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    risk_note TEXT,
+    validation_status TEXT NOT NULL,
+    validation_code TEXT,
+    review_status TEXT NOT NULL,
+    reject_reason TEXT,
+    created_annotation_id TEXT,
+    created_link_id TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (proposal_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_candidates_material ON proposal_candidates(material_id);
 """
 
 
@@ -442,3 +502,235 @@ def delete_link(material_id: str, link_id: str, db_path: Path = DEFAULT_DB_PATH)
             "DELETE FROM criterion_evidence_links WHERE id = ? AND material_id = ?", (link_id, material_id)
         )
     return deleted.rowcount > 0
+
+
+def _candidate_from_row(row: sqlite3.Row) -> ProposalCandidate:
+    return ProposalCandidate(
+        id=row["id"],
+        proposal_id=row["proposal_id"],
+        ordinal=row["ordinal"],
+        block_id=row["block_id"],
+        quote=row["quote"],
+        rationale=row["rationale"],
+        risk_note=row["risk_note"],
+        validation_status=row["validation_status"],
+        validation_code=row["validation_code"],
+        review_status=row["review_status"],
+        reject_reason=row["reject_reason"],
+        created_annotation_id=row["created_annotation_id"],
+        created_link_id=row["created_link_id"],
+        created_at=row["created_at"],
+    )
+
+
+def _proposal_from_rows(proposal: sqlite3.Row, candidates: list[sqlite3.Row]) -> AgentProposal:
+    return AgentProposal(
+        id=proposal["id"],
+        material_id=proposal["material_id"],
+        criterion_id=proposal["criterion_id"],
+        rubric_id=proposal["rubric_id"],
+        rubric_revision=proposal["rubric_revision"],
+        provider=proposal["provider"],
+        model=proposal["model"],
+        prompt_version=proposal["prompt_version"],
+        status=proposal["status"],
+        error=proposal["error"],
+        created_at=proposal["created_at"],
+        candidates=[_candidate_from_row(row) for row in candidates],
+    )
+
+
+def save_agent_proposal(
+    material: SavedMaterial,
+    criterion_id: str,
+    rubric_id: str,
+    rubric_revision: int,
+    provider: str,
+    model: str,
+    prompt_version: str,
+    status: str,
+    error: str | None,
+    raw_response: str | None,
+    candidates: list[CandidateInput],
+    db_path: Path = DEFAULT_DB_PATH,
+) -> AgentProposal:
+    """验证每个候选（block 属于材料 + quote 经 resolve_span）后，单事务写入两张表。"""
+    blocks = {block.id: block for block in material.blocks}
+    proposal_id = f"ap_{uuid.uuid4().hex}"
+    created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    prepared: list[tuple[str, int, CandidateInput, str, str | None]] = []
+    for ordinal, candidate in enumerate(candidates):
+        block = blocks.get(candidate.block_id)
+        if block is None:
+            validation_status, validation_code = "invalid", "block_not_found"
+        else:
+            try:
+                resolve_span(block.text, candidate.quote)
+            except QuoteNotFound:
+                validation_status, validation_code = "invalid", "quote_not_found"
+            else:
+                validation_status, validation_code = "passed", None
+        prepared.append((f"apc_{uuid.uuid4().hex}", ordinal, candidate, validation_status, validation_code))
+
+    with closing(connect(db_path)) as connection, connection:
+        connection.execute(
+            "INSERT INTO agent_proposals"
+            " (id, material_id, criterion_id, rubric_id, rubric_revision, provider, model, prompt_version,"
+            "  status, error, raw_response, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (proposal_id, material.id, criterion_id, rubric_id, rubric_revision, provider, model,
+             prompt_version, status, error, raw_response, created_at),
+        )
+        for candidate_id, ordinal, candidate, validation_status, validation_code in prepared:
+            connection.execute(
+                "INSERT INTO proposal_candidates"
+                " (id, proposal_id, material_id, ordinal, block_id, quote, rationale, risk_note,"
+                "  validation_status, validation_code, review_status, reject_reason,"
+                "  created_annotation_id, created_link_id, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unreviewed', NULL, NULL, NULL, ?)",
+                (candidate_id, proposal_id, material.id, ordinal, candidate.block_id, candidate.quote,
+                 candidate.rationale, candidate.risk_note, validation_status, validation_code, created_at),
+            )
+
+    stored = get_agent_proposal(proposal_id, db_path)
+    if stored is None:
+        raise RuntimeError("proposal 写入后无法读回")
+    return stored
+
+
+def get_agent_proposal(proposal_id: str, db_path: Path = DEFAULT_DB_PATH) -> AgentProposal | None:
+    with closing(connect(db_path)) as connection:
+        proposal = connection.execute("SELECT * FROM agent_proposals WHERE id = ?", (proposal_id,)).fetchone()
+        if proposal is None:
+            return None
+        candidates = connection.execute(
+            "SELECT * FROM proposal_candidates WHERE proposal_id = ? ORDER BY ordinal ASC", (proposal_id,)
+        ).fetchall()
+    return _proposal_from_rows(proposal, candidates)
+
+
+def list_agent_proposals(
+    material_id: str, criterion_id: str | None = None, db_path: Path = DEFAULT_DB_PATH
+) -> list[AgentProposal]:
+    query = "SELECT * FROM agent_proposals WHERE material_id = ?"
+    params: list[str] = [material_id]
+    if criterion_id:
+        query += " AND criterion_id = ?"
+        params.append(criterion_id)
+    query += " ORDER BY rowid DESC"
+    with closing(connect(db_path)) as connection:
+        proposals = connection.execute(query, params).fetchall()
+        result: list[AgentProposal] = []
+        for proposal in proposals:
+            candidates = connection.execute(
+                "SELECT * FROM proposal_candidates WHERE proposal_id = ? ORDER BY ordinal ASC", (proposal["id"],)
+            ).fetchall()
+            result.append(_proposal_from_rows(proposal, candidates))
+    return result
+
+
+def accept_candidate(
+    material_id: str, candidate_id: str, db_path: Path = DEFAULT_DB_PATH
+) -> ProposalAcceptance | None:
+    """单事务：校验候选 → 语义查重 → span 复算 → 物化 annotation + link（agent）→ 回写候选。
+
+    任一步失败全部回滚；候选不存在/跨材料返回 None。
+    """
+    with closing(connect(db_path)) as connection, connection:
+        row = connection.execute(
+            "SELECT c.*, p.criterion_id AS proposal_criterion_id, p.rubric_id AS proposal_rubric_id,"
+            " p.rubric_revision AS proposal_rubric_revision, b.text AS block_text"
+            " FROM proposal_candidates c"
+            " JOIN agent_proposals p ON p.id = c.proposal_id"
+            " LEFT JOIN blocks b ON b.id = c.block_id"
+            " WHERE c.id = ?",
+            (candidate_id,),
+        ).fetchone()
+        if row is None or row["material_id"] != material_id:
+            return None
+        if row["validation_status"] != "passed":
+            raise InvalidCandidate("候选未通过验证门，不能接受")
+        if row["review_status"] != "unreviewed":
+            raise CandidateAlreadyReviewed("候选已被裁决")
+        block_text = row["block_text"]
+        if block_text is None:
+            raise SpanMismatch("候选引用的 Block 已不存在")
+        try:
+            start, end = resolve_span(block_text, row["quote"])
+        except QuoteNotFound as exc:
+            raise SpanMismatch(str(exc)) from exc
+        duplicate = connection.execute(
+            "SELECT 1 FROM criterion_evidence_links l"
+            " JOIN evidence_annotations a ON a.id = l.annotation_id"
+            " WHERE l.material_id = ? AND l.criterion_id = ? AND a.block_id = ? AND a.quote = ?",
+            (material_id, row["proposal_criterion_id"], row["block_id"], row["quote"]),
+        ).fetchone()
+        if duplicate is not None:
+            raise DuplicateLink("该原文已关联此评分要求")
+
+        created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        annotation_id = f"ev_{uuid.uuid4().hex}"
+        link_id = f"cel_{uuid.uuid4().hex}"
+        connection.execute(
+            "INSERT INTO evidence_annotations"
+            " (id, material_id, block_id, start, end, quote, note, proposed_by, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, NULL, 'agent', ?)",
+            (annotation_id, material_id, row["block_id"], start, end, row["quote"], created_at),
+        )
+        connection.execute(
+            "INSERT INTO criterion_evidence_links"
+            " (id, material_id, annotation_id, rubric_id, rubric_revision, criterion_id, rationale,"
+            "  proposed_by, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, 'agent', ?)",
+            (link_id, material_id, annotation_id, row["proposal_rubric_id"], row["proposal_rubric_revision"],
+             row["proposal_criterion_id"], row["rationale"], created_at),
+        )
+        connection.execute(
+            "UPDATE proposal_candidates"
+            " SET review_status = 'accepted', created_annotation_id = ?, created_link_id = ? WHERE id = ?",
+            (annotation_id, link_id, candidate_id),
+        )
+
+    return ProposalAcceptance(
+        annotation=EvidenceAnnotation(
+            id=annotation_id,
+            material_id=material_id,
+            block_id=row["block_id"],
+            source=Span(block_id=row["block_id"], start=start, end=end, quote=row["quote"]),
+            note=None,
+            proposed_by="agent",
+            created_at=created_at,
+        ),
+        link=CriterionEvidenceLink(
+            id=link_id,
+            material_id=material_id,
+            annotation_id=annotation_id,
+            rubric_id=row["proposal_rubric_id"],
+            rubric_revision=row["proposal_rubric_revision"],
+            criterion_id=row["proposal_criterion_id"],
+            rationale=row["rationale"],
+            proposed_by="agent",
+            created_at=created_at,
+        ),
+    )
+
+
+def reject_candidate(
+    material_id: str, candidate_id: str, reason: str | None = None, db_path: Path = DEFAULT_DB_PATH
+) -> ProposalCandidate | None:
+    with closing(connect(db_path)) as connection, connection:
+        row = connection.execute(
+            "SELECT * FROM proposal_candidates WHERE id = ?", (candidate_id,)
+        ).fetchone()
+        if row is None or row["material_id"] != material_id:
+            return None
+        if row["review_status"] != "unreviewed":
+            raise CandidateAlreadyReviewed("候选已被裁决")
+        connection.execute(
+            "UPDATE proposal_candidates SET review_status = 'rejected', reject_reason = ? WHERE id = ?",
+            (reason, candidate_id),
+        )
+        updated = connection.execute(
+            "SELECT * FROM proposal_candidates WHERE id = ?", (candidate_id,)
+        ).fetchone()
+    return _candidate_from_row(updated)
