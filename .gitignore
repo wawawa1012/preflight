@@ -6,6 +6,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+backend/.env
 *.sqlite*
 data/*
 !data/.gitkeep

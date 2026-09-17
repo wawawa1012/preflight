@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 
-from . import rubric_store, storage
+from . import llm, rubric_store, storage
 from .contracts import (
     ApiError,
     CriterionEvidenceLink,
@@ -30,6 +30,8 @@ from .storage import RubricNotBound, SpanMismatch, StorageConflict
 async def lifespan(app: FastAPI):
     # 启动时确保 SQLite 表和 data 目录存在；不做迁移。
     storage.init_db()
+    # backend/.env（如存在）加载到环境；不覆盖既有环境变量。
+    llm.load_env_file()
     # 评分标准文件仓：非法/重复文件直接拒绝启动，不降级为空列表。
     rubric_store.set_index(rubric_store.load_index())
     yield
