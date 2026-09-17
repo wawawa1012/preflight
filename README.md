@@ -25,6 +25,19 @@ npm.cmd run dev
 ```
 
 打开 http://127.0.0.1:5173，点击“检查后端连接”。Materials 卡提供“添加材料”（/materials/new：上传 .md 查看 Block 与原始行号，保存后写入本地 SQLite data/preflight.db 并跳转到材料页）与“查看材料库”（/materials：列表，点击进入 /materials/:id，刷新或重启后端后仍可读取）。旧 /preview 兼容重定向到 /materials/new。API 文档：http://127.0.0.1:8000/docs。
+
+## LLM 配置（单 criterion AI 预检，可选）
+
+复制 backend/.env.example 为 backend/.env（已被 Git 忽略）并填入任意 OpenAI 兼容服务：
+
+```text
+PREFLIGHT_LLM_BASE_URL=https://api.example.com/v1
+PREFLIGHT_LLM_API_KEY=sk-...
+PREFLIGHT_LLM_MODEL=model-name
+PREFLIGHT_LLM_TIMEOUT_S=60
+```
+
+未配置时 AI 预检返回 503 llm_unconfigured；调用失败（502/504/非法响应/prompt 超限）也会保留一条 status=failed 的提案，便于在材料详情页审计。
 Ctrl+C 停止对应服务。端口被占用时先检查已有服务，不强制结束未知进程。
 npm.cmd 避免 PowerShell 执行策略阻止 npm.ps1；Python -X utf8 避免 Windows GBK 读取 UTF-8 配置失败。
 
@@ -50,6 +63,6 @@ benchmark/cases/   后续八套 case（当前占位）
 data/              本地材料、数据库、缓存（Git 忽略）
 ```
 
-已实现：GET /api/v1/health、GET /api/v1/report（只读 mock）、POST /api/v1/preview/markdown（临时预览，不保存）、POST /api/v1/materials（保存材料）、GET /api/v1/materials（摘要列表）、GET /api/v1/materials/{id} 与 GET /api/v1/materials/recent（读取；未知 ID/无记录返回 404 + ApiError）、证据标注（POST/GET/DELETE）、GET /api/v1/rubrics（只读标准仓）与材料绑定 / 人工关联（POST/GET/DELETE）。契约中的其余业务接口是后续实现目标；没有检索、模型调用或比赛评分。
+已实现：GET /api/v1/health、GET /api/v1/report（只读 mock）、POST /api/v1/preview/markdown（临时预览，不保存）、POST /api/v1/materials（保存材料）、GET /api/v1/materials（摘要列表）、GET /api/v1/materials/{id} 与 GET /api/v1/materials/recent（读取；未知 ID/无记录返回 404 + ApiError）、证据标注（POST/GET/DELETE）、GET /api/v1/rubrics（只读标准仓）与材料绑定 / 人工关联（POST/GET/DELETE）、单 criterion Agent 提案（POST/GET + accept/reject）。契约中的其余业务接口是后续实现目标；没有检索或比赛评分。
 数据：SQLite 位于 data/preflight.db（Git 忽略），业务表为 materials → blocks，加 evidence_annotations、material_rubric_bindings、criterion_evidence_links；评分标准只读文件放在 data/rubrics/*.json（Git 忽略，目录保留 .gitkeep），启动时校验、非法即拒绝启动，预检命令：`.\backend\.venv\Scripts\python.exe -X utf8 scripts/validate_rubrics.py`。当前仓内无官方标准，GET /api/v1/rubrics 返回空列表，UI 显示“尚未配置评分标准”。
 依赖锁：frontend/package-lock.json、backend/requirements.txt；requirements.in 表示直接依赖范围。

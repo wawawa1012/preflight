@@ -22,6 +22,7 @@
 - Iteration 3（Evidence Layer MVP）：实现完成并分步提交（fa548b1..2aec98b），待人工验收。
 - Iteration 4 Phase A（Evidence→Criterion 人工关联 + 只读 rubric 文件仓）：Phase A 已验收并收口提交。
 - Iteration 4 Phase B（转录确认稿并加载）：实现完成，待人工验收；取得官方评审细则后转录为新文件，不覆盖本版本。
+- Iteration 5（单 criterion 真实 AI 预检 + 提案裁决，对应 9/20–9/22）：实现完成，待人工验收；真实 LLM 调用需用户在 backend/.env 填入兼容服务配置后人工验收。
 
 ## 保底顺序
 

@@ -28,7 +28,7 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 
 ## API 冻结边界
 
-已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化）、POST /api/v1/evidence-annotations 与 GET /api/v1/materials/{id}/evidence-annotations、/api/v1/evidence-annotations/{id}（Iteration 3 证据层）、GET /api/v1/rubrics 与材料绑定 / 人工关联（Iteration 4 Phase A）。以下业务接口是后续目标，不能当作可用服务。
+已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化）、POST /api/v1/evidence-annotations 与 GET /api/v1/materials/{id}/evidence-annotations、/api/v1/evidence-annotations/{id}（Iteration 3 证据层）、GET /api/v1/rubrics 与材料绑定 / 人工关联（Iteration 4）、单 criterion Agent 提案（Iteration 5）。以下业务接口是后续目标，不能当作可用服务。
 
 | 方法/路径 | 请求 | 响应 |
 | --- | --- | --- |
@@ -49,6 +49,11 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 | GET /api/v1/materials/{id}/criterion-evidence-links | 无 | CriterionEvidenceLink[]；未知材料 404 material_not_found |
 | POST /api/v1/materials/{id}/criterion-evidence-links | {annotation_id, criterion_id, rationale} | 201；annotation 不存在/跨材料 404 annotation_not_found；未知 criterion 404 criterion_not_found；未绑定 409 rubric_not_bound；重复 409 duplicate_link；span 复验失败 400 span_mismatch；空白 rationale 400 invalid_request |
 | DELETE /api/v1/materials/{id}/criterion-evidence-links/{link_id} | 无 | 204；不存在 404 link_not_found |
+| POST /api/v1/materials/{id}/agent-proposals | {criterion_id} | AgentProposal，201；404 material/criterion、409 rubric_not_bound、400 material_too_large、503 llm_unconfigured、502 llm_unavailable、504 llm_timeout、502 llm_invalid_response |
+| GET /api/v1/materials/{id}/agent-proposals?criterion_id= | 无 | AgentProposal[]（新到旧；失败提案 status=failed 也在列表） |
+| GET /api/v1/agent-proposals/{id} | 无 | AgentProposal；未知 404 proposal_not_found |
+| POST /api/v1/materials/{id}/proposal-candidates/{cid}/accept | 无 | ProposalAcceptance，201；未知 404 candidate_not_found；未过验证门 400 invalid_candidate；已裁决 409 candidate_already_reviewed；语义重复 409 duplicate_link；span 失效 400 span_mismatch |
+| POST /api/v1/materials/{id}/proposal-candidates/{cid}/reject | {reason?} | ProposalCandidate，200；未知 404 candidate_not_found；已裁决 409 candidate_already_reviewed |
 | GET /api/v1/projects | 无 | Project[] |
 | POST /api/v1/projects | {name} | Project，201 |
 | GET /api/v1/projects/:id/rubric | 无 | Rubric |
@@ -69,10 +74,11 @@ EvidenceAnnotation 是 Iteration 3 最小证据层：source 复用冻结 Span（
 Rubric 是只读标准仓：data/rubrics/*.json 在启动时全量校验，非法文件或重复 (rubric_id, revision) 直接拒绝启动（fail-fast，空目录合法）；Criterion ID 固定写在文件里；新版本 = 新文件，旧文件永不改动。scripts/validate_rubrics.py 复用同一加载器做预检。当前不内置任何官方评分标准。
 RubricBinding 每份材料最多一条、不换绑（错误换绑 409 binding_conflict）。
 CriterionEvidenceLink 是 adjudication 层：只表示“人判断这条引用与某项评分要求相关”，可增删，rationale 必填；不表示证据充分、不产生 Supported/coverage/readiness，不与 Claim/Finding 关联。material_id 与 rubric 版本由服务端派生（来自 annotation 与 binding），span 在写入前复验（store 内 block_text[start:end] == quote），失效即 400 span_mismatch。
+AgentProposal / ProposalCandidate 是单 criterion 预检层：LLM 只提出候选（block_id + quote + rationale + risk_note），服务端用 resolve_span 做验证门（block 必须属于该材料、quote 必须命中原文），标记 passed / invalid + 机器码；invalid 候选不能 accept。accept 由人触发，单事务物化 annotation 与 link（proposed_by="agent"）并回写候选 created ids；reject 记录可选原因。提案只是“待裁决候选”，不是结论，不产生 Supported/coverage。失败（未配置/超时/上游错误/非法响应/prompt 超限）同样落库 status=failed 并返回对应错误码；prompt 超限绝不静默截断。proposed_by 枚举扩为 ["human","agent"]；EvidenceAnnotationCreate 不再接受 proposed_by（HTTP 路径固定 "human"，accept 物化固定 "agent"）。
 
 ## Agent Integration Note
 
-proposed_by: Literal["human"] = "human" 是预留的版本化扩展点（DB 已有列）：未来 Agent pipeline 只能通过同一 resolve_span 验证门提交标注，同样由服务端派生 material_id/span，不得绕过 quote 校验；关联（CriterionEvidenceLink）同样只能记录“相关”判断，不得产出满足/覆盖结论。到来时扩展该枚举并保持 ApiError 机器可读码不变。当前不实现任何 Agent 生成逻辑。
+Agent 接入点收敛为 Proposal 层（Iteration 5）：LLM 只能提交候选（AgentProposal / ProposalCandidate），不得直接写 evidence_annotations 或 criterion_evidence_links；物化只能由人通过 accept 触发，且必须先通过 resolve_span 验证门与语义查重。proposed_by 枚举已扩为 ["human","agent"]，DB 已有列；未来扩展（多模型、重跑、更多 criterion）在 Proposal 层进行，不得绕过验证门与人工裁决。provider/model/prompt_version 与失败原因全部落库审计；失败也保留提案（status=failed）。
 
 API 返回 RunReport 内联 blocks 足够支持 MVP Drawer，不创建复杂检索 API。分页和大文件优化等有真实负载再加。
 

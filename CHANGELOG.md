@@ -1,5 +1,28 @@
 # Progress log
 
+## 2026-09-16 — Iteration 5：单 criterion AI 预检与提案裁决（实现完成，待人工验收）
+
+完成：
+
+- 契约：AgentProposal / ProposalCandidate / AgentProposalCreate / ProposalCandidateReject / ProposalAcceptance；proposed_by 扩为 ["human","agent"]；EvidenceAnnotationCreate 移除 proposed_by（防客户端伪造溯源）；合成 fixture + 负例（invalid 必带码、accept 回填一致性、篡改被拒）。
+- LLM 适配层 backend/app/llm.py：PREFLIGHT_LLM_* 环境变量 + backend/.env 手写解析；PROMPT_VERSION=p5-criterion-preflight-v1；prompt 上限 24000 字符（超出 400 material_too_large，绝不静默截断）；严格 JSON 解析（未知字段/缺字段拒绝）；错误分类 503/502/504/502；唯一新依赖 openai==3.14.1。
+- 存储：agent_proposals（raw_response 审计列不进契约）+ proposal_candidates（material 索引）；验证门（block 属于材料 + resolve_span）标记 passed/invalid+机器码；accept 单事务：候选校验→语义查重→span 复算→物化 annotation+link（provenance=agent）→回写候选；reject 记录可选原因。
+- API：POST/GET 提案、GET 单提案、accept/reject 五个端点 + 400/409/502/503/504 handler；失败也落库（status=failed），201 仅限 completed。
+- UI：criterion 行 AI 预检 + 候选面板（验证徽章、invalid 不可接受、accept/reject、失败错误码）；human/agent 溯源徽章；busy 互斥；未绑定时预检被 guard 阻止。
+- 文档：CONTRACTS（Proposal 层语义 + Agent Integration Note 重写）、UI_SPEC、MILESTONES、README（env 配置）。
+
+自检证据：
+
+- backend unittest：88 例通过（新增 27：llm 解析/配置/上限/错误映射、验证门、accept 注入失败原子性、语义查重、invalid/已裁决、reject、跨材料隔离、级联）。
+- 契约管线 export/npm contracts/check_contracts PASS。
+- frontend build 通过；check-materials-nav 12/12、check-preview-race 23/23、check-evidence-annotation 14/14、check-rubric-link 24/24、check-agent-proposal 19/19。
+- 隔离 stub 冒烟（本地 OpenAI 兼容 stub + 独立实例，无真实 key）：建材料→绑定→预检 201（passed + invalid quote_not_found）→accept 物化 agent→重复 accept 409 candidate_already_reviewed→reject→重启后提案/裁决/关联保留→停 stub 后预检 502 且失败提案落库；19/19。
+- 真实 LLM 调用由用户填 backend/.env 后人工验收。
+
+待办：
+
+- 人工验收（含真实兼容服务一次调用）。
+
 ## 2026-09-16 — Iteration 4：Evidence→Criterion 人工关联（Phase A 已验收；Phase B 待验收）
 
 完成：
