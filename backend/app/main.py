@@ -104,12 +104,10 @@ def material_by_id(material_id: str) -> SavedMaterial:
     return material
 
 
-# 证据标注：quote 服务端校验必须来自 Block 原文；material_id 由服务端从 block 行派生。
+# 证据标注：quote 服务端校验必须来自 Block 原文；material_id/proposed_by 由服务端设定。
 @app.post("/api/v1/evidence-annotations", response_model=EvidenceAnnotation, status_code=201)
 def create_evidence_annotation(payload: EvidenceAnnotationCreate) -> EvidenceAnnotation:
-    annotation = storage.save_evidence_annotation(
-        payload.block_id, payload.quote, payload.note, payload.proposed_by
-    )
+    annotation = storage.save_evidence_annotation(payload.block_id, payload.quote, payload.note, "human")
     if annotation is None:
         raise LookupFailed("block_not_found", "找不到该 Block", [f"block_id={payload.block_id}"])
     return annotation

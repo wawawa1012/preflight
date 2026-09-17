@@ -134,12 +134,11 @@ export type Id14 = string;
 export type MaterialId = string;
 export type BlockId1 = string;
 export type Note = string | null;
-export type ProposedBy = "human";
+export type ProposedBy = "human" | "agent";
 export type CreatedAt2 = string;
 export type BlockId2 = string;
 export type Quote1 = string;
 export type Note1 = string | null;
-export type ProposedBy1 = "human";
 export type MaterialId1 = string;
 export type RubricId2 = string;
 export type RubricRevision2 = number;
@@ -153,11 +152,39 @@ export type RubricId4 = string;
 export type RubricRevision4 = number;
 export type CriterionId3 = string;
 export type Rationale = string;
-export type ProposedBy2 = "human";
+export type ProposedBy1 = "human" | "agent";
 export type CreatedAt4 = string;
 export type AnnotationId1 = string;
 export type CriterionId4 = string;
 export type Rationale1 = string;
+export type Id16 = string;
+export type ProposalId = string;
+export type Ordinal1 = number;
+export type BlockId3 = string;
+export type Quote2 = string;
+export type Rationale2 = string;
+export type RiskNote = string | null;
+export type ValidationStatus = "pending" | "passed" | "invalid";
+export type ValidationCode = string | null;
+export type ReviewStatus = "unreviewed" | "accepted" | "rejected";
+export type RejectReason = string | null;
+export type CreatedAnnotationId = string | null;
+export type CreatedLinkId = string | null;
+export type CreatedAt5 = string;
+export type Id17 = string;
+export type MaterialId3 = string;
+export type CriterionId5 = string;
+export type RubricId5 = string;
+export type RubricRevision5 = number;
+export type Provider1 = string;
+export type Model1 = string;
+export type PromptVersion1 = string;
+export type Status4 = "completed" | "failed";
+export type Error1 = string | null;
+export type CreatedAt6 = string;
+export type Candidates = ProposalCandidate[];
+export type CriterionId6 = string;
+export type Reason1 = string | null;
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -175,6 +202,11 @@ export interface ContractBundle {
   rubric_binding_create: RubricBindingCreate;
   criterion_evidence_link: CriterionEvidenceLink;
   criterion_evidence_link_create: CriterionEvidenceLinkCreate;
+  proposal_candidate: ProposalCandidate;
+  agent_proposal: AgentProposal;
+  agent_proposal_create: AgentProposalCreate;
+  proposal_candidate_reject: ProposalCandidateReject;
+  proposal_acceptance: ProposalAcceptance;
   error: ApiError;
 }
 export interface RunReport {
@@ -368,7 +400,6 @@ export interface EvidenceAnnotationCreate {
   block_id: BlockId2;
   quote: Quote1;
   note?: Note1;
-  proposed_by?: ProposedBy1;
 }
 export interface RubricBinding {
   material_id: MaterialId1;
@@ -388,13 +419,53 @@ export interface CriterionEvidenceLink {
   rubric_revision: RubricRevision4;
   criterion_id: CriterionId3;
   rationale: Rationale;
-  proposed_by?: ProposedBy2;
+  proposed_by?: ProposedBy1;
   created_at: CreatedAt4;
 }
 export interface CriterionEvidenceLinkCreate {
   annotation_id: AnnotationId1;
   criterion_id: CriterionId4;
   rationale: Rationale1;
+}
+export interface ProposalCandidate {
+  id: Id16;
+  proposal_id: ProposalId;
+  ordinal: Ordinal1;
+  block_id: BlockId3;
+  quote: Quote2;
+  rationale: Rationale2;
+  risk_note?: RiskNote;
+  validation_status: ValidationStatus;
+  validation_code?: ValidationCode;
+  review_status: ReviewStatus;
+  reject_reason?: RejectReason;
+  created_annotation_id?: CreatedAnnotationId;
+  created_link_id?: CreatedLinkId;
+  created_at: CreatedAt5;
+}
+export interface AgentProposal {
+  id: Id17;
+  material_id: MaterialId3;
+  criterion_id: CriterionId5;
+  rubric_id: RubricId5;
+  rubric_revision: RubricRevision5;
+  provider: Provider1;
+  model: Model1;
+  prompt_version: PromptVersion1;
+  status: Status4;
+  error?: Error1;
+  created_at: CreatedAt6;
+  candidates: Candidates;
+}
+export interface AgentProposalCreate {
+  criterion_id: CriterionId6;
+}
+export interface ProposalCandidateReject {
+  reason?: Reason1;
+}
+export interface ProposalAcceptance {
+  annotation: EvidenceAnnotation;
+  link: CriterionEvidenceLink;
 }
 export interface ApiError {
   code: Code;

@@ -1,5 +1,103 @@
 {
   "$defs": {
+    "AgentProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ProposalCandidate"
+          },
+          "title": "Candidates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "material_id",
+        "criterion_id",
+        "rubric_id",
+        "rubric_revision",
+        "provider",
+        "model",
+        "prompt_version",
+        "status",
+        "created_at",
+        "candidates"
+      ],
+      "title": "AgentProposal",
+      "type": "object"
+    },
+    "AgentProposalCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_id"
+      ],
+      "title": "AgentProposalCreate",
+      "type": "object"
+    },
     "ApiError": {
       "additionalProperties": false,
       "properties": {
@@ -213,8 +311,11 @@
           "type": "string"
         },
         "proposed_by": {
-          "const": "human",
           "default": "human",
+          "enum": [
+            "human",
+            "agent"
+          ],
           "title": "Proposed By",
           "type": "string"
         },
@@ -459,8 +560,11 @@
           "title": "Note"
         },
         "proposed_by": {
-          "const": "human",
           "default": "human",
+          "enum": [
+            "human",
+            "agent"
+          ],
           "title": "Proposed By",
           "type": "string"
         },
@@ -502,12 +606,6 @@
           ],
           "default": null,
           "title": "Note"
-        },
-        "proposed_by": {
-          "const": "human",
-          "default": "human",
-          "title": "Proposed By",
-          "type": "string"
         }
       },
       "required": [
@@ -827,6 +925,169 @@
         "name"
       ],
       "title": "Project",
+      "type": "object"
+    },
+    "ProposalAcceptance": {
+      "additionalProperties": false,
+      "properties": {
+        "annotation": {
+          "$ref": "#/$defs/EvidenceAnnotation"
+        },
+        "link": {
+          "$ref": "#/$defs/CriterionEvidenceLink"
+        }
+      },
+      "required": [
+        "annotation",
+        "link"
+      ],
+      "title": "ProposalAcceptance",
+      "type": "object"
+    },
+    "ProposalCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "proposal_id": {
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "ordinal": {
+          "minimum": 0,
+          "title": "Ordinal",
+          "type": "integer"
+        },
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "risk_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk Note"
+        },
+        "validation_status": {
+          "enum": [
+            "pending",
+            "passed",
+            "invalid"
+          ],
+          "title": "Validation Status",
+          "type": "string"
+        },
+        "validation_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Code"
+        },
+        "review_status": {
+          "enum": [
+            "unreviewed",
+            "accepted",
+            "rejected"
+          ],
+          "title": "Review Status",
+          "type": "string"
+        },
+        "reject_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reject Reason"
+        },
+        "created_annotation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created Annotation Id"
+        },
+        "created_link_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created Link Id"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "proposal_id",
+        "ordinal",
+        "block_id",
+        "quote",
+        "rationale",
+        "validation_status",
+        "review_status",
+        "created_at"
+      ],
+      "title": "ProposalCandidate",
+      "type": "object"
+    },
+    "ProposalCandidateReject": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "title": "ProposalCandidateReject",
       "type": "object"
     },
     "Repair": {
@@ -1405,6 +1666,21 @@
     "criterion_evidence_link_create": {
       "$ref": "#/$defs/CriterionEvidenceLinkCreate"
     },
+    "proposal_candidate": {
+      "$ref": "#/$defs/ProposalCandidate"
+    },
+    "agent_proposal": {
+      "$ref": "#/$defs/AgentProposal"
+    },
+    "agent_proposal_create": {
+      "$ref": "#/$defs/AgentProposalCreate"
+    },
+    "proposal_candidate_reject": {
+      "$ref": "#/$defs/ProposalCandidateReject"
+    },
+    "proposal_acceptance": {
+      "$ref": "#/$defs/ProposalAcceptance"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -1422,6 +1698,11 @@
     "rubric_binding_create",
     "criterion_evidence_link",
     "criterion_evidence_link_create",
+    "proposal_candidate",
+    "agent_proposal",
+    "agent_proposal_create",
+    "proposal_candidate_reject",
+    "proposal_acceptance",
     "error"
   ],
   "title": "ContractBundle",

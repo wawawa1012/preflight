@@ -218,22 +218,22 @@ class MaterialSummary(Contract):
 
 class EvidenceAnnotation(Contract):
     # Iteration 3 最小证据层：引用真实 Block 的一段原文（Span 复用冻结结构）。
-    # material_id 由服务端从 block 行派生，不接受客户端提交。
+    # material_id 由服务端从 block 行派生，不接受客户端提交；proposed_by 由服务端按路径设定。
     id: str
     material_id: str
     block_id: str
     source: Span
     note: str | None = None
-    proposed_by: Literal["human"] = "human"
+    proposed_by: Literal["human", "agent"] = "human"
     created_at: str
 
 
 class EvidenceAnnotationCreate(Contract):
-    # 请求体：只提交 block 与 quote；proposed_by 是留给未来 Agent pipeline 的版本化扩展点。
+    # 请求体：只提交 block 与 quote；proposed_by 不出现在 Create，防止客户端伪造溯源。
+    # HTTP 路径固定写入 "human"；agent 物化路径由服务端设置。
     block_id: str
     quote: str = Field(min_length=1)
     note: str | None = None
-    proposed_by: Literal["human"] = "human"
 
 
 class RubricBinding(Contract):
@@ -250,7 +250,7 @@ class RubricBindingCreate(Contract):
 
 
 class CriterionEvidenceLink(Contract):
-    # adjudication 层：人工判断“这条引用与某评分要求相关”，只记录用途，不做满足/覆盖判定。
+    # adjudication 层：人工或 Agent 提出的“这条引用与某评分要求相关”，只记录用途，不做满足/覆盖判定。
     id: str
     material_id: str
     annotation_id: str
@@ -258,7 +258,7 @@ class CriterionEvidenceLink(Contract):
     rubric_revision: int = Field(ge=1)
     criterion_id: str
     rationale: str = Field(min_length=1)
-    proposed_by: Literal["human"] = "human"
+    proposed_by: Literal["human", "agent"] = "human"
     created_at: str
 
 
@@ -273,6 +273,54 @@ class CriterionEvidenceLinkCreate(Contract):
         if not value.strip():
             raise ValueError("rationale 不能为空白")
         return value
+
+
+class ProposalCandidate(Contract):
+    # Agent 提案中的一个候选引用：物化前必须通过服务端验证门；review 为人工裁决。
+    id: str
+    proposal_id: str
+    ordinal: int = Field(ge=0)
+    block_id: str
+    quote: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    risk_note: str | None = None
+    validation_status: Literal["pending", "passed", "invalid"]
+    validation_code: str | None = None
+    review_status: Literal["unreviewed", "accepted", "rejected"]
+    reject_reason: str | None = None
+    created_annotation_id: str | None = None
+    created_link_id: str | None = None
+    created_at: str
+
+
+class AgentProposal(Contract):
+    # 一次单 criterion 预检的记录；失败也落库（status=failed），便于列表审计。
+    id: str
+    material_id: str
+    criterion_id: str
+    rubric_id: str
+    rubric_revision: int = Field(ge=1)
+    provider: str
+    model: str
+    prompt_version: str
+    status: Literal["completed", "failed"]
+    error: str | None = None
+    created_at: str
+    candidates: list[ProposalCandidate]
+
+
+class AgentProposalCreate(Contract):
+    criterion_id: str
+
+
+class ProposalCandidateReject(Contract):
+    reason: str | None = None
+
+
+class ProposalAcceptance(Contract):
+    # accept 的原子结果：物化出的 annotation 与 link（proposed_by=agent）。
+    annotation: EvidenceAnnotation
+    link: CriterionEvidenceLink
 
 
 class ApiError(Contract):
@@ -294,4 +342,9 @@ class ContractBundle(Contract):
     rubric_binding_create: RubricBindingCreate
     criterion_evidence_link: CriterionEvidenceLink
     criterion_evidence_link_create: CriterionEvidenceLinkCreate
+    proposal_candidate: ProposalCandidate
+    agent_proposal: AgentProposal
+    agent_proposal_create: AgentProposalCreate
+    proposal_candidate_reject: ProposalCandidateReject
+    proposal_acceptance: ProposalAcceptance
     error: ApiError

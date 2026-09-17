@@ -5,7 +5,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.contracts import ContractBundle, CriterionEvidenceLink, EvidenceAnnotation, RunReport, VersionDiff
+from app.contracts import AgentProposal, ContractBundle, CriterionEvidenceLink, EvidenceAnnotation, RunReport, VersionDiff
 from pydantic import ValidationError
 
 
@@ -124,7 +124,55 @@ except AssertionError:
     pass
 else:
     raise AssertionError("Tampered link fixture span was accepted")
+
+
+def check_proposal_fixture(fixture: dict) -> None:
+    """Agent proposal fixture：候选状态、验证码与 accept 回填一致性。"""
+    proposal = AgentProposal.model_validate(fixture["proposal"])
+    fixture_annotation = EvidenceAnnotation.model_validate(fixture["annotation"])
+    fixture_link = CriterionEvidenceLink.model_validate(fixture["link"])
+    assert proposal.status == "completed" and proposal.candidates
+    accepted = [c for c in proposal.candidates if c.review_status == "accepted"]
+    assert len(accepted) == 1, "fixture must contain exactly one accepted candidate"
+    for candidate in proposal.candidates:
+        if candidate.validation_status == "invalid":
+            assert candidate.validation_code, "invalid candidate must carry a machine code"
+        if candidate.validation_status == "passed":
+            assert candidate.validation_code is None
+        if candidate.review_status == "accepted":
+            assert candidate.created_annotation_id and candidate.created_link_id
+        else:
+            assert candidate.created_annotation_id is None and candidate.created_link_id is None
+            assert candidate.reject_reason is None or candidate.review_status == "rejected"
+    winner = accepted[0]
+    assert winner.block_id == fixture_annotation.block_id
+    assert winner.quote == fixture_annotation.source.quote
+    assert winner.created_annotation_id == fixture_annotation.id
+    assert winner.created_link_id == fixture_link.id
+    assert fixture_link.annotation_id == fixture_annotation.id
+    assert fixture_annotation.proposed_by == "agent" and fixture_link.proposed_by == "agent"
+
+
+proposal_raw = json.loads((ROOT / "contracts/fixtures/proposal_candidate.json").read_text(encoding="utf-8"))
+assert proposal_raw["test_only"] is True
+check_proposal_fixture(proposal_raw)
+tampered_proposal = json.loads(json.dumps(proposal_raw))
+tampered_proposal["proposal"]["candidates"][0]["created_link_id"] = "cel_missing"
+try:
+    check_proposal_fixture(tampered_proposal)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Tampered proposal acceptance backfill was accepted")
+tampered_invalid = json.loads(json.dumps(proposal_raw))
+tampered_invalid["proposal"]["candidates"][1]["validation_code"] = None
+try:
+    check_proposal_fixture(tampered_invalid)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Invalid candidate without code was accepted")
 print(
     "PASS: schema freshness, fixture structure/references, quote checks, "
-    "evidence annotation checks, criterion link checks, negative cases"
+    "evidence annotation checks, criterion link checks, proposal checks, negative cases"
 )
