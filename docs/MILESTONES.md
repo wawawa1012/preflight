@@ -20,7 +20,8 @@
 - Iteration 2B（Markdown 保存与恢复，SQLite）：已验收并提交（48ec6f6）。
 - Materials UX Slice 浏览器验收失败（导航 loop、宽屏空白、初始态像工程表单）；已按冻结 IA 重做为 /materials Hub、/materials/new 工作流、/preview 兼容重定向，实现完成，待人工验收。
 - Iteration 3（Evidence Layer MVP）：实现完成并分步提交（fa548b1..2aec98b），待人工验收。
-- Iteration 4 Phase A（Evidence→Criterion 人工关联 + 只读 rubric 文件仓）：Phase A 已验收并收口提交；Phase B 等待用户确认评分原文后再转录与保真核对。
+- Iteration 4 Phase A（Evidence→Criterion 人工关联 + 只读 rubric 文件仓）：Phase A 已验收并收口提交。
+- Iteration 4 Phase B（转录确认稿并加载）：实现完成，待人工验收；取得官方评审细则后转录为新文件，不覆盖本版本。
 
 ## 保底顺序
 

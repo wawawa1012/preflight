@@ -589,6 +589,7 @@ init()
                   variant="ghost"
                   icon="i-lucide-link"
                   :disabled="busy || !binding"
+                  :title="binding ? undefined : '绑定评分标准后可关联'"
                   @click="selectAnnotationToLink(item)"
                 >
                   关联

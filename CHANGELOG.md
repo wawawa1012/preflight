@@ -1,6 +1,6 @@
 # Progress log
 
-## 2026-09-16 — Iteration 4 Phase A：Evidence→Criterion 人工关联（实现完成，待人工验收）
+## 2026-09-16 — Iteration 4：Evidence→Criterion 人工关联（Phase A 已验收；Phase B 待验收）
 
 完成：
 
@@ -21,6 +21,18 @@
 状态：
 
 - Phase A 已由用户验收通过并收口提交；Phase B 等待用户确认评分原文后逐字转录、预检与保真核对。
+
+### Phase B：转录确认稿并加载（实现完成，待人工验收）
+
+- 逐字转录团队负责人 2026-09-17 确认的工作标准到 data/rubrics/aic2026-school-working-rev1.json（UTF-8 无 BOM，实测首字节 7B-0A-20）；仅 source_note 按用户指示更新为“已逐条确认”的 provenance 表述，三条 criterion 与确认稿逐字一致。该文件位于 Git 忽略的 data/rubrics/，不进仓库。
+- 预检输出（exit 0）：`OK rubric_aic2026_school_working rev1 criteria=3 title=AIC 2026 校赛工作标准（子集 · 工作草案，非官方）`
+- 重启后端后 GET /api/v1/rubrics 返回 1 条：id=rubric_aic2026_school_working、rev1、3 criteria；未绑定材料的 rubric-binding 返回 null（空态正确）。
+- UX 修补：未绑定标准时“关联”按钮禁用并带 title 提示“绑定评分标准后可关联”。
+- 无契约变更（未改 schema/TS）；frontend build 通过，check-rubric-link 24/24、check-evidence-annotation 14/14 无回归。
+
+状态：
+
+- Phase B 实现完成，待人工验收；取得官方评审细则后将转录为新文件，不覆盖本版本。
 
 ## 2026-09-16 — Iteration 3：Evidence Layer MVP（实现完成，待人工验收）
 
