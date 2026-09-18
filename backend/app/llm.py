@@ -15,7 +15,7 @@ from openai import APIConnectionError, APITimeoutError, OpenAI, OpenAIError
 
 from .contracts import Block, Criterion
 
-PROMPT_VERSION = "p5-criterion-preflight-v2"
+PROMPT_VERSION = "p5-criterion-preflight-v2.1"
 MAX_PROMPT_CHARS = 24000
 DEFAULT_TIMEOUT_S = 60.0
 # OpenCode Go 网关按会话路由，要求稳定的 x-opencode-session，且 UA 不能是通用 SDK 名。
@@ -33,7 +33,8 @@ SYSTEM_PROMPT = (
     "2. 不判断要求是否满足，只说明该片段为何能作为本项目的直接依据。"
     "3. 教程、课后练习、模拟考题、语言语法说明、与本项目无关的泛技术知识，即使主题词沾边，也不是证据，不得输出为候选。"
     "4. 没有直接依据时必须输出 {\"candidates\":[]}。空数组是正常结果，且优于任何牵强候选。"
-    "5. 只输出严格 JSON，不要输出任何其他文字。"
+    "5. 每个候选 rationale 不超过 40 个汉字；candidates 最多 3 条。"
+    "6. 只输出严格 JSON，不要输出任何其他文字。"
 )
 
 
@@ -206,6 +207,7 @@ def complete(settings: LlmSettings, messages: list[dict[str, str]]) -> str:
             model=settings.model,
             messages=messages,
             response_format={"type": "json_object"},
+            max_tokens=800,
         )
     except APITimeoutError as exc:
         raise LlmTimeout() from exc

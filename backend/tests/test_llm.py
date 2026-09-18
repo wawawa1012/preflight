@@ -94,6 +94,64 @@ class BuildMessagesTest(unittest.TestCase):
             llm.build_messages(make_criterion(), [huge])
 
 
+class CompletionCapTest(unittest.TestCase):
+    """I6.2：输出封顶与 prompt v2.1（只为延迟，不为 precision）。"""
+
+    def setUp(self) -> None:
+        self._original_openai = llm.OpenAI
+        self._saved = {key: os.environ.get(key) for key in (
+            "PREFLIGHT_LLM_BASE_URL",
+            "PREFLIGHT_LLM_API_KEY",
+            "PREFLIGHT_LLM_MODEL",
+        )}
+        os.environ["PREFLIGHT_LLM_BASE_URL"] = "http://127.0.0.1:9/v1"
+        os.environ["PREFLIGHT_LLM_API_KEY"] = "test-key"
+        os.environ["PREFLIGHT_LLM_MODEL"] = "test-model"
+
+    def tearDown(self) -> None:
+        llm.OpenAI = self._original_openai
+        for key, value in self._saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def test_prompt_v21_caps_rationale_and_candidate_count(self) -> None:
+        messages = llm.build_messages(make_criterion(), [make_block()])
+        joined = messages[0]["content"] + messages[1]["content"]
+        self.assertIn("最多 3 条", joined)
+        self.assertIn("40", joined)
+        self.assertEqual(llm.PROMPT_VERSION, "p5-criterion-preflight-v2.1")
+
+    def test_create_receives_max_tokens_800(self) -> None:
+        captured: dict = {}
+
+        class Message:
+            content = '{"candidates":[]}'
+
+        class Choice:
+            message = Message()
+
+        class Response:
+            choices = [Choice()]
+
+        class StubCompletions:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                return Response()
+
+        class StubChat:
+            completions = StubCompletions()
+
+        class StubClient:
+            def __init__(self, **kwargs):
+                self.chat = StubChat()
+
+        llm.OpenAI = StubClient
+        llm.propose_candidates(make_criterion(), [make_block()])
+        self.assertEqual(captured.get("max_tokens"), 800)
+
+
 class SettingsAndEnvTest(unittest.TestCase):
     def setUp(self) -> None:
         self._saved = {key: os.environ.get(key) for key in (
