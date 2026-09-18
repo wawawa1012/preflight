@@ -1,5 +1,48 @@
 # Progress log
 
+## 2026-09-18 — 空页填满切片：材料删除 + 行内 k/n（实现完成，待人工验收）
+
+提交：
+
+- `b346c1d` feat: delete material with modal confirm and k/n row status（DELETE /api/v1/materials/{id}：204，blocks/证据标注/绑定/关联/提案由 FK CASCADE 清理，recent_material 指针改指仍存在的最近材料；`backend/tests/test_material_delete.py` 8 项；/materials 行 k/n 徽章 + UModal 行内删除确认；Workbench 行改「k/n 条要求已有关联」；/materials/new 拖拽区 py-16 → py-10）
+
+验证输出：
+
+```
+backend: .\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
+Ran 120 tests in 2.668s
+OK
+```
+
+```
+.\backend\.venv\Scripts\python.exe -X utf8 scripts\check_contracts.py
+PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases
+```
+
+```
+cd frontend
+node scripts/check-materials-nav.mjs       -> SUMMARY: 25/25 passed（新增：k/n 与未绑定行标签、UModal 删除确认、204/404/500 删除行为、拖拽区高度）
+node scripts/check-preflight-report.mjs    -> SUMMARY: 37/37 passed
+node scripts/check-agent-proposal.mjs      -> SUMMARY: 80/80 passed
+node scripts/check-evidence-annotation.mjs -> SUMMARY: 14/14 passed
+node scripts/check-rubric-link.mjs         -> SUMMARY: 25/25 passed
+node scripts/check-preview-race.mjs        -> SUMMARY: 23/23 passed
+```
+
+```
+npm.cmd --prefix frontend run build
+dist/assets/index-BXkvLNj4.js  412.24 kB │ gzip: 129.47 kB
+✓ built in 4.70s
+```
+
+说明与边界：
+
+- k/n 只取 GET /api/v1/preflight-summaries 的 criteria_with_citations / criteria_total；未绑定显示「未绑定」，绑定在但标准版本不可用时显示「未评估」；不出现覆盖率、满足判定或分数。
+- 删除是整份材料删除：blocks、evidence_annotations、material_rubric_bindings、criterion_evidence_links、agent_proposals、proposal_candidates 由 FK CASCADE 清理；recent_material 无 CASCADE，同一事务内先改指仍存在的最近材料（没有则清空）再删本体。
+- 前端把 204 与 404 都按「该材料已不存在」移除该行；其余失败保留该行并在 UModal 内显示错误，不静默回退。
+- Live smoke（本机 uvicorn 127.0.0.1:8011，测完即停）：POST 201 → DELETE 204 → GET 404；重复 DELETE 404 material_not_found；列表与 preflight-summaries 均不再含该 id；data/preflight.db 无孤儿 blocks、recent 指针有效。
+- 未改 contracts.py、未改既有表与端点语义；不动材料详情页、不调 LLM、不加 Block/FTS。
+
 ## 2026-09-18 — Iteration 7.1：材料详情易用性（已关联候选 / 批量接受 / 默认折叠｜实现完成，待人工验收）
 
 提交：
