@@ -4,7 +4,9 @@
 配置缺失/上游失败/超时/响应不合 schema 分别抛不同异常，由 API 层映射为 503/502/504/502。
 """
 import json
+import logging
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +19,8 @@ MAX_PROMPT_CHARS = 24000
 DEFAULT_TIMEOUT_S = 60.0
 
 _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
+logger = logging.getLogger("preflight.llm")
 
 SYSTEM_PROMPT = (
     "你是参赛材料预检助手，只做一件事：从给定 blocks 原文中找出可能与该评分要求相关的原文片段。"
@@ -167,8 +171,23 @@ def parse_candidates(content: str) -> list[RawCandidate]:
     return parsed
 
 
+def _usage_fields(usage: object) -> str:
+    """usage 存在才附 token 字段；缺失时省略而不是编 0。"""
+    if usage is None:
+        return ""
+    fields = ""
+    prompt_tokens = getattr(usage, "prompt_tokens", None)
+    if prompt_tokens is not None:
+        fields += f" prompt_tokens={prompt_tokens}"
+    completion_tokens = getattr(usage, "completion_tokens", None)
+    if completion_tokens is not None:
+        fields += f" completion_tokens={completion_tokens}"
+    return fields
+
+
 def complete(settings: LlmSettings, messages: list[dict[str, str]]) -> str:
     client = OpenAI(base_url=settings.base_url, api_key=settings.api_key, timeout=settings.timeout_s)
+    started = time.perf_counter()
     try:
         response = client.chat.completions.create(
             model=settings.model,
@@ -179,6 +198,14 @@ def complete(settings: LlmSettings, messages: list[dict[str, str]]) -> str:
         raise LlmTimeout() from exc
     except (APIConnectionError, OpenAIError) as exc:
         raise LlmUnavailable(str(exc)) from exc
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    logger.info(
+        "llm call model=%s prompt_version=%s elapsed_ms=%.1f%s",
+        settings.model,
+        PROMPT_VERSION,
+        elapsed_ms,
+        _usage_fields(getattr(response, "usage", None)),
+    )
     content = response.choices[0].message.content if response.choices else None
     if not content:
         raise LlmInvalidResponse("响应内容为空")
@@ -191,10 +218,19 @@ def propose_candidates(criterion: Criterion, blocks: list[Block]) -> tuple[list[
     if not settings.configured:
         raise LlmNotConfigured()
     messages = build_messages(criterion, blocks)
+    prompt_chars = sum(len(message["content"]) for message in messages)
     content = complete(settings, messages)
     try:
         candidates = parse_candidates(content)
     except LlmInvalidResponse as exc:
         exc.raw_response = content
         raise
+    logger.info(
+        "llm proposal model=%s prompt_version=%s block_count=%d prompt_chars=%d candidate_count=%d",
+        settings.model,
+        PROMPT_VERSION,
+        len(blocks),
+        prompt_chars,
+        len(candidates),
+    )
     return candidates, content, settings.base_url or "", settings.model or ""

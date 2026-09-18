@@ -203,5 +203,90 @@ class CompleteErrorMappingTest(unittest.TestCase):
             llm.propose_candidates(make_criterion(), [make_block()])
 
 
+class LlmLoggingTest(unittest.TestCase):
+    """I5.1：调用观测日志（不改契约）。token 仅在 usage 存在时记录。"""
+
+    def setUp(self) -> None:
+        self._original_openai = llm.OpenAI
+        self._saved = {key: os.environ.get(key) for key in (
+            "PREFLIGHT_LLM_BASE_URL",
+            "PREFLIGHT_LLM_API_KEY",
+            "PREFLIGHT_LLM_MODEL",
+        )}
+        os.environ["PREFLIGHT_LLM_BASE_URL"] = "http://127.0.0.1:9/v1"
+        os.environ["PREFLIGHT_LLM_API_KEY"] = "test-key"
+        os.environ["PREFLIGHT_LLM_MODEL"] = "test-model"
+
+    def tearDown(self) -> None:
+        llm.OpenAI = self._original_openai
+        for key, value in self._saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    @staticmethod
+    def _stub_client(response):
+        class StubCompletions:
+            def create(self, **kwargs):
+                return response
+
+        class StubChat:
+            completions = StubCompletions()
+
+        class StubClient:
+            def __init__(self, **kwargs):
+                self.chat = StubChat()
+
+        return StubClient
+
+    @staticmethod
+    def _response(content: str, usage=None):
+        class Usage:
+            pass
+
+        class Message:
+            def __init__(self) -> None:
+                self.content = content
+
+        class Choice:
+            message = Message()
+
+        class Response:
+            choices = [Choice()]
+
+        response = Response()
+        if usage is not None:
+            response.usage = usage
+        return response
+
+    def test_logs_timing_version_and_usage(self) -> None:
+        usage = type("Usage", (), {"prompt_tokens": 101, "completion_tokens": 7})()
+        llm.OpenAI = self._stub_client(self._response('{"candidates":[]}', usage))
+        with self.assertLogs("preflight.llm", level="INFO") as captured:
+            candidates, _, _, _ = llm.propose_candidates(make_criterion(), [make_block()])
+        self.assertEqual(candidates, [])
+        joined = "\n".join(captured.output)
+        self.assertIn(f"prompt_version={llm.PROMPT_VERSION}", joined)
+        self.assertIn("model=test-model", joined)
+        self.assertIn("block_count=1", joined)
+        self.assertIn("prompt_chars=", joined)
+        self.assertIn("elapsed_ms=", joined)
+        self.assertIn("candidate_count=0", joined)
+        self.assertIn("prompt_tokens=101", joined)
+        self.assertIn("completion_tokens=7", joined)
+
+    def test_missing_usage_omits_tokens_without_crash(self) -> None:
+        content = '{"candidates":[{"block_id":"blk_1","quote":"准确率达到 95%","rationale":"相关"}]}'
+        llm.OpenAI = self._stub_client(self._response(content))
+        with self.assertLogs("preflight.llm", level="INFO") as captured:
+            candidates, _, _, _ = llm.propose_candidates(make_criterion(), [make_block()])
+        self.assertEqual(len(candidates), 1)
+        joined = "\n".join(captured.output)
+        self.assertIn("candidate_count=1", joined)
+        self.assertNotIn("prompt_tokens=", joined)
+        self.assertNotIn("completion_tokens=", joined)
+
+
 if __name__ == "__main__":
     unittest.main()
