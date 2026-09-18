@@ -15,6 +15,8 @@ from .contracts import (
     EvidenceAnnotation,
     EvidenceAnnotationCreate,
     MarkdownPreview,
+    MaterialPreflightReport,
+    MaterialPreflightSummary,
     MaterialSummary,
     ProposalAcceptance,
     ProposalCandidate,
@@ -28,6 +30,7 @@ from .contracts import (
 from .evidence import QuoteNotFound
 from .markdown_preview import MAX_BYTES, PreviewRejected, build_preview
 from .mock_report import MOCK_REPORT
+from .preflight_report import assemble_report, assemble_summaries
 from .storage import CandidateInput, InvalidCandidate, RubricNotBound, SpanMismatch, StorageConflict
 
 
@@ -109,6 +112,22 @@ def material_by_id(material_id: str) -> SavedMaterial:
     if material is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
     return material
+
+
+# 只读预审装配：从现有绑定与已核证关联计算，不写库、不做满足判定。
+@app.get("/api/v1/preflight-summaries", response_model=list[MaterialPreflightSummary])
+def preflight_summaries() -> list[MaterialPreflightSummary]:
+    return assemble_summaries()
+
+
+@app.get("/api/v1/materials/{material_id}/preflight-report", response_model=MaterialPreflightReport)
+def material_preflight_report(material_id: str) -> MaterialPreflightReport:
+    if not storage.material_exists(material_id):
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    report = assemble_report(material_id)
+    if report is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return report
 
 
 # 证据标注：quote 服务端校验必须来自 Block 原文；material_id/proposed_by 由服务端设定。

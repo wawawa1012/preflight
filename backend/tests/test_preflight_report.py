@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app import rubric_store, storage
+from app import main, rubric_store, storage
 from app.markdown_preview import build_preview
 from app.preflight_report import assemble_report, assemble_summaries
 from app.storage import RubricNotBound
@@ -87,3 +87,42 @@ class AssemblePreflightReportTest(unittest.TestCase):
         self.assertFalse(rows[0].bound)
         self.assertIsNone(rows[0].criteria_total)
         self.assertEqual(rows[0].verified_citation_count, 0)
+
+
+class PreflightReportApiTest(unittest.TestCase):
+    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self._tmp.name) / "api.db"
+        self._original_connect = storage.connect
+        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
+        storage.init_db()
+        rubric_store.set_index({("rubric_syn", 1): synthetic_rubric()})
+        self.material = storage.save_material(build_preview("api.md", TEXT.encode("utf-8")))
+
+    def tearDown(self) -> None:
+        storage.connect = self._original_connect
+        rubric_store.reset_index()
+        self._tmp.cleanup()
+
+    def test_unknown_material_maps_to_404(self) -> None:
+        with self.assertRaises(main.LookupFailed) as caught:
+            main.material_preflight_report("mat_missing")
+        self.assertEqual(caught.exception.code, "material_not_found")
+
+    def test_unbound_material_raises_rubric_not_bound(self) -> None:
+        with self.assertRaises(RubricNotBound):
+            main.material_preflight_report(self.material.id)
+
+    def test_bound_material_returns_report(self) -> None:
+        storage.bind_material_rubric(self.material.id, "rubric_syn", 1)
+        report = main.material_preflight_report(self.material.id)
+        self.assertEqual(len(report.criteria), 2)
+        self.assertEqual(report.filename, "api.md")
+        self.assertEqual(report.rubric_revision, 1)
+
+    def test_summaries_include_unbound(self) -> None:
+        rows = main.preflight_summaries()
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0].bound)
