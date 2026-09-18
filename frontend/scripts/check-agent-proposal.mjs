@@ -37,6 +37,14 @@ check('评分标准区有「预检全部」', detailSource.includes('预检全�
 check('预检按钮带本地秒表', detailSource.includes('正在预检…') && detailSource.includes('preflightSeconds'))
 check('前端不含 max_tokens（封顶只在后端）', !detailSource.includes('max_tokens'))
 check('空预检且已有关联时文案为「本次未提出新候选」', detailSource.includes('本次未提出新候选'))
+check(
+  '失败文案说人话且带再试',
+  detailSource.includes('预检没有返回内容，点「重新预检」再试。') &&
+    detailSource.includes('预检结果不完整，点「重新预检」再试。'),
+)
+check('禁止原生 confirm/alert', !detailSource.includes('window.confirm') && !detailSource.includes('window.alert'))
+check('全已预检时按钮为「再预检全部」', detailSource.includes('再预检全部'))
+check('顶栏显示预检进度而非整钮死转', detailSource.includes('preflightAllLabel'))
 
 const blockOne = {
   id: 'blk_1',
@@ -111,6 +119,7 @@ const state = {
   proposeEmpty: false,
   proposeDefer: false,
   proposeReleases: [],
+  proposeFailure: null,
   failCriterion: '',
   acceptStatus: 201,
   rejectStatus: 200,
@@ -126,6 +135,7 @@ function resetState() {
   state.proposeEmpty = false
   state.proposeDefer = false
   state.proposeReleases = []
+  state.proposeFailure = null
   state.failCriterion = ''
   state.acceptStatus = 201
   state.rejectStatus = 200
@@ -145,6 +155,12 @@ globalThis.fetch = async (url, options = {}) => {
     state.counts.propose += 1
     const requested = options.body ? JSON.parse(options.body).criterion_id : ''
     const send = () => {
+      if (state.proposeFailure) {
+        return jsonResponse(
+          { code: state.proposeFailure.code, message: state.proposeFailure.message, details: [] },
+          state.proposeFailure.status,
+        )
+      }
       if (state.failCriterion === requested) {
         return jsonResponse({ code: 'llm_unavailable', message: '预检失败示例', details: [] }, 502)
       }
@@ -309,6 +325,7 @@ try {
     state.proposeDefer = true
     const first = bindings.runPreflight(RUBRIC.criteria[0])
     check('预检中 busy=true', bindings.busy.value === true)
+    check('顶栏进度为「预检中 1/2」', bindings.preflightAllLabel() === '预检中 1/2', bindings.preflightAllLabel())
     check('秒表：预检中该条显示秒数', bindings.preflightSeconds('c_syn_1') >= 1)
     await bindings.runPreflight(RUBRIC.criteria[0])
     check('同一条 criterion 重复点击被忽略', state.proposeReleases.length === 1)
@@ -332,9 +349,32 @@ try {
     check('预检全部并发提交未预检的 2 条', state.counts.propose === 2, `propose=${state.counts.propose}`)
     check(
       '预检全部：失败一条不影响另一条',
-      bindings.latestProposalFor('c_syn_1')?.status === 'completed' && bindings.proposalError.value.includes('llm_unavailable'),
+      bindings.latestProposalFor('c_syn_1')?.status === 'completed' &&
+        bindings.proposalError.value === '预检服务暂时不可用，点「重新预检」再试。',
       bindings.proposalError.value,
     )
+  }
+
+  // 全已预检：直接重跑，不再原生确认；按钮显示「再预检全部」。
+  resetState()
+  {
+    state.proposals = [proposal(), { ...proposal(), id: 'ap_c_syn_2', criterion_id: 'c_syn_2' }]
+    const bindings = await mount()
+    check('全已预检时按钮为「再预检全部」', bindings.preflightAllLabel() === '再预检全部')
+    await bindings.runPreflightAll()
+    check('全已预检时直接重跑 2 条（无 confirm）', state.counts.propose === 2, `propose=${state.counts.propose}`)
+  }
+
+  // 失败人话：机器码不当主句。
+  for (const [message, expected] of [
+    ['响应内容为空', '预检没有返回内容，点「重新预检」再试。'],
+    ['响应不是合法 JSON（Unterminated string）', '预检结果不完整，点「重新预检」再试。'],
+  ]) {
+    resetState()
+    state.proposeFailure = { status: 502, code: 'llm_invalid_response', message }
+    const bindings = await mount()
+    await bindings.runPreflight(RUBRIC.criteria[0])
+    check(`失败人话：${expected}`, bindings.proposalError.value === expected, bindings.proposalError.value)
   }
 
   // invalid 候选本地禁止接受；accept 成功物化并刷新提案。

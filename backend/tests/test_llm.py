@@ -116,14 +116,14 @@ class CompletionCapTest(unittest.TestCase):
             else:
                 os.environ[key] = value
 
-    def test_prompt_v21_caps_rationale_and_candidate_count(self) -> None:
+    def test_prompt_v22_caps_rationale_and_candidate_count(self) -> None:
         messages = llm.build_messages(make_criterion(), [make_block()])
         joined = messages[0]["content"] + messages[1]["content"]
         self.assertIn("最多 3 条", joined)
         self.assertIn("40", joined)
-        self.assertEqual(llm.PROMPT_VERSION, "p5-criterion-preflight-v2.1")
+        self.assertEqual(llm.PROMPT_VERSION, "p5-criterion-preflight-v2.2")
 
-    def test_create_receives_max_tokens_800(self) -> None:
+    def test_create_does_not_send_max_tokens(self) -> None:
         captured: dict = {}
 
         class Message:
@@ -149,7 +149,7 @@ class CompletionCapTest(unittest.TestCase):
 
         llm.OpenAI = StubClient
         llm.propose_candidates(make_criterion(), [make_block()])
-        self.assertEqual(captured.get("max_tokens"), 800)
+        self.assertNotIn("max_tokens", captured)
 
 
 class SettingsAndEnvTest(unittest.TestCase):

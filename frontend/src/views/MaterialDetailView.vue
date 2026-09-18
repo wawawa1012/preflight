@@ -78,6 +78,7 @@ const rejectingCandidateId = ref('')
 const rejectFormId = ref('')
 const rejectReasonInput = ref('')
 const proposalError = ref('')
+const proposalErrorDetail = ref('')
 const proposalNotice = ref('')
 
 // —— 锚点导航 ——
@@ -483,6 +484,7 @@ async function runPreflight(criterion: Rubric['criteria'][number]) {
   preflightStartedAt.value = { ...preflightStartedAt.value, [criterion.id]: Date.now() }
   ensurePreflightClock()
   proposalError.value = ''
+  proposalErrorDetail.value = ''
   proposalNotice.value = ''
   try {
     const proposal = (await requestJson(
@@ -506,7 +508,9 @@ async function runPreflight(criterion: Rubric['criteria'][number]) {
       proposalError.value = `预检失败：${proposal.error ?? '未知错误'}`
     }
   } catch (cause) {
-    proposalError.value = cause instanceof Error ? cause.message : '未知错误'
+    const raw = cause instanceof Error ? cause.message : ''
+    proposalErrorDetail.value = raw
+    proposalError.value = humanizePreflightError(raw)
   } finally {
     proposingIds.value = proposingIds.value.filter(item => item !== criterion.id)
     const started = { ...preflightStartedAt.value }
@@ -520,14 +524,35 @@ async function runPreflightAll() {
   if (!boundRubric.value) return
   const criteria = boundRubric.value.criteria
   const pending = criteria.filter(item => completedProposalFor(item.id) === null)
-  let targets: Rubric['criteria'] = pending
-  if (targets.length === 0) {
-    const confirmed = typeof window !== 'undefined' && window.confirm('全部已有预检记录，要重新预检吗？')
-    targets = confirmed ? [...criteria] : []
-  }
-  // 并发有界（最多 3 条）；runPreflight 各自吞错，失败一条不影响其他。
-  targets = targets.filter(item => !proposingIds.value.includes(item.id)).slice(0, 3)
+  // 全已预检时按钮文案已是「再预检全部」，意图明确，直接重跑，不做原生确认。
+  const targets = (pending.length > 0 ? pending : [...criteria])
+    .filter(item => !proposingIds.value.includes(item.id))
+    .slice(0, 3)
   await Promise.all(targets.map(item => runPreflight(item)))
+}
+
+function preflightAllLabel() {
+  const total = boundRubric.value?.criteria.length ?? 0
+  if (proposingIds.value.length > 0) return `预检中 ${proposingIds.value.length}/${total}`
+  const criteria = boundRubric.value?.criteria ?? []
+  const allCompleted = criteria.length > 0 && criteria.every(item => completedProposalFor(item.id) !== null)
+  return allCompleted ? '再预检全部' : '预检全部'
+}
+
+function humanizePreflightError(raw: string | null | undefined) {
+  // 主句只说人话；机器码/原始报错放 title（调用方传入）。
+  const text = (raw ?? '').trim()
+  if (!text) return '预检失败，点「重新预检」再试。'
+  if (text.includes('llm_invalid_response')) {
+    return text.includes('空')
+      ? '预检没有返回内容，点「重新预检」再试。'
+      : '预检结果不完整，点「重新预检」再试。'
+  }
+  if (text.includes('llm_timeout')) return '预检超时，点「重新预检」再试。'
+  if (text.includes('llm_unavailable')) return '预检服务暂时不可用，点「重新预检」再试。'
+  if (text.includes('llm_unconfigured')) return '尚未配置 LLM，检查 backend/.env 后再试。'
+  if (text.includes('material_too_large')) return '材料过大，预检未执行；请拆分材料后再试。'
+  return text
 }
 
 async function acceptCandidate(candidate: ProposalCandidate) {
@@ -707,11 +732,10 @@ init()
               color="neutral"
               variant="subtle"
               icon="i-lucide-sparkles"
-              :loading="proposingIds.length > 0"
               :disabled="!boundRubric"
               @click="runPreflightAll"
             >
-              预检全部
+              {{ preflightAllLabel() }}
             </UButton>
             <span class="text-xs text-slate-500">{{ binding ? '已绑定' : '尚未绑定' }}</span>
           </div>
@@ -849,8 +873,9 @@ init()
                     <p
                       v-if="latestProposalFor(criterion.id)!.status === 'failed'"
                       class="mt-2 text-xs text-red-400"
+                      :title="latestProposalFor(criterion.id)!.error ?? undefined"
                     >
-                      上次预检失败：{{ latestProposalFor(criterion.id)!.error }}
+                      上次预检失败：{{ humanizePreflightError(latestProposalFor(criterion.id)!.error) }}
                     </p>
                     <div v-else class="mt-2 space-y-2">
                       <p class="text-xs text-slate-500">
@@ -962,7 +987,12 @@ init()
           {{ bindingNotice }}
         </p>
         <p v-if="linkNotice" class="border-t border-slate-800 px-3 py-2 text-xs text-emerald-400">{{ linkNotice }}</p>
-        <p v-if="proposalError" class="border-t border-slate-800 px-3 py-2 text-xs text-red-400" role="alert">
+        <p
+          v-if="proposalError"
+          class="border-t border-slate-800 px-3 py-2 text-xs text-red-400"
+          role="alert"
+          :title="proposalErrorDetail || undefined"
+        >
           {{ proposalError }}
         </p>
         <p v-if="proposalNotice" class="border-t border-slate-800 px-3 py-2 text-xs text-emerald-400">

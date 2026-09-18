@@ -15,7 +15,7 @@ from openai import APIConnectionError, APITimeoutError, OpenAI, OpenAIError
 
 from .contracts import Block, Criterion
 
-PROMPT_VERSION = "p5-criterion-preflight-v2.1"
+PROMPT_VERSION = "p5-criterion-preflight-v2.2"
 MAX_PROMPT_CHARS = 24000
 DEFAULT_TIMEOUT_S = 60.0
 # OpenCode Go 网关按会话路由，要求稳定的 x-opencode-session，且 UA 不能是通用 SDK 名。
@@ -207,7 +207,6 @@ def complete(settings: LlmSettings, messages: list[dict[str, str]]) -> str:
             model=settings.model,
             messages=messages,
             response_format={"type": "json_object"},
-            max_tokens=800,
         )
     except APITimeoutError as exc:
         raise LlmTimeout() from exc
