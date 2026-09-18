@@ -70,9 +70,9 @@
 | 3 | 证据标注（quote 服务端验证） | /materials/:id | 15 | ✅ 已有 |
 | 4 | 评分标准绑定与人工关联 | /materials/:id | 20 | ✅ 已有 |
 | 5 | AI 预检（提案+验证门+人工裁决） | /materials/:id | 60 | ✅ 已有（Iteration 5） |
-| 6 | 评分矩阵报告（真实数据） | 材料报告页 | 75 | Iteration 6 |
-| 7 | 缺失证据发现（如实呈现检索范围） | 材料报告页 | （含在 6） | Iteration 6 |
-| 8 | Evidence Drawer（点击直达原文行） | 材料报告页 | （含在 6） | Iteration 6 |
+| 6 | 评分矩阵报告（真实数据） | 材料报告页 | 75 | 实现中（Iteration 6，待人工验收） |
+| 7 | 缺失证据发现（如实呈现检索范围） | 材料报告页 | （含在 6） | 实现中（Iteration 6，待人工验收） |
+| 8 | Evidence Drawer（点击直达原文行） | 材料报告页 | （含在 6） | 实现中（Iteration 6，待人工验收） |
 | 9 | Claim Inspector | 材料报告页或详情 | TBD | 未开始（Iteration 7） |
 | 10 | 数字矛盾检测 | 报告页风险区 | 30 | Iteration 8 |
 | 11 | 答辩模拟 Grill（追问+应答提纲） | 答辩模拟页 | 45 | Iteration 9 |

@@ -8,7 +8,7 @@
 
 | 页面 | 计划路由 | 内容 |
 | --- | --- | --- |
-| Workbench | / | 项目和最近预检 |
+| Workbench | / | 报告中心：最近预检概览（每份材料的已核证引用数/当前范围尚未发现引用项数）+ 开始预检入口。5 秒测试（I6 半句）：这是一个按评审标准预审材料、把每条要求点回原文的工具 |
 | Rubric Studio | /projects/:id/rubric | criterion 标题、要求、所需证据、revision；只做表单编辑 |
 | Materials | /projects/:id/materials | 文件、版本、解析状态、拒绝原因 |
 | Progress | /runs/:id | 阶段、错误、重试入口；无伪造百分比 |
@@ -22,6 +22,7 @@
 - /materials：Materials Hub。主区紧凑行列表（整行可点击进详情）；右侧单个概览面板，只显示由列表响应直接计算的真实数据（已保存数量、总 Block 数、最近保存时间、支持格式）；空态只有一句说明和一个主按钮。
 - /materials/new：添加材料工作流。未选文件时是唯一任务区（步骤说明 + 点击/拖入选择区）；生成预览后上传表单退场，顶部面包屑 + 低权重“更换文件”，保存动作固定在 sticky Material Header。
 - /materials/:materialId：已保存材料详情。F5/深链按 ID 从 API 恢复；emerald 已保存徽章、本地保存时间、截断 sha256；无上传控件、无临时状态、无保存按钮、不以完整 material ID 为视觉主体。证据区在 Block 列表上方：显示已保存标注（quote + line + note）；在任意 Block 行点击“标注”展开行内表单（quote 预填整块原文、可改窄，note 可选），保存后由服务端校验并进入列表。评分标准区：未绑定显示只读标准仓的可用列表（title、来源、revision）与“绑定”，空仓显示“尚未配置评分标准”；已绑定显示来源/版本与 Criterion 列表，每项下挂已关联引用（quote、rationale、“查看原文”、“移除关联”），无则“尚未关联引用”。证据列表每条标注可“关联”（选择绑定版本内的 Criterion + 必填 rationale）或“删除”（需确认，关联级联清除）。Block 行显示“已标注 N 条”徽章与浅色高亮；带 #block-* 打开或点“查看原文”会定位并短暂高亮，找不到时明确提示。每条 Criterion 下有“最新预检 + AI 预检”入口：结果面板列出候选（quote、line、rationale、risk_note），验证徽章区分“通过验证 / 无效：<code> / 待验证”；invalid 候选不能接受（按钮禁用 + 提示），accept 后物化为该 Criterion 下的引用并显示 agent 溯源徽章，reject 可附可选原因；失败提案显示错误码。措辞纪律：只允许“已关联/尚未关联/绑定/候选/接受/拒绝”，禁止把相关或候选表述为“已满足/已支撑/覆盖”。
+- /materials/:materialId/report：材料预审报告（Iteration 6）。只读装配：每行一个 criterion，显示“已核证引用 N 条”或“当前范围尚未发现引用”+ 范围句（文件名与 Block 数）；有引用时列出 quote、行号、human/agent 溯源徽章与 rationale，点击引用打开 USlideover Drawer 定位到原文行并高亮 quote；无引用不提供假链接。未绑定 409 只显示“尚未绑定评分标准”与去绑定入口，不画空矩阵；404 与加载失败保留回 Workbench 出口。
 - /preview：兼容重定向到 /materials/new，不再是平级导航目标。
 
 全局 invariant：Secondary workspaces must always provide an explicit route back to Workbench; browser history is not product navigation.

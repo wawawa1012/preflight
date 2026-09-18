@@ -1,5 +1,29 @@
 # Progress log
 
+## 2026-09-18 — Iteration 6：报告中心 + 真实评分矩阵 + Evidence Drawer（实现完成，待人工验收）
+
+完成：
+
+- 工作包 A：docs/PRODUCT_TREE.md 五问第 5 条改为 Controlled Breadth / 树冠优先（小时级 slice、I6–I14 候选顺序、I13/I14 到点重新过准入三问）；账本插入 Claim Inspector（未开始）并把原 9–12 对齐 I8–I11；§七改为分阶段 5 秒测试（I6 半句 + Grill 迭代（预计 I9）全句）；§八写入 MASTER_PLAN 冻结口径；AGENTS.md 去掉历史 Phase 0 句、更新措辞纪律。
+- 工作包 B：契约 MaterialPreflightCitation / MaterialPreflightMissing / MaterialPreflightCriterionRow / MaterialPreflightReport / MaterialPreflightSummary；ContractBundle 显式含 CriterionRow；fixture + check_contracts 新检查（零引用行必须带范围句、explanation 含文件名与 Block 数、缺 missing 负例被拒）；schema/TS 导出。
+- 工作包 C：只读装配 backend/app/preflight_report.py（assemble_report / assemble_summaries）；未绑定抛 RubricNotBound，材料不存在返回 None；零引用行生成「当前范围尚未发现引用」+ 范围句；不写库、不产生 supported/coverage。
+- 工作包 D：GET /api/v1/preflight-summaries、GET /api/v1/materials/{id}/preflight-report（未知材料 404 material_not_found、未绑定 409 rubric_not_bound，沿用既有 handler；未改既有表与端点语义）。
+- 工作包 E：/materials/:materialId/report 报告页 + EvidenceDrawer（USlideover；Array.from 对齐 Unicode code point 高亮）+ 详情页「查看预审报告」入口 + check-preflight-report.mjs（16 项）。
+- 工作包 F：Workbench 改为报告中心（预审摘要列表：已绑定 rev / 已核证引用 N 条 / 当前范围尚未发现引用 M 项；开始预检与材料库入口；Mock 报告降为页脚低权重「结构演示（Mock）」；检查后端连接标注开发诊断）；check-materials-nav stub 改为按 URL 返回数组并扩到 15 项。
+- 工作包 G：CONTRACTS（两个 GET、409、装配语义）/ UI_SPEC（报告页与报告中心）/ MILESTONES / PRODUCT_TREE 账本 / README / CHANGELOG。
+
+自检证据：
+
+- backend unittest：96 例通过（88 存量 + 4 装配 + 4 API）。
+- check_contracts.py：PASS（含 preflight report checks 与负例）。
+- npm.cmd run build：exit 0。
+- check 脚本：check-materials-nav 15/15、check-preview-race 23/23、check-evidence-annotation 14/14、check-rubric-link 24/24、check-agent-proposal 19/19、check-preflight-report 16/16。
+
+已知限制：
+
+- assemble_summaries 对每份材料逐个读取 binding/links（N+1）；当前材料规模可接受，未加缓存表/索引，规模上来再优化。
+- 报告只覆盖当前单一 Markdown 材料模型；不生成 Finding、不写库、不做满足判定，也没有跨材料/数字矛盾检查。
+
 ## 2026-09-18 — 治理与定位：产品树宪法 v1.1（文档，无代码变更）
 
 - 新建 docs/PRODUCT_TREE.md：定位升级为"AI 时代可信声明预审（Trust Layer）"（比赛材料预审为第一个垂直模板；架构定位≠当前能力，当前仅 Markdown）；产品树五问；树干→叶子映射（SnapSync"暗管"禁令）；显式功能账本（防暗管记录，数量不是 KPI）；准入三问与算力治理（树干串行/树冠并行）；能力分级事实性词表（门控词+Finding 三问）；5 秒测试；赛后 Artifact Grounding 未来方向。
