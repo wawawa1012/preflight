@@ -1,5 +1,36 @@
 # Progress log
 
+## 2026-09-18 — Iteration 7.2：主操作收口 + 「已确认依据」措辞（branch ux-exception-review｜实现完成，待人工验收）
+
+提交（独立 worktree `F:\project\Preflight-ux`，分支 `ux-exception-review`，未 merge）：
+
+- `6285d40` feat: single confirm-evidence action and 已确认依据 wording（详情页每条 Criterion 主按钮改为「确认这 N 条依据」（N=未关联的 passed 候选数），点击即批量接受；单条接受/拒绝降为次要样式 neutral + ghost；Workbench 与 /materials 行状态改为「已确认依据 k / n 项」）
+
+验证输出：
+
+```
+cd frontend（worktree）
+node scripts/check-agent-proposal.mjs  -> SUMMARY: 90/90 passed（新增：主按钮文案与计数、主按钮为唯一 primary 实心、单条接受降为 ghost、确认后计数归零）
+node scripts/check-materials-nav.mjs   -> SUMMARY: 27/27 passed（新增：Workbench 与 /materials 用「已确认依据 k / n 项」且不再出现旧措辞）
+node scripts/check-rubric-link.mjs     -> SUMMARY: 25/25 passed
+node scripts/check-evidence-annotation.mjs -> SUMMARY: 14/14 passed
+node scripts/check-preflight-report.mjs    -> SUMMARY: 37/37 passed
+node scripts/check-preview-race.mjs        -> SUMMARY: 23/23 passed
+```
+
+```
+npm.cmd run build（vite build && vue-tsc --noEmit）
+dist/assets/index-C0Qo7b1Z.js  411.97 kB │ gzip: 129.43 kB
+✓ built in 4.42s
+```
+
+说明与边界：
+
+- 「确认这 N 条依据」= 既有批量接受路径（`acceptPassedFor`）：逐条接受 passed+unreviewed、已关联跳过、无效不碰；N 由 `acceptableCandidatesFor` 算出，确认后归零并隐藏按钮。
+- 已关联候选不出现在「最新预检」列表，保持 `29dd98c` 行为；未新增自动 accept、未改 LLM / statement-signals / consistency。
+- 只改状态文案与主次层级：`criteria_with_citations` / `criteria_total` 字段与契约未动；无覆盖率、无分数。
+- 分支未 merge 回 main。
+
 ## 2026-09-18 — 7.1b：「最新预检」只渲染待审核候选（实现完成，待人工验收）
 
 提交：
