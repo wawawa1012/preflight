@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type {
   AgentProposal,
@@ -69,7 +69,10 @@ const deletingLinkId = ref('')
 const proposals = ref<AgentProposal[]>([])
 const proposalsLoading = ref(false)
 const proposalsError = ref('')
-const proposingCriterionId = ref('')
+const proposingIds = ref<string[]>([])
+const preflightStartedAt = ref<Record<string, number>>({})
+const preflightNow = ref(Date.now())
+let preflightClock: ReturnType<typeof setInterval> | null = null
 const acceptingCandidateId = ref('')
 const rejectingCandidateId = ref('')
 const rejectFormId = ref('')
@@ -89,7 +92,7 @@ const busy = computed(
     bindingBusy.value ||
     deletingAnnotationId.value !== '' ||
     deletingLinkId.value !== '' ||
-    proposingCriterionId.value !== '' ||
+    proposingIds.value.length > 0 ||
     acceptingCandidateId.value !== '' ||
     rejectingCandidateId.value !== '',
 )
@@ -442,15 +445,43 @@ function preflightButtonLabel(criterionId: string) {
   return latestProposalFor(criterionId)?.status === 'completed' ? '重新预检' : 'AI 预检'
 }
 
+function preflightSeconds(criterionId: string) {
+  const startedAt = preflightStartedAt.value[criterionId]
+  if (!startedAt) return null
+  return Math.max(1, Math.ceil((preflightNow.value - startedAt) / 1000))
+}
+
+function stopPreflightClock() {
+  if (preflightClock !== null) {
+    clearInterval(preflightClock)
+    preflightClock = null
+  }
+}
+
+function tickPreflightClock() {
+  preflightNow.value = Date.now()
+  if (proposingIds.value.length === 0) stopPreflightClock()
+}
+
+function ensurePreflightClock() {
+  if (preflightClock !== null) return
+  preflightNow.value = Date.now()
+  preflightClock = setInterval(tickPreflightClock, 1000)
+}
+
+onUnmounted(stopPreflightClock)
+
 function lineForBlock(blockId: string) {
   const block = material.value?.blocks.find(item => item.id === blockId)
   return block ? block.locator.index : '?'
 }
 
 async function runPreflight(criterion: Rubric['criteria'][number]) {
-  // 未绑定评分标准时不允许发起；任一操作进行中也互斥。
-  if (busy.value || !boundRubric.value) return
-  proposingCriterionId.value = criterion.id
+  // 未绑定不允许；同一条已在预检中则忽略重复点击（不同 criterion 可并行）。
+  if (!boundRubric.value || proposingIds.value.includes(criterion.id)) return
+  proposingIds.value = [...proposingIds.value, criterion.id]
+  preflightStartedAt.value = { ...preflightStartedAt.value, [criterion.id]: Date.now() }
+  ensurePreflightClock()
   proposalError.value = ''
   proposalNotice.value = ''
   try {
@@ -477,8 +508,26 @@ async function runPreflight(criterion: Rubric['criteria'][number]) {
   } catch (cause) {
     proposalError.value = cause instanceof Error ? cause.message : '未知错误'
   } finally {
-    proposingCriterionId.value = ''
+    proposingIds.value = proposingIds.value.filter(item => item !== criterion.id)
+    const started = { ...preflightStartedAt.value }
+    delete started[criterion.id]
+    preflightStartedAt.value = started
+    if (proposingIds.value.length === 0) stopPreflightClock()
   }
+}
+
+async function runPreflightAll() {
+  if (!boundRubric.value) return
+  const criteria = boundRubric.value.criteria
+  const pending = criteria.filter(item => completedProposalFor(item.id) === null)
+  let targets: Rubric['criteria'] = pending
+  if (targets.length === 0) {
+    const confirmed = typeof window !== 'undefined' && window.confirm('全部已有预检记录，要重新预检吗？')
+    targets = confirmed ? [...criteria] : []
+  }
+  // 并发有界（最多 3 条）；runPreflight 各自吞错，失败一条不影响其他。
+  targets = targets.filter(item => !proposingIds.value.includes(item.id)).slice(0, 3)
+  await Promise.all(targets.map(item => runPreflight(item)))
 }
 
 async function acceptCandidate(candidate: ProposalCandidate) {
@@ -651,7 +700,21 @@ init()
       <section class="mt-4 rounded-lg border border-slate-800">
         <div class="flex items-center justify-between border-b border-slate-800 px-3 py-2">
           <h2 class="text-sm font-medium text-slate-300">评分标准</h2>
-          <span class="text-xs text-slate-500">{{ binding ? '已绑定' : '尚未绑定' }}</span>
+          <div class="flex items-center gap-2">
+            <UButton
+              v-if="boundRubric"
+              size="xs"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-sparkles"
+              :loading="proposingIds.length > 0"
+              :disabled="!boundRubric"
+              @click="runPreflightAll"
+            >
+              预检全部
+            </UButton>
+            <span class="text-xs text-slate-500">{{ binding ? '已绑定' : '尚未绑定' }}</span>
+          </div>
         </div>
 
         <p v-if="bindingLoading || rubricsLoading || linksLoading" class="px-3 py-3 text-sm text-slate-400">
@@ -775,11 +838,11 @@ init()
                       color="neutral"
                       variant="subtle"
                       icon="i-lucide-sparkles"
-                      :loading="proposingCriterionId === criterion.id"
-                      :disabled="busy || !boundRubric"
+                      :loading="proposingIds.includes(criterion.id)"
+                      :disabled="!boundRubric"
                       @click="runPreflight(criterion)"
                     >
-                      {{ proposingCriterionId === criterion.id ? '正在预检…' : preflightButtonLabel(criterion.id) }}
+                      {{ proposingIds.includes(criterion.id) ? `正在预检… ${preflightSeconds(criterion.id)}s` : preflightButtonLabel(criterion.id) }}
                     </UButton>
                   </div>
                   <template v-if="latestProposalFor(criterion.id)">

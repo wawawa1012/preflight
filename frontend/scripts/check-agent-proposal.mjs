@@ -20,7 +20,10 @@ check('详情页不含“已满足/已支撑”措辞', !detailSource.includes('
 check('存在 AI 预检按钮', detailSource.includes('AI 预检') || detailSource.includes('重新预检'))
 check('不再使用「通过验证」徽章文案', !detailSource.includes('通过验证'))
 check('候选徽章写「原文引用有效」', detailSource.includes('原文引用有效'))
-check('未绑定时 guard 阻止发起预检', detailSource.includes('if (busy.value || !boundRubric.value) return'))
+check(
+  '预检 guard 只看绑定与同条重复（不吃全局 busy）',
+  detailSource.includes('!boundRubric.value || proposingIds.value.includes(criterion.id)'),
+)
 check('invalid 候选有醒目错误码徽章', detailSource.includes('无效：'))
 check('接受按钮对非 passed 候选禁用', detailSource.includes("candidate.validation_status !== 'passed'"))
 check('空预检主句不是「尚未关联引用」独占', detailSource.includes('预检完成 · 当前材料尚未发现候选引用'))
@@ -30,6 +33,9 @@ check(
   '尚未关联引用仅用于尚未预检',
   detailSource.includes('!completedProposalFor(criterion.id)'),
 )
+check('评分标准区有「预检全部」', detailSource.includes('预检全部'))
+check('预检按钮带本地秒表', detailSource.includes('正在预检…') && detailSource.includes('preflightSeconds'))
+check('前端不含 max_tokens（封顶只在后端）', !detailSource.includes('max_tokens'))
 
 const blockOne = {
   id: 'blk_1',
@@ -103,7 +109,8 @@ const state = {
   proposeStatus: 201,
   proposeEmpty: false,
   proposeDefer: false,
-  releasePropose: null,
+  proposeReleases: [],
+  failCriterion: '',
   acceptStatus: 201,
   rejectStatus: 200,
   counts: { propose: 0, accept: 0, reject: 0 },
@@ -117,7 +124,8 @@ function resetState() {
   state.proposeStatus = 201
   state.proposeEmpty = false
   state.proposeDefer = false
-  state.releasePropose = null
+  state.proposeReleases = []
+  state.failCriterion = ''
   state.acceptStatus = 201
   state.rejectStatus = 200
   state.counts = { propose: 0, accept: 0, reject: 0 }
@@ -134,9 +142,17 @@ globalThis.fetch = async (url, options = {}) => {
   if (method === 'GET' && target.startsWith('/api/v1/materials/')) return jsonResponse(MATERIAL)
   if (method === 'POST' && target.endsWith('/agent-proposals')) {
     state.counts.propose += 1
+    const requested = options.body ? JSON.parse(options.body).criterion_id : ''
     const send = () => {
+      if (state.failCriterion === requested) {
+        return jsonResponse({ code: 'llm_unavailable', message: '预检失败示例', details: [] }, 502)
+      }
       if (state.proposeStatus === 201) {
-        const created = proposal('completed', state.proposeEmpty ? [] : undefined)
+        const created = {
+          ...proposal('completed', state.proposeEmpty ? [] : undefined),
+          id: `ap_${requested}`,
+          criterion_id: requested,
+        }
         state.proposals = [created, ...state.proposals]
         return jsonResponse(created, 201)
       }
@@ -145,7 +161,7 @@ globalThis.fetch = async (url, options = {}) => {
     }
     if (state.proposeDefer) {
       return new Promise((resolve) => {
-        state.releasePropose = () => resolve(send())
+        state.proposeReleases.push(() => resolve(send()))
       })
     }
     return send()
@@ -285,23 +301,39 @@ try {
     check('无历史时按钮为「AI 预检」', bindings.preflightButtonLabel('c_syn_2') === 'AI 预检')
   }
 
-  // busy 互斥：预检进行中不能重复发起/接受。
+  // 互斥收窄：同一条重复点被忽略；不同 criterion 并行；accept 仍互斥。
   resetState()
   {
     const bindings = await mount()
     state.proposeDefer = true
-    const pending = bindings.runPreflight(RUBRIC.criteria[0])
+    const first = bindings.runPreflight(RUBRIC.criteria[0])
     check('预检中 busy=true', bindings.busy.value === true)
-    const before = state.counts.propose
-    await bindings.runPreflight(RUBRIC.criteria[1])
+    check('秒表：预检中该条显示秒数', bindings.preflightSeconds('c_syn_1') >= 1)
+    await bindings.runPreflight(RUBRIC.criteria[0])
+    check('同一条 criterion 重复点击被忽略', state.proposeReleases.length === 1)
+    const second = bindings.runPreflight(RUBRIC.criteria[1])
+    check('另一条 criterion 可同时发起预检', state.proposeReleases.length === 2)
     await bindings.acceptCandidate(candidate('apc_1', 'passed'))
-    check(
-      '预检中重复发起与接受都被拦截',
-      state.counts.propose === before && state.counts.accept === 0 && bindings.rejectFormId.value === '',
-    )
-    state.releasePropose()
-    await pending
+    check('预检进行中 accept 仍被拦截', state.counts.accept === 0, `accept=${state.counts.accept}`)
+    state.proposeReleases.splice(0).forEach((release) => release())
+    await Promise.all([first, second])
+    check('并行两条各自入库', bindings.proposals.value.length === 2 && state.counts.propose === 2)
     check('预检完成后 busy=false', bindings.busy.value === false)
+    check('预检完成后秒表清除', bindings.preflightSeconds('c_syn_1') === null)
+  }
+
+  // 预检全部：有界并行；失败一条不影响另一条。
+  resetState()
+  {
+    const bindings = await mount()
+    state.failCriterion = 'c_syn_2'
+    await bindings.runPreflightAll()
+    check('预检全部并发提交未预检的 2 条', state.counts.propose === 2, `propose=${state.counts.propose}`)
+    check(
+      '预检全部：失败一条不影响另一条',
+      bindings.latestProposalFor('c_syn_1')?.status === 'completed' && bindings.proposalError.value.includes('llm_unavailable'),
+      bindings.proposalError.value,
+    )
   }
 
   // invalid 候选本地禁止接受；accept 成功物化并刷新提案。
