@@ -1,6 +1,6 @@
 // Iteration 7.1 检查（SSR 载入 + setup 行为级，不引入测试框架）：
 // 未绑定禁用 AI 预检、busy 互斥、invalid 候选可见且不可接受、accept 物化、409/400 文案、措辞纪律。
-// 7.1 增量：已关联候选（与后端 duplicate_link 同判定）、批量「接受本条全部原文有效」、
+// 7.2 增量：每条 criterion 主按钮「确认这 N 条依据」（=批量接受）、单条接受/拒绝降为次要样式。
 // 「证据」/全文 Block 默认折叠、空预检「未发现」只留徽章一处。
 // 7.1b 增量：「最新预检」列表只渲染待审核候选（passed+unreviewed 且尚未与该 criterion 建过
 // 同一 block+quote 关联）；已关联/已裁决/无效候选不再出卡片，无效只留一行机器码交代。
@@ -58,7 +58,31 @@ check(
 check('禁止原生 confirm/alert', !detailSource.includes('window.confirm') && !detailSource.includes('window.alert'))
 check('全已预检时按钮为「再预检全部」', detailSource.includes('再预检全部'))
 check('顶栏显示预检进度而非整钮死转', detailSource.includes('preflightAllLabel'))
-check('批量接受按钮文案为「接受本条全部原文有效」', detailSource.includes('接受本条全部原文有效'))
+// 主操作收口：每条 criterion 只有一个主按钮「确认这 N 条依据」；单条接受/拒绝降为次要样式。
+const primaryButtonBlock = (() => {
+  const at = detailSource.indexOf('@click="acceptPassedFor(criterion.id)"')
+  return at < 0 ? '' : detailSource.slice(Math.max(0, at - 500), at)
+})()
+const singleAcceptBlock = (() => {
+  const at = detailSource.indexOf('@click="acceptCandidate(candidate)"')
+  return at < 0 ? '' : detailSource.slice(Math.max(0, at - 400), at)
+})()
+check(
+  '每条的主按钮为「确认这 N 条依据」（N 由未关联 passed 候选数算出）',
+  detailSource.includes('function confirmCandidatesLabel') &&
+    detailSource.includes('`确认这 ${acceptableCandidatesFor(criterionId).length} 条依据`') &&
+    detailSource.includes('{{ confirmCandidatesLabel(criterion.id) }}'),
+)
+check(
+  '主按钮是唯一主操作（primary 实心，不再 subtle）',
+  primaryButtonBlock.includes('color="primary"') && !primaryButtonBlock.includes('variant="subtle"'),
+  primaryButtonBlock.slice(0, 120),
+)
+check(
+  '单条接受/拒绝降为次要样式（neutral + ghost）',
+  singleAcceptBlock.includes('color="neutral"') && singleAcceptBlock.includes('variant="ghost"'),
+  singleAcceptBlock.slice(0, 120),
+)
 check(
   '「证据」与全文 Block 列表默认折叠',
   detailSource.includes('const evidenceOpen = ref(false)') && detailSource.includes('const blocksOpen = ref(false)'),
@@ -497,6 +521,11 @@ try {
     check('待审核徽章不计已关联候选', bindings.criterionPending('c_syn_1') === 1)
     check('已关联候选不在可接受集合内', bindings.acceptableCandidatesFor('c_syn_1').length === 1)
     check(
+      '主按钮计数不计已关联候选',
+      bindings.confirmCandidatesLabel('c_syn_1') === '确认这 1 条依据',
+      bindings.confirmCandidatesLabel('c_syn_1'),
+    )
+    check(
       '已关联候选不出现在预检列表（列表只剩待审核候选）',
       bindings.acceptableCandidatesFor('c_syn_1').map((item) => item.id).join(',') === 'apc_2',
       bindings.acceptableCandidatesFor('c_syn_1').map((item) => item.id).join(','),
@@ -541,6 +570,11 @@ try {
     ]
     const bindings = await mount()
     check('批量入口只数 passed+unreviewed', bindings.acceptableCandidatesFor('c_syn_1').length === 2)
+    check(
+      '主按钮计数=未关联 passed 候选数，无效候选不计',
+      bindings.confirmCandidatesLabel('c_syn_1') === '确认这 2 条依据',
+      bindings.confirmCandidatesLabel('c_syn_1'),
+    )
     await bindings.acceptPassedFor('c_syn_1')
     check(
       '批量接受逐一物化 annotation 与 link',
@@ -558,6 +592,12 @@ try {
       '批量接受后候选刷新为 accepted 且入口消失',
       bindings.latestProposalFor('c_syn_1').candidates.filter((item) => item.review_status === 'accepted').length === 2 &&
         bindings.acceptableCandidatesFor('c_syn_1').length === 0,
+    )
+    check(
+      '确认完成后主按钮计数归零（按钮隐藏的条件）',
+      bindings.confirmCandidatesLabel('c_syn_1') === '确认这 0 条依据' &&
+        bindings.acceptableCandidatesFor('c_syn_1').length === 0,
+      bindings.confirmCandidatesLabel('c_syn_1'),
     )
   }
 

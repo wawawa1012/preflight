@@ -18,13 +18,13 @@ const summaryById = computed(() => new Map(summaries.value.map((item) => [item.m
 
 type BadgeColor = 'neutral' | 'warning' | 'success'
 
-// 状态词分级：已绑定 k/n 条要求已有关联 / 未绑定 / 未评估；只陈述已实现能力的输出。
+// 状态词分级：已确认依据 k / n 项 / 未绑定 / 未评估；只陈述已实现能力的输出。
 function relationshipLabel(item: MaterialSummary) {
   const summary = summaryById.value.get(item.id)
   if (!summary) return '未评估'
   if (!summary.bound) return '未绑定'
   if (summary.criteria_total === null || summary.criteria_total === undefined) return '未评估'
-  return `${summary.criteria_with_citations ?? 0}/${summary.criteria_total} 条要求已有关联`
+  return `已确认依据 ${summary.criteria_with_citations ?? 0} / ${summary.criteria_total} 项`
 }
 
 function relationshipColor(item: MaterialSummary): BadgeColor {

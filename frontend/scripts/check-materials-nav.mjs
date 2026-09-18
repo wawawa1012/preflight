@@ -1,6 +1,6 @@
 // Materials 导航 invariant 检查（真实 SSR 渲染 + 数据状态 + 行为级 setup，不引入测试框架）：
 // 二级工作区必须有显式回 Workbench 的入口；并核对 Golden Journey 的关键链接与数据。
-// 本轮追加：行内 k/n 条要求已有关联（只来自 preflight-summaries）、未绑定、UModal 删除确认。
+// 本轮追加：行内「已确认依据 k / n 项」（只来自 preflight-summaries）、未绑定、UModal 删除确认。
 // 运行：cd frontend && node scripts/check-materials-nav.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp } from 'vue'
@@ -115,8 +115,12 @@ try {
     ['已满足', '已支撑', '覆盖率', '就绪度', 'Trust Layer'].filter((word) => workbenchSource.includes(word)).join('、'),
   )
   check(
-    'Workbench 模板含 k/n 条要求已有关联与范围句',
-    workbenchSource.includes('条要求已有关联') && workbenchSource.includes('当前范围尚未发现引用'),
+    'Workbench 模板含「已确认依据 k / n 项」与范围句',
+    workbenchSource.includes('已确认依据') && workbenchSource.includes('当前范围尚未发现引用'),
+  )
+  check(
+    'Workbench 不再使用「条要求已有关联」旧措辞',
+    !workbenchSource.includes('条要求已有关联'),
   )
   check(
     'Workbench 未绑定行显示未绑定',
@@ -162,8 +166,8 @@ try {
     materialsBindings.materials.value.length,
   )
   check(
-    '/materials 行标签：已绑定显示 k/n 条要求已有关联、未绑定显示未绑定',
-    materialsBindings.relationshipLabel({ id: 'mat_demo_1' }) === '1/2 条要求已有关联' &&
+    '/materials 行标签：已绑定显示「已确认依据 k / n 项」、未绑定显示未绑定',
+    materialsBindings.relationshipLabel({ id: 'mat_demo_1' }) === '已确认依据 1 / 2 项' &&
       materialsBindings.relationshipLabel({ id: 'mat_demo_2' }) === '未绑定',
     materialsBindings.relationshipLabel({ id: 'mat_demo_1' }),
   )
@@ -186,8 +190,8 @@ try {
     workbenchBindings.summaries.value.length,
   )
   check(
-    '首页行标签为 k/n 条要求已有关联，标准不可用时为未评估',
-    workbenchBindings.criteriaLabel(boundSummary) === '1/2 条要求已有关联' &&
+    '首页行标签为「已确认依据 k / n 项」，标准不可用时为未评估',
+    workbenchBindings.criteriaLabel(boundSummary) === '已确认依据 1 / 2 项' &&
       workbenchBindings.criteriaLabel({ ...boundSummary, criteria_total: null, criteria_with_citations: null }) === '未评估',
     workbenchBindings.criteriaLabel(boundSummary),
   )
@@ -273,6 +277,10 @@ try {
   const materialsSource = readFileSync(new URL('../src/views/MaterialsView.vue', import.meta.url), 'utf8')
   check('预览态仍有 Workbench 出口与 Materials 面包屑', newSource.includes('Workbench') && newSource.includes('to="/materials"'))
   check('列表行链接到各自详情', materialsSource.includes(':to="`/materials/${item.id}`"'))
+  check(
+    '/materials 不再使用「条要求已有关联」旧措辞',
+    !materialsSource.includes('条要求已有关联') && materialsSource.includes('已确认依据'),
+  )
   check(
     '删除确认用 UModal，不用 window.confirm',
     materialsSource.includes('<UModal') && !materialsSource.includes('window.confirm'),

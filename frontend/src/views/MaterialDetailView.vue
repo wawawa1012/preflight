@@ -467,6 +467,11 @@ function criterionPending(criterionId: string) {
   return acceptableCandidatesFor(criterionId).length
 }
 
+/** 每条的确认按钮文案：N = 未关联的 passed 候选数（已关联/无效/已裁决都不计）。 */
+function confirmCandidatesLabel(criterionId: string) {
+  return `确认这 ${acceptableCandidatesFor(criterionId).length} 条依据`
+}
+
 /** 列表只渲染待审核候选；被验证门挡下（或已裁决/已关联）的候选不出卡片，但机器码仍要如实交代。 */
 function invalidCandidatesSummary(criterionId: string) {
   const proposal = latestProposalFor(criterionId)
@@ -1009,15 +1014,14 @@ init()
                         </p>
                         <UButton
                           v-if="acceptableCandidatesFor(criterion.id).length > 0"
-                          size="xs"
+                          size="sm"
                           color="primary"
-                          variant="subtle"
                           icon="i-lucide-check-check"
                           :loading="acceptingBatchCriterionId === criterion.id"
                           :disabled="busy && acceptingBatchCriterionId !== criterion.id"
                           @click="acceptPassedFor(criterion.id)"
                         >
-                          接受本条全部原文有效
+                          {{ confirmCandidatesLabel(criterion.id) }}
                         </UButton>
                       </div>
                       <p v-if="invalidCandidatesSummary(criterion.id)" class="text-xs text-slate-500">
@@ -1042,6 +1046,8 @@ init()
                         <div class="mt-2 flex flex-wrap items-center gap-2">
                           <UButton
                             size="xs"
+                            color="neutral"
+                            variant="ghost"
                             :loading="acceptingCandidateId === candidate.id"
                             :disabled="busy"
                             @click="acceptCandidate(candidate)"

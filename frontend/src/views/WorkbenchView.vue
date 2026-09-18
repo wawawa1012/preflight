@@ -42,10 +42,10 @@ async function checkBackend() {
   }
 }
 
-// 行状态只用已实现能力：k/n 条要求已有关联（来自只读装配摘要）；标准版本不可用时按未评估展示。
+// 行状态只用已实现能力：已确认依据 k / n 项（来自只读装配摘要）；标准版本不可用时按未评估展示。
 function criteriaLabel(item: MaterialPreflightSummary) {
   if (item.criteria_total === null || item.criteria_total === undefined) return '未评估'
-  return `${item.criteria_with_citations ?? 0}/${item.criteria_total} 条要求已有关联`
+  return `已确认依据 ${item.criteria_with_citations ?? 0} / ${item.criteria_total} 项`
 }
 
 function criteriaColor(item: MaterialPreflightSummary): 'neutral' | 'success' {
