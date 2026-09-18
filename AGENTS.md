@@ -3,8 +3,7 @@
 - 唯一仓库：F:\project\Preflight（用户于 2026-09-15 更正原 Prompt 的 D: 路径）。
 - 唯一蓝图入口：docs/MASTER_PLAN.md。原始冻结需求优先，用户后续明确修正优先于本文。
 - 施工权（Preflight Development Operating Model v1）：任意时刻只能有一个 current implementer；可以显式在 AI 之间交接。Reviewer 默认只读。不得多个 AI 同时修改同一工作区。
-- 本轮仅 Phase 0：文档、目录、核心契约、可启动空壳和首次提交。
-- 不提前实现 RubricMatrix、解析、RAG、LLM pipeline。以后按阶段验收。
+- 当前进度以 docs/MILESTONES.md 为准；功能取舍以 docs/PRODUCT_TREE.md 为准。不要把历史「Phase 0」句读成当前施工范围。
 - Vue 3 + Vite + TS + Nuxt UI v4 纯 Vue；禁止第二套设计系统。
 - Python + FastAPI + Pydantic v2 + SQLite/FTS5；Windows 原生，不混用 WSL。
 - 禁用 LangChain/LangGraph/CrewAI/AutoGen/MCP、向量数据库、Redis/Celery、微服务、K8s、知识图谱、自研插件、本地模型、微调。
@@ -21,7 +20,7 @@
 - 树干串行：contracts.py、storage、API 核心路径沿用单 implementer 模型；不改既有表与端点语义。
 - 树冠并行：叶子页面、检查脚本、文档、benchmark 用例可拆成有界工作包并行，每包独立可验收、自带准入三问答案。
 - 显式拒绝：好友/社交、设置中心、登录头像、无 demo 秒数的功能、打分模拟（✅❌ 或分数预测）。
-- 措辞纪律：界面只呈现事实性状态（已核证引用 N 条／缺失／有矛盾／未评估），禁用"已满足/已支撑"（裁决规则落地前）。
+- 措辞纪律：以 docs/PRODUCT_TREE.md 第六节为准。始终允许：已核证引用 N 条／已关联 N 条／已绑定 rev N／未评估／当前范围尚未发现引用（须说明范围）。门控词「缺失」「有矛盾」仅在对应检查已实现并执行后使用。禁用「已满足/已支撑」、覆盖率%、分数预测。
 
 ## Phase 0 验证
 
