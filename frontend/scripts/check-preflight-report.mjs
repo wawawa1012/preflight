@@ -14,10 +14,11 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
-function reportFetch(reportBody, status = 200, proposalsBody = [], proposalStatus = 200, signalsBody = []) {
+function reportFetch(reportBody, status = 200, proposalsBody = [], proposalStatus = 200, signalsBody = [], findingsBody = [], findingsStatus = 200) {
   return async (input) => {
     const url = String(input)
     if (url.includes('statement-signals')) return jsonResponse(signalsBody)
+    if (url.includes('consistency-findings')) return jsonResponse(findingsBody, findingsStatus)
     if (url.includes('agent-proposals')) return jsonResponse(proposalsBody, proposalStatus)
     return jsonResponse(reportBody, status)
   }
@@ -27,7 +28,7 @@ const reportSource = readFileSync(new URL('../src/views/MaterialReportView.vue',
 const drawerSource = readFileSync(new URL('../src/components/EvidenceDrawer.vue', import.meta.url), 'utf8')
 const routerSource = readFileSync(new URL('../src/router/index.ts', import.meta.url), 'utf8')
 
-const FORBIDDEN = ['已满足', '已支撑', '覆盖率', 'Trust Layer', '准备答辩']
+const FORBIDDEN = ['已满足', '已支撑', '覆盖率', 'Trust Layer', '准备答辩', '矛盾', '分数']
 check(
   '报告页源码不含禁用措辞',
   FORBIDDEN.every((word) => !reportSource.includes(word)),
@@ -42,6 +43,13 @@ check('正交：待审核与已确认可同时出现在模板', reportSource.inc
 check('引用行标注「原文已校验」', reportSource.includes('原文已校验'))
 check('报告页含关键陈述栏目', reportSource.includes('关键陈述'))
 check('报告页请求 statement-signals', reportSource.includes('statement-signals'))
+check('报告页请求 consistency-findings', reportSource.includes('consistency-findings'))
+check('报告页含待核对问题栏目', reportSource.includes('待核对问题'))
+check(
+  '待核对问题只给事实标签（数值不一致 / 待人工判断）',
+  reportSource.includes('数值不一致') && reportSource.includes('待人工判断'),
+)
+check('待核对引用点回同一 Drawer', reportSource.includes('openHighlight(citation)'))
 check('扫描逻辑不在 Vue（报告页无数字扫描正则）', !reportSource.includes('\\d'))
 check('Drawer 标题为「原文 · 第 N 行」', drawerSource.includes('原文 · 第'))
 check('Drawer 渲染上下块并删掉 quote 重复行', drawerSource.includes('previousBlock') && drawerSource.includes('nextBlock') && !drawerSource.includes('quote：'))
@@ -211,6 +219,56 @@ try {
     check(
       '点击关键陈述打开同一 Drawer',
       bindings.drawerOpen.value === true && bindings.highlight.value.quote === undefined && bindings.drawerBlock.value.id === 'blk_1',
+    )
+  }
+
+  // I8 待核对问题：只渲染后端结论（前端不扫描），引用点回同一 Drawer。
+  {
+    const finding = {
+      material_id: 'mat_x',
+      kind: 'numeric_inconsistency',
+      measure: '准确率',
+      values: ['95%', '90%'],
+      searched_block_count: 1,
+      searched_statement_count: 2,
+      explanation:
+        '同一度量词「准确率」在本材料 2 处给出不同数值：95%、90%；已扫描 1 个 Block 的 2 条关键陈述，请核对后决定以哪一处为准。',
+      citations: [
+        { block_id: 'blk_1', line_number: 7, quote: '95%', start: 5, end: 8, value: '95', unit: '%' },
+        { block_id: 'blk_1', line_number: 7, quote: '90%', start: 12, end: 15, value: '90', unit: '%' },
+      ],
+    }
+    const { app } = await mount(reportFetch(report, 200, [], 200, [], [finding]))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '待核对问题来自 consistency-findings 且带度量词',
+      bindings.findings.value.length === 1 &&
+        bindings.findings.value[0].measure === '准确率' &&
+        bindings.findings.value[0].values.join(',') === '95%,90%',
+    )
+    check(
+      '待核对问题标签映射为「数值不一致 / 待人工判断」',
+      bindings.findingLabel('numeric_inconsistency') === '数值不一致' && bindings.findingLabel('needs_review') === '待人工判断',
+    )
+    bindings.openHighlight(bindings.findings.value[0].citations[1])
+    check(
+      '点待核对引用打开 Drawer 并带该引用高亮',
+      bindings.drawerOpen.value === true &&
+        bindings.highlight.value.start === 12 &&
+        bindings.highlight.value.end === 15 &&
+        bindings.drawerBlockId.value === 'blk_1',
+    )
+  }
+
+  // I8 端点不可用：栏目降级为「不可用」，不炸页面、不伪造结论。
+  {
+    const { app } = await mount(reportFetch(report, 200, [], 200, [], [], 502))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '待核对问题不可用时标记 unavailable 且不渲染条目',
+      bindings.findingsUnavailable.value === true && bindings.findings.value.length === 0 && bindings.report.value !== null,
     )
   }
 

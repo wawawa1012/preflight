@@ -7,10 +7,12 @@ from typing import Literal
 
 from . import llm, rubric_store, storage
 from .claim_inspector import inspect_statements
+from .consistency import find_numeric_findings
 from .contracts import (
     AgentProposal,
     AgentProposalCreate,
     ApiError,
+    ConsistencyFinding,
     CriterionEvidenceLink,
     CriterionEvidenceLinkCreate,
     DetectedStatement,
@@ -147,6 +149,15 @@ def material_statement_signals(material_id: str) -> list[DetectedStatement]:
     if material is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
     return inspect_statements(material.blocks)
+
+
+# I8 同材料数值一致性：从关键陈述现算「待核对问题」，不写库、不调 LLM。
+@app.get("/api/v1/materials/{material_id}/consistency-findings", response_model=list[ConsistencyFinding])
+def material_consistency_findings(material_id: str) -> list[ConsistencyFinding]:
+    material = storage.get_material(material_id)
+    if material is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return find_numeric_findings(inspect_statements(material.blocks), material.blocks)
 
 
 # 证据标注：quote 服务端校验必须来自 Block 原文；material_id/proposed_by 由服务端设定。

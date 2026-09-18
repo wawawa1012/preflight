@@ -28,7 +28,7 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 
 ## API 冻结边界
 
-已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化）、DELETE /api/v1/materials/{id}（本轮：行内删除确认 + FK 级联清理）、POST /api/v1/evidence-annotations 与 GET /api/v1/materials/{id}/evidence-annotations、/api/v1/evidence-annotations/{id}（Iteration 3 证据层）、GET /api/v1/rubrics 与材料绑定 / 人工关联（Iteration 4）、单 criterion Agent 提案（Iteration 5）、材料级只读预审装配（Iteration 6）、关键陈述扫描（Iteration 7）。以下业务接口是后续目标，不能当作可用服务。
+已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（临时预览）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化）、DELETE /api/v1/materials/{id}（行内删除确认 + FK 级联清理）、POST /api/v1/evidence-annotations 与 GET /api/v1/materials/{id}/evidence-annotations、/api/v1/evidence-annotations/{id}（Iteration 3 证据层）、GET /api/v1/rubrics 与材料绑定 / 人工关联（Iteration 4）、单 criterion Agent 提案（Iteration 5）、材料级只读预审装配（Iteration 6）、关键陈述扫描（Iteration 7）、同材料数值一致性（Iteration 8）。以下业务接口是后续目标，不能当作可用服务。
 
 | 方法/路径 | 请求 | 响应 |
 | --- | --- | --- |
@@ -58,6 +58,7 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 | GET /api/v1/preflight-summaries | 无 | MaterialPreflightSummary[]（只读装配；未绑定材料 bound=false） |
 | GET /api/v1/materials/{id}/preflight-report | 无 | MaterialPreflightReport；未知材料 404 material_not_found；未绑定 409 rubric_not_bound |
 | GET /api/v1/materials/{id}/statement-signals | 无 | DetectedStatement[]（Iteration 7 确定性扫描；未知材料 404 material_not_found；空数组合法） |
+| GET /api/v1/materials/{id}/consistency-findings | 无 | ConsistencyFinding[]（Iteration 8 同材料数值对照；未知材料 404 material_not_found；空数组合法） |
 | GET /api/v1/projects | 无 | Project[] |
 | POST /api/v1/projects | {name} | Project，201 |
 | GET /api/v1/projects/:id/rubric | 无 | Rubric |
@@ -81,6 +82,7 @@ CriterionEvidenceLink 是 adjudication 层：只表示“人判断这条引用�
 AgentProposal / ProposalCandidate 是单 criterion 预检层：LLM 只提出候选（block_id + quote + rationale + risk_note），服务端用 resolve_span 做验证门（block 必须属于该材料、quote 必须命中原文），标记 passed / invalid + 机器码；invalid 候选不能 accept。accept 由人触发，单事务物化 annotation 与 link（proposed_by="agent"）并回写候选 created ids；reject 记录可选原因。提案只是“待裁决候选”，不是结论，不产生 Supported/coverage。失败（未配置/超时/上游错误/非法响应/prompt 超限）同样落库 status=failed 并返回对应错误码；prompt 超限绝不静默截断。proposed_by 枚举扩为 ["human","agent"]；EvidenceAnnotationCreate 不再接受 proposed_by（HTTP 路径固定 "human"，accept 物化固定 "agent"）。
 MaterialPreflightReport / MaterialPreflightSummary 是 Iteration 6 的只读装配：从现有 material_rubric_bindings、evidence_annotations、criterion_evidence_links 计算每条 criterion 的已确认关联；零引用行携带 missing 范围句（searched_filename + searched_block_count + explanation，措辞必须是「当前范围尚未发现引用」且说明范围）。它不是 Run、不是 CriterionAssessment、不填充 supported/coverage、不写库；未绑定返回 409 rubric_not_bound，未知材料 404 material_not_found。blocks 仅内联快照供 Drawer 使用，不新建检索 API。字段名 verified_citation_count 为历史遗留，含义是“人已确认关联数”，不是支持判定。
 DetectedStatement 是 Iteration 7 的关键陈述信号：确定性纯函数 inspect_statements(blocks) 现算（零 IO、不调 LLM、不写库）；quote == text[start:end]（Unicode code point 索引），signal ∈ numeric|percentage|comparative|absolute；同段重叠匹配按 比例 > 绝对化 > 比较 > 数字 去重，全局上限 20。数字仅在带单位或带上下文（达到/准确/延迟等）时才计入；它只标出「值得核对的句子」，不判真假、不产生 Finding，也不代表风险成立。
+ConsistencyFinding / ConsistencyCitation 是 Iteration 8 的同材料数值一致性：输入是 I7 的 DetectedStatement[]，纯函数 find_numeric_findings(statements, blocks) 现算（零 IO、不调 LLM、不落库，不新增表；blocks 只用于复验 span 与读取数值前后的上下文）。宁漏勿错：只有同一度量词 + 同一单位 + 不同数值才标 kind=numeric_inconsistency；同一度量词但单位写法不一致，或没有共同度量词、只有同一量纲单位 + 不同数值时降级为 kind=needs_review；其余不报（同值、单条无对照、不同度量词、span 复验不过、非量纲单位如「个/条/次」）。度量词取数值前连接词剥离后的汉字串（「准确率降低到 90%」→「准确率」），长度 ≥ 3 的写法按后缀归并（「系统准确率」→「准确率」），长度 2 的词不归并，避免把「模型延迟」与「系统延迟」误配。每条 citation 都可在 Block 原文复验 quote == text[start:end]，供报告页点回 Drawer；explanation 自带范围（扫过多少 Block、多少条关键陈述），searched_block_count / searched_statement_count 同步给出。它不判断外部真实性、不做裁决、不给分。
 
 ## Agent Integration Note
 
