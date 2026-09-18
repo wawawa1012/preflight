@@ -185,6 +185,43 @@ export type CreatedAt6 = string;
 export type Candidates = ProposalCandidate[];
 export type CriterionId6 = string;
 export type Reason1 = string | null;
+export type MaterialId4 = string;
+export type Filename4 = string;
+export type BlockCount1 = number;
+export type RubricId6 = string;
+export type RubricRevision6 = number;
+export type RubricTitle = string;
+export type CriterionId7 = string;
+export type Title3 = string;
+export type Requirement1 = string;
+export type VerifiedCitationCount = number;
+export type Status5 = "has_verified_citations" | "no_verified_citations_in_scope";
+export type LinkId = string;
+export type AnnotationId2 = string;
+export type CriterionId8 = string;
+export type BlockId4 = string;
+export type LineNumber = number;
+export type Quote3 = string;
+export type Rationale3 = string;
+export type ProposedBy2 = "human" | "agent";
+export type Start1 = number;
+export type End1 = number;
+export type Citations = MaterialPreflightCitation[];
+export type SearchedBlockCount = number;
+export type SearchedFilename = string;
+export type Explanation1 = string;
+export type Criteria1 = MaterialPreflightCriterionRow[];
+export type Blocks3 = Block[];
+export type MaterialId5 = string;
+export type Filename5 = string;
+export type CreatedAt7 = string;
+export type BlockCount2 = number;
+export type Bound = boolean;
+export type RubricRevision7 = number | null;
+export type VerifiedCitationCount1 = number;
+export type CriteriaTotal = number | null;
+export type CriteriaWithCitations = number | null;
+export type CriteriaWithoutCitations = number | null;
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -207,6 +244,11 @@ export interface ContractBundle {
   agent_proposal_create: AgentProposalCreate;
   proposal_candidate_reject: ProposalCandidateReject;
   proposal_acceptance: ProposalAcceptance;
+  material_preflight_report: MaterialPreflightReport;
+  material_preflight_summary: MaterialPreflightSummary;
+  material_preflight_criterion_row: MaterialPreflightCriterionRow;
+  material_preflight_citation: MaterialPreflightCitation;
+  material_preflight_missing: MaterialPreflightMissing;
   error: ApiError;
 }
 export interface RunReport {
@@ -466,6 +508,54 @@ export interface ProposalCandidateReject {
 export interface ProposalAcceptance {
   annotation: EvidenceAnnotation;
   link: CriterionEvidenceLink;
+}
+export interface MaterialPreflightReport {
+  material_id: MaterialId4;
+  filename: Filename4;
+  block_count: BlockCount1;
+  rubric_id: RubricId6;
+  rubric_revision: RubricRevision6;
+  rubric_title: RubricTitle;
+  criteria: Criteria1;
+  blocks: Blocks3;
+}
+export interface MaterialPreflightCriterionRow {
+  criterion_id: CriterionId7;
+  title: Title3;
+  requirement: Requirement1;
+  verified_citation_count: VerifiedCitationCount;
+  status: Status5;
+  citations: Citations;
+  missing?: MaterialPreflightMissing | null;
+}
+export interface MaterialPreflightCitation {
+  link_id: LinkId;
+  annotation_id: AnnotationId2;
+  criterion_id: CriterionId8;
+  block_id: BlockId4;
+  line_number: LineNumber;
+  quote: Quote3;
+  rationale: Rationale3;
+  proposed_by: ProposedBy2;
+  start: Start1;
+  end: End1;
+}
+export interface MaterialPreflightMissing {
+  searched_block_count: SearchedBlockCount;
+  searched_filename: SearchedFilename;
+  explanation: Explanation1;
+}
+export interface MaterialPreflightSummary {
+  material_id: MaterialId5;
+  filename: Filename5;
+  created_at: CreatedAt7;
+  block_count: BlockCount2;
+  bound: Bound;
+  rubric_revision?: RubricRevision7;
+  verified_citation_count: VerifiedCitationCount1;
+  criteria_total?: CriteriaTotal;
+  criteria_with_citations?: CriteriaWithCitations;
+  criteria_without_citations?: CriteriaWithoutCitations;
 }
 export interface ApiError {
   code: Code;

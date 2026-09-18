@@ -786,6 +786,305 @@
       "title": "MarkdownPreview",
       "type": "object"
     },
+    "MaterialPreflightCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "link_id": {
+          "title": "Link Id",
+          "type": "string"
+        },
+        "annotation_id": {
+          "title": "Annotation Id",
+          "type": "string"
+        },
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "line_number": {
+          "minimum": 1,
+          "title": "Line Number",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "proposed_by": {
+          "enum": [
+            "human",
+            "agent"
+          ],
+          "title": "Proposed By",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "link_id",
+        "annotation_id",
+        "criterion_id",
+        "block_id",
+        "line_number",
+        "quote",
+        "rationale",
+        "proposed_by",
+        "start",
+        "end"
+      ],
+      "title": "MaterialPreflightCitation",
+      "type": "object"
+    },
+    "MaterialPreflightCriterionRow": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "requirement": {
+          "title": "Requirement",
+          "type": "string"
+        },
+        "verified_citation_count": {
+          "minimum": 0,
+          "title": "Verified Citation Count",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "has_verified_citations",
+            "no_verified_citations_in_scope"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "citations": {
+          "items": {
+            "$ref": "#/$defs/MaterialPreflightCitation"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "missing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterialPreflightMissing"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "criterion_id",
+        "title",
+        "requirement",
+        "verified_citation_count",
+        "status",
+        "citations"
+      ],
+      "title": "MaterialPreflightCriterionRow",
+      "type": "object"
+    },
+    "MaterialPreflightMissing": {
+      "additionalProperties": false,
+      "properties": {
+        "searched_block_count": {
+          "minimum": 0,
+          "title": "Searched Block Count",
+          "type": "integer"
+        },
+        "searched_filename": {
+          "minLength": 1,
+          "title": "Searched Filename",
+          "type": "string"
+        },
+        "explanation": {
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "searched_block_count",
+        "searched_filename",
+        "explanation"
+      ],
+      "title": "MaterialPreflightMissing",
+      "type": "object"
+    },
+    "MaterialPreflightReport": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "block_count": {
+          "minimum": 0,
+          "title": "Block Count",
+          "type": "integer"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "rubric_title": {
+          "title": "Rubric Title",
+          "type": "string"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/MaterialPreflightCriterionRow"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "title": "Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "material_id",
+        "filename",
+        "block_count",
+        "rubric_id",
+        "rubric_revision",
+        "rubric_title",
+        "criteria",
+        "blocks"
+      ],
+      "title": "MaterialPreflightReport",
+      "type": "object"
+    },
+    "MaterialPreflightSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "block_count": {
+          "minimum": 0,
+          "title": "Block Count",
+          "type": "integer"
+        },
+        "bound": {
+          "title": "Bound",
+          "type": "boolean"
+        },
+        "rubric_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric Revision"
+        },
+        "verified_citation_count": {
+          "minimum": 0,
+          "title": "Verified Citation Count",
+          "type": "integer"
+        },
+        "criteria_total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Criteria Total"
+        },
+        "criteria_with_citations": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Criteria With Citations"
+        },
+        "criteria_without_citations": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Criteria Without Citations"
+        }
+      },
+      "required": [
+        "material_id",
+        "filename",
+        "created_at",
+        "block_count",
+        "bound",
+        "verified_citation_count"
+      ],
+      "title": "MaterialPreflightSummary",
+      "type": "object"
+    },
     "MaterialSummary": {
       "additionalProperties": false,
       "properties": {
@@ -1681,6 +1980,21 @@
     "proposal_acceptance": {
       "$ref": "#/$defs/ProposalAcceptance"
     },
+    "material_preflight_report": {
+      "$ref": "#/$defs/MaterialPreflightReport"
+    },
+    "material_preflight_summary": {
+      "$ref": "#/$defs/MaterialPreflightSummary"
+    },
+    "material_preflight_criterion_row": {
+      "$ref": "#/$defs/MaterialPreflightCriterionRow"
+    },
+    "material_preflight_citation": {
+      "$ref": "#/$defs/MaterialPreflightCitation"
+    },
+    "material_preflight_missing": {
+      "$ref": "#/$defs/MaterialPreflightMissing"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -1703,6 +2017,11 @@
     "agent_proposal_create",
     "proposal_candidate_reject",
     "proposal_acceptance",
+    "material_preflight_report",
+    "material_preflight_summary",
+    "material_preflight_criterion_row",
+    "material_preflight_citation",
+    "material_preflight_missing",
     "error"
   ],
   "title": "ContractBundle",

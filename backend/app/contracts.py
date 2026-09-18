@@ -323,6 +323,59 @@ class ProposalAcceptance(Contract):
     link: CriterionEvidenceLink
 
 
+class MaterialPreflightCitation(Contract):
+    link_id: str
+    annotation_id: str
+    criterion_id: str
+    block_id: str
+    line_number: int = Field(ge=1)
+    quote: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    proposed_by: Literal["human", "agent"]
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+
+
+class MaterialPreflightMissing(Contract):
+    searched_block_count: int = Field(ge=0)
+    searched_filename: str = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+
+
+class MaterialPreflightCriterionRow(Contract):
+    criterion_id: str
+    title: str
+    requirement: str
+    verified_citation_count: int = Field(ge=0)
+    status: Literal["has_verified_citations", "no_verified_citations_in_scope"]
+    citations: list[MaterialPreflightCitation]
+    missing: MaterialPreflightMissing | None = None
+
+
+class MaterialPreflightReport(Contract):
+    material_id: str
+    filename: str
+    block_count: int = Field(ge=0)
+    rubric_id: str
+    rubric_revision: int = Field(ge=1)
+    rubric_title: str
+    criteria: list[MaterialPreflightCriterionRow]
+    blocks: list[Block]
+
+
+class MaterialPreflightSummary(Contract):
+    material_id: str
+    filename: str
+    created_at: str
+    block_count: int = Field(ge=0)
+    bound: bool
+    rubric_revision: int | None = None
+    verified_citation_count: int = Field(ge=0)
+    criteria_total: int | None = None
+    criteria_with_citations: int | None = None
+    criteria_without_citations: int | None = None
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -347,4 +400,9 @@ class ContractBundle(Contract):
     agent_proposal_create: AgentProposalCreate
     proposal_candidate_reject: ProposalCandidateReject
     proposal_acceptance: ProposalAcceptance
+    material_preflight_report: MaterialPreflightReport
+    material_preflight_summary: MaterialPreflightSummary
+    material_preflight_criterion_row: MaterialPreflightCriterionRow
+    material_preflight_citation: MaterialPreflightCitation
+    material_preflight_missing: MaterialPreflightMissing
     error: ApiError

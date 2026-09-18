@@ -1,0 +1,58 @@
+{
+  "test_only": true,
+  "comment": "synthetic fixture：不是真实材料或评审结果，仅用于契约与负例检查。",
+  "report": {
+    "material_id": "mat_synthetic",
+    "filename": "synthetic.md",
+    "block_count": 1,
+    "rubric_id": "rubric_synthetic",
+    "rubric_revision": 1,
+    "rubric_title": "Synthetic rubric (test-only)",
+    "criteria": [
+      {
+        "criterion_id": "c_syn_1",
+        "title": "Criterion A",
+        "requirement": "requirement A",
+        "verified_citation_count": 1,
+        "status": "has_verified_citations",
+        "citations": [
+          {
+            "link_id": "cel_syn_1",
+            "annotation_id": "annotation_syn_1",
+            "criterion_id": "c_syn_1",
+            "block_id": "block_syn_1",
+            "line_number": 1,
+            "quote": "准确率达到 95%",
+            "rationale": "synthetic：人工判断相关",
+            "proposed_by": "human",
+            "start": 5,
+            "end": 14
+          }
+        ],
+        "missing": null
+      },
+      {
+        "criterion_id": "c_syn_2",
+        "title": "Criterion B",
+        "requirement": "requirement B",
+        "verified_citation_count": 0,
+        "status": "no_verified_citations_in_scope",
+        "citations": [],
+        "missing": {
+          "searched_block_count": 1,
+          "searched_filename": "synthetic.md",
+          "explanation": "当前范围尚未发现引用：已核对材料「synthetic.md」的 1 个 Block 上全部已核证关联，本评分要求已关联 0 条。这不是证明材料外不存在证据。"
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "block_syn_1",
+        "document_id": "mat_synthetic",
+        "ordinal": 0,
+        "text": "合成语料：准确率达到 95%，整体稳定。",
+        "locator": { "kind": "line", "index": 1, "end_index": null, "block_index": 1 }
+      }
+    ]
+  }
+}

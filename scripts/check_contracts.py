@@ -5,7 +5,15 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-from app.contracts import AgentProposal, ContractBundle, CriterionEvidenceLink, EvidenceAnnotation, RunReport, VersionDiff
+from app.contracts import (
+    AgentProposal,
+    ContractBundle,
+    CriterionEvidenceLink,
+    EvidenceAnnotation,
+    MaterialPreflightReport,
+    RunReport,
+    VersionDiff,
+)
 from pydantic import ValidationError
 
 
@@ -172,7 +180,42 @@ except AssertionError:
     pass
 else:
     raise AssertionError("Invalid candidate without code was accepted")
+
+
+def check_preflight_fixture(fixture: dict) -> None:
+    """材料预审快照 fixture：行状态、计数一致、零引用必须带范围句。"""
+    report = MaterialPreflightReport.model_validate(fixture["report"])
+    assert report.criteria, "fixture must contain criteria"
+    for row in report.criteria:
+        if row.citations:
+            assert row.status == "has_verified_citations"
+            assert row.missing is None
+            assert row.verified_citation_count == len(row.citations) >= 1
+            assert all(item.criterion_id == row.criterion_id for item in row.citations)
+        else:
+            assert row.status == "no_verified_citations_in_scope"
+            assert row.verified_citation_count == 0
+            missing = row.missing
+            assert missing is not None, "zero-citation row must carry scope sentence"
+            assert missing.searched_block_count == report.block_count
+            assert missing.searched_filename == report.filename
+            assert report.filename in missing.explanation
+            assert str(report.block_count) in missing.explanation
+            assert "当前范围尚未发现引用" in missing.explanation
+
+
+preflight_raw = json.loads((ROOT / "contracts/fixtures/material_preflight_report.json").read_text(encoding="utf-8"))
+assert preflight_raw["test_only"] is True
+check_preflight_fixture(preflight_raw)
+tampered_row = json.loads(json.dumps(preflight_raw))
+tampered_row["report"]["criteria"][1]["missing"] = None
+try:
+    check_preflight_fixture(tampered_row)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Zero-citation row without scope sentence was accepted")
 print(
     "PASS: schema freshness, fixture structure/references, quote checks, "
-    "evidence annotation checks, criterion link checks, proposal checks, negative cases"
+    "evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases"
 )
