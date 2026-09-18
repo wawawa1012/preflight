@@ -1,5 +1,11 @@
 # Progress log
 
+## 2026-09-18 — 治理与定位：产品树宪法 v1.1（文档，无代码变更）
+
+- 新建 docs/PRODUCT_TREE.md：定位升级为"AI 时代可信声明预审（Trust Layer）"（比赛材料预审为第一个垂直模板；架构定位≠当前能力，当前仅 Markdown）；产品树五问；树干→叶子映射（SnapSync"暗管"禁令）；显式功能账本（防暗管记录，数量不是 KPI）；准入三问与算力治理（树干串行/树冠并行）；能力分级事实性词表（门控词+Finding 三问）；5 秒测试；赛后 Artifact Grounding 未来方向。
+- AGENTS.md 增补"算力与并行施工治理"节；显式拒绝清单（社交/设置中心/打分模拟等）。
+- MILESTONES：Iteration 6 方向与 5 秒测试验收标准；治理模型（Grok=Principal Architect/Product Lead，DS=默认施工，GLM=只读 reviewer；Grok 首轮任务=handoff verification）；时间线澄清（10/7 冻结、10/10 校赛节点、10/15 20:00 省赛报名截止，以官方通知为准）。
+
 ## 2026-09-16 — Iteration 5：单 criterion AI 预检与提案裁决（实现完成，待人工验收）
 
 完成：

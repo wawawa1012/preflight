@@ -23,6 +23,10 @@
 - Iteration 4 Phase A（Evidence→Criterion 人工关联 + 只读 rubric 文件仓）：Phase A 已验收并收口提交。
 - Iteration 4 Phase B（转录确认稿并加载）：实现完成，待人工验收；取得官方评审细则后转录为新文件，不覆盖本版本。
 - Iteration 5（单 criterion 真实 AI 预检 + 提案裁决，对应 9/20–9/22）：实现完成，待人工验收；真实 LLM 调用需用户在 backend/.env 填入兼容服务配置后人工验收。
+- 产品树治理生效（2026-09-18）：docs/PRODUCT_TREE.md 为功能取舍最高准则（准入三问/树干串行/树冠并行/事实性状态词表）。
+- Iteration 6 方向已定：真实评分矩阵报告（替换 mock）+ 缺失证据发现 + Evidence Drawer + Workbench 报告中心化；验收标准含"5 秒测试"（见 PRODUCT_TREE.md 第七节）。
+- 定位升级与交接（2026-09-18）：产品定位升级为"AI 时代可信声明预审（Trust Layer）"，比赛材料预审为第一个垂直模板（见 PRODUCT_TREE.md 定位节与垂直场景节；对外表述用价值句，Trust Layer 仅内部 North Star）。治理模型：Grok 任 Principal Architect / Product Lead（方向、规划、架构裁决、最终 review），DS 为默认施工 implementer，用户指定的工作包可由 Grok 亲自施工；任意时刻同一工作树只有一个 current implementer；GLM 转只读 reviewer。Grok 第一轮任务 = handoff verification（核对 HEAD/status/真实测试基线/页面路由/账本差距，并独立给出对 Iteration 6 方向的判断），验证通过并经用户批准后才开工。
+- 时间线澄清（节点以官方通知为准）：10/7 内部 Feature Freeze；10/8–10 bugfix / 校赛材料 / Demo；10/10 校赛完成节点；10/15 20:00 省赛报名/缴费截止（不是作品开发截止）；省赛阶段安排依赛事通知。
 
 ## 保底顺序
 
