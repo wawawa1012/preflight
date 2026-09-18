@@ -41,7 +41,7 @@
         "missing": {
           "searched_block_count": 1,
           "searched_filename": "synthetic.md",
-          "explanation": "当前范围尚未发现引用：已核对材料「synthetic.md」的 1 个 Block 上全部已核证关联，本评分要求已关联 0 条。这不是证明材料外不存在证据。"
+          "explanation": "当前范围尚未发现引用：已核对材料「synthetic.md」的 1 个 Block 上全部已确认关联，本评分要求已关联 0 条。这不是证明材料外不存在证据。"
         }
       }
     ],

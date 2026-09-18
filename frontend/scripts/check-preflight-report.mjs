@@ -25,6 +25,8 @@ check(
   FORBIDDEN.filter((word) => reportSource.includes(word)).join('、'),
 )
 check('Drawer 使用 USlideover', drawerSource.includes('USlideover'))
+check('报告页标签为「已确认关联」且不再用「已核证」', reportSource.includes('已确认关联') && !reportSource.includes('已核证'))
+check('引用行标注「原文已校验」', reportSource.includes('原文已校验'))
 check('路由登记 /materials/:materialId/report', routerSource.includes("'/materials/:materialId/report'"))
 check('citation 展示 human/agent 溯源徽章', reportSource.includes('proposed_by'))
 check(
@@ -57,7 +59,7 @@ const citation = {
   end: 14,
 }
 const missingExplanation =
-  '当前范围尚未发现引用：已核对材料「ev.md」的 1 个 Block 上全部已核证关联，本评分要求已关联 0 条。这不是证明材料外不存在证据。'
+  '当前范围尚未发现引用：已核对材料「ev.md」的 1 个 Block 上全部已确认关联，本评分要求已关联 0 条。这不是证明材料外不存在证据。'
 const report = {
   material_id: 'mat_x',
   filename: 'ev.md',

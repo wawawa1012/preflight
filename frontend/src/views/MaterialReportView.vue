@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import type { MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 
-// 材料级预审报告：只读展示已核证引用与当前检索范围，不做满足判定。
+// 材料级预审报告：只读展示已确认关联与当前检索范围，不做满足判定。
 const route = useRoute()
 const materialId = String(route.params.materialId)
 
@@ -64,7 +64,7 @@ loadReport()
         <h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ report ? report.filename : '预审报告' }}</h1>
         <p class="mt-2 text-sm text-slate-400">
           <span v-if="report">{{ report.rubric_title }} · rev{{ report.rubric_revision }} · {{ report.block_count }} 个 Block</span>
-          <span v-else>按评审标准查看每条要求的已核证引用</span>
+          <span v-else>按评审标准查看每条要求的已确认关联</span>
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
@@ -114,7 +114,7 @@ loadReport()
             <p class="mt-1 text-xs text-slate-500">{{ row.requirement }}</p>
           </div>
           <UBadge v-if="row.verified_citation_count > 0" color="success" variant="subtle">
-            已核证引用 {{ row.verified_citation_count }} 条
+            已确认关联 {{ row.verified_citation_count }} 条
           </UBadge>
           <UBadge v-else color="neutral" variant="subtle">当前范围尚未发现引用</UBadge>
         </div>
@@ -127,6 +127,7 @@ loadReport()
               @click="openCitation(citation)"
             >
               <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · line {{ citation.line_number }}</span>
+              <span class="ml-2 text-xs text-emerald-400">原文已校验</span>
               <span class="ml-2 inline-flex">
                 <UBadge :color="citation.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
                   {{ citation.proposed_by }}

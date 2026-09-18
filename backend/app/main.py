@@ -114,7 +114,7 @@ def material_by_id(material_id: str) -> SavedMaterial:
     return material
 
 
-# 只读预审装配：从现有绑定与已核证关联计算，不写库、不做满足判定。
+# 只读预审装配：从现有绑定与已确认关联计算，不写库、不做满足判定。
 @app.get("/api/v1/preflight-summaries", response_model=list[MaterialPreflightSummary])
 def preflight_summaries() -> list[MaterialPreflightSummary]:
     return assemble_summaries()

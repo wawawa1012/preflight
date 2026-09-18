@@ -12,7 +12,7 @@ from .contracts import (
 from .storage import RubricNotBound
 
 SCOPE_TMPL = (
-    "当前范围尚未发现引用：已核对材料「{filename}」的 {n} 个 Block 上全部已核证关联，"
+    "当前范围尚未发现引用：已核对材料「{filename}」的 {n} 个 Block 上全部已确认关联，"
     "本评分要求已关联 0 条。这不是证明材料外不存在证据。"
 )
 

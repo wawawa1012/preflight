@@ -87,7 +87,7 @@ try {
   )
   check(
     'Workbench 模板含报告中心文案',
-    workbenchSource.includes('已核证引用') && workbenchSource.includes('当前范围尚未发现引用'),
+    workbenchSource.includes('已确认关联') && workbenchSource.includes('当前范围尚未发现引用'),
   )
 
   const materials = await context('/src/views/MaterialsView.vue', '/materials', async () => jsonResponse([summary]))

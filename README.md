@@ -1,6 +1,6 @@
 # Preflight
 
-让重要材料中的每个关键结论，都能追溯到真实依据。当前已实现：Markdown 材料的 Block 预览与保存、证据标注、评分标准绑定与人工关联、单 criterion AI 预检、材料级预审报告（已核证引用与检索范围）；进度见 [docs/MILESTONES.md](docs/MILESTONES.md)。
+让重要材料中的每个关键结论，都能追溯到真实依据。当前已实现：Markdown 材料的 Block 预览与保存、证据标注、评分标准绑定与人工关联、单 criterion AI 预检、材料级预审报告（已确认关联与检索范围）；进度见 [docs/MILESTONES.md](docs/MILESTONES.md)。
 唯一仓库：`F:\project\Preflight`。从 [Master Plan](docs/MASTER_PLAN.md) 开始；施工规则见 [AGENTS.md](AGENTS.md)。
 
 ## Windows 原生启动

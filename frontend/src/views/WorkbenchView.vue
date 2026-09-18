@@ -49,7 +49,7 @@ loadSummaries()
   <main class="mx-auto max-w-4xl px-6 py-20">
     <p class="mb-4 text-sm font-medium text-violet-400">WORKBENCH</p>
     <h1 class="text-4xl font-semibold tracking-tight">让关键结论回到原文</h1>
-    <p class="mt-5 text-slate-400">按评审标准预审材料。每条要求显示已核证引用数；没有引用时说明查过哪里。</p>
+    <p class="mt-5 text-slate-400">按评审标准预审材料。每条要求显示已确认关联数；没有引用时说明查过哪里。</p>
 
     <div class="mt-8 flex flex-wrap gap-3">
       <UButton to="/materials/new" icon="i-lucide-upload">开始预检</UButton>
@@ -89,7 +89,7 @@ loadSummaries()
             <div class="flex flex-wrap items-center gap-2">
               <template v-if="item.bound">
                 <UBadge color="neutral" variant="subtle" size="sm">已绑定 rev{{ item.rubric_revision }}</UBadge>
-                <UBadge color="success" variant="subtle" size="sm">已核证引用 {{ item.verified_citation_count }} 条</UBadge>
+                <UBadge color="success" variant="subtle" size="sm">已确认关联 {{ item.verified_citation_count }} 条</UBadge>
                 <UBadge v-if="item.criteria_without_citations" color="neutral" variant="subtle" size="sm">
                   当前范围尚未发现引用 {{ item.criteria_without_citations }} 项
                 </UBadge>
