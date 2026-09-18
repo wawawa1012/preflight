@@ -153,7 +153,7 @@ loadReport()
           <div class="flex flex-wrap justify-end gap-2">
             <UBadge v-if="neverPreflighted(row.criterion_id)" color="neutral" variant="subtle">尚未预检</UBadge>
             <UBadge v-if="emptyPreflight(row.criterion_id)" color="neutral" variant="subtle">
-              预检完成 · 当前材料尚未发现候选引用
+              {{ row.verified_citation_count > 0 ? '本次未提出新候选' : '预检完成 · 当前材料尚未发现候选引用' }}
             </UBadge>
             <UBadge v-if="pendingFor(row.criterion_id) > 0" color="warning" variant="subtle">
               已发现 {{ pendingFor(row.criterion_id) }} 条候选，待审核

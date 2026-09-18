@@ -35,6 +35,7 @@ check(
 check('Drawer 使用 USlideover', drawerSource.includes('USlideover'))
 check('报告页标签为「已确认关联」且不再用「已核证」', reportSource.includes('已确认关联') && !reportSource.includes('已核证'))
 check('空预检文案在报告源码中', reportSource.includes('预检完成 · 当前材料尚未发现候选引用'))
+check('有确认关联的空预检文案在报告源码中', reportSource.includes('本次未提出新候选'))
 check('报告组合 agent-proposals', reportSource.includes('agent-proposals'))
 check('正交：待审核与已确认可同时出现在模板', reportSource.includes('已发现') && reportSource.includes('已确认关联'))
 check('引用行标注「原文已校验」', reportSource.includes('原文已校验'))
@@ -213,6 +214,19 @@ try {
     check(
       '空预检范围来自报告 filename 与 block_count',
       bindings.report.value.filename === 'ev.md' && bindings.report.value.block_count === 1,
+    )
+  }
+
+  {
+    // 已有确认关联的同一行再次空预检：状态并存，模板改写为「本次未提出新候选」。
+    const confirmedReport = { ...report, criteria: [report.criteria[0]] }
+    const confirmedEmpty = { ...emptyProposal, criterion_id: 'c_syn_1' }
+    const { app } = await mount(reportFetch(confirmedReport, 200, [confirmedEmpty]))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '有确认关联的空预检：confirmed>0 且 emptyPreflight 为真',
+      bindings.emptyPreflight('c_syn_1') === true && bindings.report.value.criteria[0].verified_citation_count === 1,
     )
   }
 

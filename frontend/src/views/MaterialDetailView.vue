@@ -760,7 +760,7 @@ init()
                     variant="subtle"
                     size="sm"
                   >
-                    预检完成 · 当前材料尚未发现候选引用
+                    {{ criterionConfirmed(criterion.id) > 0 ? '本次未提出新候选' : '预检完成 · 当前材料尚未发现候选引用' }}
                   </UBadge>
                   <UBadge
                     v-if="criterionPending(criterion.id) > 0"

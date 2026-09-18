@@ -21,8 +21,8 @@
 
 - /materials：Materials Hub。主区紧凑行列表（整行可点击进详情）；右侧单个概览面板，只显示由列表响应直接计算的真实数据（已保存数量、总 Block 数、最近保存时间、支持格式）；空态只有一句说明和一个主按钮。
 - /materials/new：添加材料工作流。未选文件时是唯一任务区（步骤说明 + 点击/拖入选择区）；生成预览后上传表单退场，顶部面包屑 + 低权重“更换文件”，保存动作固定在 sticky Material Header。
-- /materials/:materialId：已保存材料详情。F5/深链按 ID 从 API 恢复；emerald 已保存徽章、本地保存时间、截断 sha256；无上传控件、无临时状态、无保存按钮、不以完整 material ID 为视觉主体。证据区在 Block 列表上方：显示已保存标注（quote + line + note）；在任意 Block 行点击“标注”展开行内表单（quote 预填整块原文、可改窄，note 可选），保存后由服务端校验并进入列表。评分标准区：未绑定显示只读标准仓的可用列表（title、来源、revision）与“绑定”，空仓显示“尚未配置评分标准”；已绑定显示来源/版本与 Criterion 列表，每项下挂已关联引用。每条 Criterion 标题下正交展示（可同时出现）：尚未预检 / 预检完成·当前材料尚未发现候选引用（加范围）/ 已发现 N 条候选待审核 / 已确认关联 N 条。「尚未关联引用」仅尚未预检且无关联时出现。标注按钮 title：AI 未找到时手动圈一句；证据空态说明预检「接受」会出现在这里。
-- /materials/:materialId/report：材料预审报告。前端组合 GET preflight-report 与 GET agent-proposals（不改契约）。每行正交展示上述计数；空预检主句为「预检完成 · 当前材料尚未发现候选引用」+ 范围（文件名与 Block 数）；待审核链回材料页，报告不接 accept。有引用时 Drawer +「原文已校验」。未绑定 409 不画空矩阵；404/失败保留 Workbench 与返回材料。将来换绑须保留旧 rubric/revision 的 links。Block 仍是 locator/chunk；跨行证据将来 multi-span，不改行切分。
+- /materials/:materialId：已保存材料详情。F5/深链按 ID 从 API 恢复；emerald 已保存徽章、本地保存时间、截断 sha256；无上传控件、无临时状态、无保存按钮、不以完整 material ID 为视觉主体。证据区在 Block 列表上方：显示已保存标注（quote + line + note）；在任意 Block 行点击“标注”展开行内表单（quote 预填整块原文、可改窄，note 可选），保存后由服务端校验并进入列表。评分标准区：未绑定显示只读标准仓的可用列表（title、来源、revision）与“绑定”，空仓显示“尚未配置评分标准”；已绑定显示来源/版本与 Criterion 列表，每项下挂已关联引用。每条 Criterion 标题下正交展示（可同时出现）：尚未预检 / 预检完成·当前材料尚未发现候选引用（加范围；该行已有关联时改「本次未提出新候选」）/ 已发现 N 条候选待审核 / 已确认关联 N 条。「尚未关联引用」仅尚未预检且无关联时出现。预检按钮带本地秒表「正在预检… Ns」；同一条重复点被忽略，不同 Criterion 可并行预检；评分标准区标题提供「预检全部」（未 completed 的三条并发，失败一条不影响其他）。标注按钮 title：AI 未找到时手动圈一句；证据空态说明预检「接受」会出现在这里。
+- /materials/:materialId/report：材料预审报告。前端组合 GET preflight-report 与 GET agent-proposals（不改契约）。每行正交展示上述计数；空预检主句为「预检完成 · 当前材料尚未发现候选引用」+ 范围（文件名与 Block 数），该行已有关联时改「本次未提出新候选」；待审核链回材料页，报告不接 accept。有引用时 Drawer +「原文已校验」。未绑定 409 不画空矩阵；404/失败保留 Workbench 与返回材料。将来换绑须保留旧 rubric/revision 的 links。Block 仍是 locator/chunk；跨行证据将来 multi-span，不改行切分。
 - /preview：兼容重定向到 /materials/new，不再是平级导航目标。
 
 全局 invariant：Secondary workspaces must always provide an explicit route back to Workbench; browser history is not product navigation.

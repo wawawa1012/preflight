@@ -36,6 +36,7 @@ check(
 check('评分标准区有「预检全部」', detailSource.includes('预检全部'))
 check('预检按钮带本地秒表', detailSource.includes('正在预检…') && detailSource.includes('preflightSeconds'))
 check('前端不含 max_tokens（封顶只在后端）', !detailSource.includes('max_tokens'))
+check('空预检且已有关联时文案为「本次未提出新候选」', detailSource.includes('本次未提出新候选'))
 
 const blockOne = {
   id: 'blk_1',
