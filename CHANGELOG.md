@@ -1,5 +1,62 @@
 # Progress log
 
+## 2026-09-18 — I6.2：预检体感可预期（单次封顶 + 并行 + 秒表；实现完成，待用户 live 计时）
+
+提交：
+
+- `c598fe9` perf: cap preflight completion tokens（`max_tokens=800`；prompt v2.1 追加「rationale ≤40 字、最多 3 条」；`PROMPT_VERSION=p5-criterion-preflight-v2.1`；未设 temperature=0，未上 FTS/预过滤）
+- `6cb4eca` feat: run preflight in parallel with per-criterion stopwatch（同条重复点忽略、不同 criterion 可并行；评分标准区「预检全部」`Promise.all` 有界 3、失败互不影响；按钮「正在预检… Ns」本地秒表）
+- `4247f4b` fix: label empty reruns as no new candidates（空预检且该行已有关联 → 徽章「本次未提出新候选」；报告页同步）
+
+验证（本机 Windows，PowerShell）：
+
+```
+backend: .\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
+...
+Ran 102 tests in 2.177s
+OK
+```
+
+```
+.\backend\.venv\Scripts\python.exe -X utf8 scripts\run_preflight_benchmark.py --mode=stub
+{"case": "neg_java", "passed_count": 0, "candidate_count": 0}
+{"case": "pos_metrics", "passed_count": 1, "candidate_count": 1}
+exit: 0
+```
+
+```
+.\backend\.venv\Scripts\python.exe -X utf8 scripts\check_contracts.py
+PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases
+exit: 0
+```
+
+```
+npm.cmd --prefix frontend run build
+dist/assets/index-CQhfuJpk.js  396.79 kB │ gzip: 124.82 kB
+✓ built in 3.15s
+build exit: 0
+```
+
+```
+node scripts/check-materials-nav.mjs   -> SUMMARY: 15/15 passed
+node scripts/check-preview-race.mjs    -> SUMMARY: 23/23 passed
+node scripts/check-evidence-annotation.mjs -> SUMMARY: 14/14 passed
+node scripts/check-rubric-link.mjs     -> SUMMARY: 24/24 passed
+node scripts/check-agent-proposal.mjs  -> SUMMARY: 40/40 passed
+node scripts/check-preflight-report.mjs -> SUMMARY: 28/28 passed
+```
+
+实测与人工验收注意：
+
+- 验收前必须重启 uvicorn（llm.py 已改 prompt 与封顶）。
+- Pos 单条耗时仍取决于网关；本切片将输出封顶并把三条并行的墙钟压到≈最慢一次。
+- 用户 live 实测 elapsed_ms 待贴：`scripts/run_preflight_benchmark.py --mode=live`（DS 不代打 key）。
+
+已知限制：
+
+- 空结果仍需 1 次 LLM 调用；并发由前端发起，后端未加队列/限流。
+- 并行预检的错误共用一个 `proposalError`：多条同时失败时后完成的会覆盖先前的错误文案（未做逐条错误位）。
+
 ## 2026-09-18 — I6.1：空预检像查过了（正交计数，不改契约）
 
 详情与报告用提案列表 + 已确认关联并排展示：尚未预检 / 预检完成·当前材料尚未发现候选引用（含范围）/ 已发现 N 条待审核 / 已确认关联 N 条。报告前端组合 GET agent-proposals。标注降级为一句说明。未改 contracts/storage/llm。
