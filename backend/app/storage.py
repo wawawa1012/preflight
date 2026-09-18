@@ -291,6 +291,32 @@ def material_exists(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
     return row is not None
 
 
+def delete_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
+    """删除材料本体；blocks/annotations/links/proposals 由 FK CASCADE 清理。
+
+    recent_material 指针没有 CASCADE：同一事务内先改指到仍然存在的最近材料（没有就清空），
+    再删材料；否则 FK 约束会挡住删除，指针也不会指向已删除的行。
+    材料不存在返回 False（调用方转 404）。
+    """
+    with closing(connect(db_path)) as connection, connection:
+        cleared = connection.execute(
+            "DELETE FROM recent_material WHERE singleton = 1 AND material_id = ?",
+            (material_id,),
+        ).rowcount
+        deleted = connection.execute("DELETE FROM materials WHERE id = ?", (material_id,))
+        if deleted.rowcount == 0:
+            return False
+        if cleared:
+            successor = connection.execute(
+                "SELECT id FROM materials ORDER BY created_at DESC, rowid DESC LIMIT 1"
+            ).fetchone()
+            if successor is not None:
+                connection.execute(
+                    "INSERT INTO recent_material (singleton, material_id) VALUES (1, ?)", (successor["id"],)
+                )
+    return True
+
+
 def _annotation_from_row(row: sqlite3.Row) -> EvidenceAnnotation:
     return EvidenceAnnotation(
         id=row["id"],

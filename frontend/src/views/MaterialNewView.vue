@@ -183,7 +183,7 @@ async function saveMaterial() {
       <p class="mt-3 text-xs text-slate-500">Block 与行号由确定性程序生成，不由模型编造。</p>
 
       <div
-        class="mt-6 cursor-pointer rounded-lg border-2 border-dashed px-6 py-16 text-center transition"
+        class="mt-6 cursor-pointer rounded-lg border-2 border-dashed px-6 py-10 text-center transition"
         :class="dragActive ? 'border-violet-500/70 bg-violet-500/5' : 'border-slate-700 hover:border-slate-500'"
         role="button"
         tabindex="0"

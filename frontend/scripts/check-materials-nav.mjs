@@ -1,5 +1,6 @@
-// Materials 导航 invariant 检查（真实 SSR 渲染 + 数据状态，不引入测试框架）：
+// Materials 导航 invariant 检查（真实 SSR 渲染 + 数据状态 + 行为级 setup，不引入测试框架）：
 // 二级工作区必须有显式回 Workbench 的入口；并核对 Golden Journey 的关键链接与数据。
+// 本轮追加：行内 k/n 条要求已有关联（只来自 preflight-summaries）、未绑定、UModal 删除确认。
 // 运行：cd frontend && node scripts/check-materials-nav.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp } from 'vue'
@@ -29,6 +30,12 @@ const summary = {
   created_at: '2026-09-16T06:00:00+00:00',
   block_count: 2,
 }
+const draftSummary = {
+  id: 'mat_demo_2',
+  filename: 'draft.md',
+  created_at: '2026-09-16T05:00:00+00:00',
+  block_count: 1,
+}
 const boundSummary = {
   material_id: 'mat_demo_1',
   filename: 'ev.md',
@@ -41,6 +48,18 @@ const boundSummary = {
   criteria_with_citations: 1,
   criteria_without_citations: 1,
 }
+const unboundSummary = {
+  material_id: 'mat_demo_2',
+  filename: 'draft.md',
+  created_at: '2026-09-16T05:00:00+00:00',
+  block_count: 1,
+  bound: false,
+  rubric_revision: null,
+  verified_citation_count: 0,
+  criteria_total: null,
+  criteria_with_citations: null,
+  criteria_without_citations: null,
+}
 const detail = {
   id: 'mat_demo_1',
   filename: 'demo.md',
@@ -49,6 +68,16 @@ const detail = {
   line_count: 2,
   created_at: '2026-09-16T06:00:00+00:00',
   blocks: [],
+}
+
+// 同一页现在读两个只读端点：材料列表与预审摘要；stub 必须按 URL 区分。
+function materialsFetch(materialsBody, summariesBody) {
+  return async (input) => {
+    const url = String(input)
+    if (url.includes('/api/v1/preflight-summaries')) return jsonResponse(summariesBody)
+    if (url.includes('/api/v1/materials')) return jsonResponse(materialsBody)
+    return jsonResponse([])
+  }
 }
 
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
@@ -86,11 +115,19 @@ try {
     ['已满足', '已支撑', '覆盖率', '就绪度', 'Trust Layer'].filter((word) => workbenchSource.includes(word)).join('、'),
   )
   check(
-    'Workbench 模板含报告中心文案',
-    workbenchSource.includes('已确认关联') && workbenchSource.includes('当前范围尚未发现引用'),
+    'Workbench 模板含 k/n 条要求已有关联与范围句',
+    workbenchSource.includes('条要求已有关联') && workbenchSource.includes('当前范围尚未发现引用'),
+  )
+  check(
+    'Workbench 未绑定行显示未绑定',
+    workbenchSource.includes('未绑定') && workbenchSource.includes('criteriaLabel'),
   )
 
-  const materials = await context('/src/views/MaterialsView.vue', '/materials', async () => jsonResponse([summary]))
+  const materials = await context(
+    '/src/views/MaterialsView.vue',
+    '/materials',
+    materialsFetch([summary, draftSummary], [boundSummary, unboundSummary]),
+  )
   const materialsHtml = await renderToString(materials.app)
   check('/materials 渲染 Workbench 出口', materialsHtml.includes('href="/"') && materialsHtml.includes('Workbench'))
   check('/materials 渲染 添加材料 主 CTA', materialsHtml.includes('href="/materials/new"'))
@@ -114,15 +151,21 @@ try {
   )
 
   // B. 数据层：手动执行 setup，验证真实响应进入页面状态（每个页面用各自的 fetch stub）。
-  globalThis.fetch = async () => jsonResponse([summary])
+  globalThis.fetch = materialsFetch([summary, draftSummary], [boundSummary, unboundSummary])
   const materialsBindings = materials.app.runWithContext(() => materials.module.default.setup({}, { expose() {} }))
   await flush()
   check(
-    '/materials 数据装载：1 条 summary 且 loading=false',
-    materialsBindings.materials.value.length === 1 &&
+    '/materials 数据装载：2 条 summary 且 loading=false',
+    materialsBindings.materials.value.length === 2 &&
       materialsBindings.materials.value[0].id === 'mat_demo_1' &&
       materialsBindings.loading.value === false,
     materialsBindings.materials.value.length,
+  )
+  check(
+    '/materials 行标签：已绑定显示 k/n 条要求已有关联、未绑定显示未绑定',
+    materialsBindings.relationshipLabel({ id: 'mat_demo_1' }) === '1/2 条要求已有关联' &&
+      materialsBindings.relationshipLabel({ id: 'mat_demo_2' }) === '未绑定',
+    materialsBindings.relationshipLabel({ id: 'mat_demo_1' }),
   )
 
   // 首页数据层：装载一条已绑定摘要（另一次 mount，stub 返回真实形状）。
@@ -142,6 +185,12 @@ try {
       workbenchBindings.summaries.value[0].verified_citation_count === 2,
     workbenchBindings.summaries.value.length,
   )
+  check(
+    '首页行标签为 k/n 条要求已有关联，标准不可用时为未评估',
+    workbenchBindings.criteriaLabel(boundSummary) === '1/2 条要求已有关联' &&
+      workbenchBindings.criteriaLabel({ ...boundSummary, criteria_total: null, criteria_with_citations: null }) === '未评估',
+    workbenchBindings.criteriaLabel(boundSummary),
+  )
 
   globalThis.fetch = async () => jsonResponse(detail)
   const detailBindings = detailContext.app.runWithContext(() => detailContext.module.default.setup({}, { expose() {} }))
@@ -158,11 +207,85 @@ try {
   await flush()
   check('未知 ID 进入 notFound 状态（不 fallback）', missingBindings.notFound.value === true && missingBindings.material.value === null)
 
-  // C. 源码层：预览态与列表行的导航目标（SSR 初始态无法覆盖的状态）。
+  // C. 行内删除：确认走 UModal；204 移除该行，404 视为已不存在，其余失败保留该行。
+  async function deleteContext(deleteResponse) {
+    const calls = []
+    const mounted = await context('/src/views/MaterialsView.vue', '/materials', async (input, init) => {
+      const url = String(input)
+      const method = (init && init.method) || 'GET'
+      calls.push({ url, method })
+      if (method === 'DELETE') return deleteResponse(url)
+      return materialsFetch([summary, draftSummary], [boundSummary, unboundSummary])(input)
+    })
+    const bindings = mounted.app.runWithContext(() => mounted.module.default.setup({}, { expose() {} }))
+    await flush()
+    return { bindings, calls }
+  }
+
+  const okDelete = await deleteContext(async () => new Response(null, { status: 204 }))
+  okDelete.bindings.requestDelete(okDelete.bindings.materials.value[0])
+  check(
+    '删除确认只挂起该行，不立即发请求',
+    okDelete.bindings.pendingDelete.value?.id === 'mat_demo_1' &&
+      okDelete.calls.every((call) => call.method !== 'DELETE'),
+  )
+  await okDelete.bindings.confirmDelete()
+  await flush()
+  check(
+    '确认后 DELETE 204：该行与摘要一起移除、确认态清空',
+    okDelete.calls.some((call) => call.method === 'DELETE' && call.url === '/api/v1/materials/mat_demo_1') &&
+      okDelete.bindings.materials.value.length === 1 &&
+      okDelete.bindings.materials.value[0].id === 'mat_demo_2' &&
+      okDelete.bindings.summaries.value.length === 1 &&
+      okDelete.bindings.pendingDelete.value === null,
+    okDelete.bindings.materials.value.length,
+  )
+
+  const goneDelete = await deleteContext(async () =>
+    jsonResponse({ code: 'material_not_found', message: '找不到该材料', details: [] }, 404),
+  )
+  goneDelete.bindings.requestDelete(goneDelete.bindings.materials.value[0])
+  await goneDelete.bindings.confirmDelete()
+  await flush()
+  check(
+    'DELETE 404 视为该材料已不存在：同样移除该行且不报错',
+    goneDelete.bindings.materials.value.length === 1 &&
+      goneDelete.bindings.materials.value[0].id === 'mat_demo_2' &&
+      goneDelete.bindings.deleteError.value === '',
+  )
+
+  const failedDelete = await deleteContext(async () =>
+    jsonResponse({ code: 'internal_error', message: '服务器内部错误', details: [] }, 500),
+  )
+  failedDelete.bindings.requestDelete(failedDelete.bindings.materials.value[1])
+  await failedDelete.bindings.confirmDelete()
+  await flush()
+  check(
+    '删除失败保留该行并显示错误',
+    failedDelete.bindings.materials.value.length === 2 &&
+      failedDelete.bindings.deleteError.value.includes('服务器内部错误') &&
+      failedDelete.bindings.pendingDelete.value?.id === 'mat_demo_2',
+    failedDelete.bindings.deleteError.value,
+  )
+
+  // D. 源码层：预览态与列表行的导航目标（SSR 初始态无法覆盖的状态）。
   const newSource = readFileSync(new URL('../src/views/MaterialNewView.vue', import.meta.url), 'utf8')
   const materialsSource = readFileSync(new URL('../src/views/MaterialsView.vue', import.meta.url), 'utf8')
   check('预览态仍有 Workbench 出口与 Materials 面包屑', newSource.includes('Workbench') && newSource.includes('to="/materials"'))
   check('列表行链接到各自详情', materialsSource.includes(':to="`/materials/${item.id}`"'))
+  check(
+    '删除确认用 UModal，不用 window.confirm',
+    materialsSource.includes('<UModal') && !materialsSource.includes('window.confirm'),
+  )
+  check(
+    'Materials 源码不含禁用词',
+    ['已满足', '已支撑', '覆盖率', '就绪度', '分数'].every((word) => !materialsSource.includes(word)),
+    ['已满足', '已支撑', '覆盖率', '就绪度', '分数'].filter((word) => materialsSource.includes(word)).join('、'),
+  )
+  check(
+    '拖拽区高度缩短且未加假模块',
+    /border-dashed px-6 py-10/.test(newSource) && !newSource.includes('py-16'),
+  )
 } finally {
   await server.close()
 }

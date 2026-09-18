@@ -42,6 +42,16 @@ async function checkBackend() {
   }
 }
 
+// 行状态只用已实现能力：k/n 条要求已有关联（来自只读装配摘要）；标准版本不可用时按未评估展示。
+function criteriaLabel(item: MaterialPreflightSummary) {
+  if (item.criteria_total === null || item.criteria_total === undefined) return '未评估'
+  return `${item.criteria_with_citations ?? 0}/${item.criteria_total} 条要求已有关联`
+}
+
+function criteriaColor(item: MaterialPreflightSummary): 'neutral' | 'success' {
+  return item.criteria_total === null || item.criteria_total === undefined ? 'neutral' : 'success'
+}
+
 loadSummaries()
 </script>
 
@@ -89,7 +99,7 @@ loadSummaries()
             <div class="flex flex-wrap items-center gap-2">
               <template v-if="item.bound">
                 <UBadge color="neutral" variant="subtle" size="sm">已绑定 rev{{ item.rubric_revision }}</UBadge>
-                <UBadge color="success" variant="subtle" size="sm">已确认关联 {{ item.verified_citation_count }} 条</UBadge>
+                <UBadge :color="criteriaColor(item)" variant="subtle" size="sm">{{ criteriaLabel(item) }}</UBadge>
                 <UBadge v-if="item.criteria_without_citations" color="neutral" variant="subtle" size="sm">
                   当前范围尚未发现引用 {{ item.criteria_without_citations }} 项
                 </UBadge>

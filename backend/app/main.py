@@ -116,6 +116,14 @@ def material_by_id(material_id: str) -> SavedMaterial:
     return material
 
 
+# 删除材料：本体与全部从属行（blocks/证据/关联/提案）一次事务移除，不可恢复。
+@app.delete("/api/v1/materials/{material_id}", status_code=204)
+def remove_material(material_id: str) -> Response:
+    if not storage.delete_material(material_id):
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return Response(status_code=204)
+
+
 # 只读预审装配：从现有绑定与已确认关联计算，不写库、不做满足判定。
 @app.get("/api/v1/preflight-summaries", response_model=list[MaterialPreflightSummary])
 def preflight_summaries() -> list[MaterialPreflightSummary]:
