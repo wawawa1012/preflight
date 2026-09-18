@@ -67,7 +67,10 @@ loadReport()
           <span v-else>按评审标准查看每条要求的已核证引用</span>
         </p>
       </div>
-      <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+      <div class="flex flex-wrap gap-2">
+        <UButton :to="`/materials/${materialId}`" color="neutral" variant="subtle" icon="i-lucide-file-text">返回材料</UButton>
+        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+      </div>
     </div>
 
     <UCard v-if="loading" class="mt-6">
@@ -88,13 +91,19 @@ loadReport()
     <UCard v-else-if="unbound" class="mt-6">
       <h2 class="text-lg font-medium">尚未绑定评分标准</h2>
       <p class="mt-2 text-sm text-slate-400">先到材料页绑定一套标准，报告才有可对照的评分要求。</p>
-      <UButton class="mt-6" :to="`/materials/${materialId}`" icon="i-lucide-link">去绑定评分标准</UButton>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <UButton :to="`/materials/${materialId}`" icon="i-lucide-link">去绑定评分标准</UButton>
+        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+      </div>
     </UCard>
 
     <UCard v-else-if="error" class="mt-6">
       <h2 class="text-lg font-medium">无法装配报告</h2>
       <p class="mt-2 text-sm text-slate-400">请求失败：{{ error }}</p>
-      <UButton class="mt-6" icon="i-lucide-refresh-cw" @click="loadReport">重试</UButton>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <UButton icon="i-lucide-refresh-cw" @click="loadReport">重试</UButton>
+        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+      </div>
     </UCard>
 
     <div v-else-if="report" class="mt-6 space-y-4">

@@ -27,6 +27,15 @@ check(
 check('Drawer 使用 USlideover', drawerSource.includes('USlideover'))
 check('路由登记 /materials/:materialId/report', routerSource.includes("'/materials/:materialId/report'"))
 check('citation 展示 human/agent 溯源徽章', reportSource.includes('proposed_by'))
+check(
+  '报告页提供返回材料出口（非 history.back）',
+  reportSource.includes('返回材料') && reportSource.includes('`/materials/${materialId}`') && !reportSource.includes('history.back'),
+)
+check(
+  '未绑定/失败卡片各有独立 Workbench 出口',
+  (reportSource.match(/to="\/"/g) ?? []).length >= 3,
+  `to="/" 出现 ${(reportSource.match(/to="\/"/g) ?? []).length} 次`,
+)
 
 const block = {
   id: 'blk_1',
