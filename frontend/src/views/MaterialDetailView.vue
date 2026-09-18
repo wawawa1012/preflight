@@ -413,6 +413,11 @@ function latestProposalFor(criterionId: string) {
   return proposals.value.find(item => item.criterion_id === criterionId) ?? null
 }
 
+function preflightButtonLabel(criterionId: string) {
+  // 已有 completed 提案时只展示历史，必须点「重新预检」才会再次 POST。
+  return latestProposalFor(criterionId)?.status === 'completed' ? '重新预检' : 'AI 预检'
+}
+
 function lineForBlock(blockId: string) {
   const block = material.value?.blocks.find(item => item.id === blockId)
   return block ? block.locator.index : '?'
@@ -435,7 +440,13 @@ async function runPreflight(criterion: Rubric['criteria'][number]) {
     )) as AgentProposal
     proposals.value = [proposal, ...proposals.value.filter(item => item.id !== proposal.id)]
     if (proposal.status === 'completed') {
-      proposalNotice.value = `预检完成：${proposal.candidates.length} 个候选`
+      if (proposal.candidates.length === 0) {
+        proposalNotice.value = '预检完成：没有提出候选（空结果正常）'
+      } else {
+        const passed = proposal.candidates.filter(item => item.validation_status === 'passed').length
+        const invalid = proposal.candidates.filter(item => item.validation_status === 'invalid').length
+        proposalNotice.value = `预检完成：原文引用有效 ${passed} 条，无效 ${invalid} 条，待你判断是否关联`
+      }
     } else {
       proposalError.value = `预检失败：${proposal.error ?? '未知错误'}`
     }
@@ -449,7 +460,7 @@ async function runPreflight(criterion: Rubric['criteria'][number]) {
 async function acceptCandidate(candidate: ProposalCandidate) {
   if (busy.value) return
   if (candidate.validation_status !== 'passed') {
-    proposalError.value = '未通过验证门的候选不能接受'
+    proposalError.value = '原文引用无效的候选不能接受'
     return
   }
   acceptingCandidateId.value = candidate.id
@@ -699,7 +710,7 @@ init()
                       :disabled="busy || !boundRubric"
                       @click="runPreflight(criterion)"
                     >
-                      {{ proposingCriterionId === criterion.id ? '正在预检…' : 'AI 预检' }}
+                      {{ proposingCriterionId === criterion.id ? '正在预检…' : preflightButtonLabel(criterion.id) }}
                     </UButton>
                   </div>
                   <template v-if="latestProposalFor(criterion.id)">
@@ -709,7 +720,11 @@ init()
                     >
                       上次预检失败：{{ latestProposalFor(criterion.id)!.error }}
                     </p>
-                    <ul v-else class="mt-2 space-y-2">
+                    <div v-else class="mt-2 space-y-2">
+                      <p class="text-xs text-slate-500">
+                        AI 提议可能相关，需你判断；「原文引用有效」只表示这句话在材料里。
+                      </p>
+                      <ul class="space-y-2">
                       <li
                         v-for="candidate in latestProposalFor(criterion.id)!.candidates"
                         :key="candidate.id"
@@ -729,7 +744,7 @@ init()
                             variant="subtle"
                             size="sm"
                           >
-                            通过验证
+                            原文引用有效
                           </UBadge>
                           <UBadge
                             v-else-if="candidate.validation_status === 'invalid'"
@@ -747,7 +762,7 @@ init()
                             size="xs"
                             :loading="acceptingCandidateId === candidate.id"
                             :disabled="busy || candidate.validation_status !== 'passed'"
-                            :title="candidate.validation_status === 'passed' ? undefined : '未通过验证门的候选不能接受'"
+                            :title="candidate.validation_status === 'passed' ? undefined : '原文引用无效的候选不能接受'"
                             @click="acceptCandidate(candidate)"
                           >
                             接受
@@ -783,7 +798,8 @@ init()
                           </UButton>
                         </div>
                       </li>
-                    </ul>
+                      </ul>
+                    </div>
                   </template>
                 </div>
               </div>

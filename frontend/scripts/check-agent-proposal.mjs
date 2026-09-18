@@ -17,7 +17,9 @@ const jsonResponse = (data, status = 200) =>
 const detailSource = readFileSync(new URL('../src/views/MaterialDetailView.vue', import.meta.url), 'utf8')
 
 check('详情页不含“已满足/已支撑”措辞', !detailSource.includes('已满足') && !detailSource.includes('已支撑'))
-check('存在 AI 预检按钮', detailSource.includes('AI 预检'))
+check('存在 AI 预检按钮', detailSource.includes('AI 预检') || detailSource.includes('重新预检'))
+check('不再使用「通过验证」徽章文案', !detailSource.includes('通过验证'))
+check('候选徽章写「原文引用有效」', detailSource.includes('原文引用有效'))
 check('未绑定时 guard 阻止发起预检', detailSource.includes('if (busy.value || !boundRubric.value) return'))
 check('invalid 候选有醒目错误码徽章', detailSource.includes('无效：'))
 check('接受按钮对非 passed 候选禁用', detailSource.includes("candidate.validation_status !== 'passed'"))
@@ -92,6 +94,7 @@ const state = {
   annotations: [],
   links: [],
   proposeStatus: 201,
+  proposeEmpty: false,
   proposeDefer: false,
   releasePropose: null,
   acceptStatus: 201,
@@ -105,6 +108,7 @@ function resetState() {
   state.annotations = []
   state.links = []
   state.proposeStatus = 201
+  state.proposeEmpty = false
   state.proposeDefer = false
   state.releasePropose = null
   state.acceptStatus = 201
@@ -125,7 +129,7 @@ globalThis.fetch = async (url, options = {}) => {
     state.counts.propose += 1
     const send = () => {
       if (state.proposeStatus === 201) {
-        const created = proposal()
+        const created = proposal('completed', state.proposeEmpty ? [] : undefined)
         state.proposals = [created, ...state.proposals]
         return jsonResponse(created, 201)
       }
@@ -236,12 +240,42 @@ try {
     const bindings = await mount()
     await bindings.runPreflight(RUBRIC.criteria[0])
     check('预检成功后提案进入列表', bindings.proposals.value.length === 1 && state.counts.propose === 1)
-    check('预检成功提示', bindings.proposalNotice.value.includes('预检完成'))
+    check(
+      '预检成功提示含有效/无效计数',
+      bindings.proposalNotice.value === '预检完成：原文引用有效 1 条，无效 1 条，待你判断是否关联',
+      bindings.proposalNotice.value,
+    )
     const candidates = bindings.latestProposalFor('c_syn_1').candidates
     check(
       'invalid 候选带机器码',
       candidates[1].validation_status === 'invalid' && candidates[1].validation_code === 'quote_not_found',
     )
+  }
+
+  // 空候选：正式文案（空结果正常），不是失败。
+  resetState()
+  {
+    state.proposeEmpty = true
+    const bindings = await mount()
+    await bindings.runPreflight(RUBRIC.criteria[0])
+    check(
+      '空候选提示为「没有提出候选（空结果正常）」',
+      bindings.proposalNotice.value === '预检完成：没有提出候选（空结果正常）',
+      bindings.proposalNotice.value,
+    )
+  }
+
+  // 已有 completed 历史：默认只展示，未点「重新预检」不发请求。
+  resetState()
+  {
+    state.proposals = [proposal()]
+    const bindings = await mount()
+    check(
+      '有历史时展示候选且不自动 POST',
+      state.counts.propose === 0 && bindings.latestProposalFor('c_syn_1').status === 'completed',
+    )
+    check('有 completed 历史时按钮为「重新预检」', bindings.preflightButtonLabel('c_syn_1') === '重新预检')
+    check('无历史时按钮为「AI 预检」', bindings.preflightButtonLabel('c_syn_2') === 'AI 预检')
   }
 
   // busy 互斥：预检进行中不能重复发起/接受。
@@ -272,7 +306,8 @@ try {
     await bindings.acceptCandidate(invalid)
     check(
       'invalid 候选不可接受且不发请求',
-      state.counts.accept === 0 && bindings.proposalError.value.includes('验证门'),
+      state.counts.accept === 0 && bindings.proposalError.value.includes('原文引用无效'),
+      bindings.proposalError.value,
     )
 
     const passed = bindings.latestProposalFor('c_syn_1').candidates[0]
