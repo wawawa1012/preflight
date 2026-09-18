@@ -23,6 +23,7 @@
 - Iteration 4 Phase A（Evidence→Criterion 人工关联 + 只读 rubric 文件仓）：Phase A 已验收并收口提交。
 - Iteration 4 Phase B（转录确认稿并加载）：实现完成，待人工验收；取得官方评审细则后转录为新文件，不覆盖本版本。
 - Iteration 5（单 criterion 真实 AI 预检 + 提案裁决，对应 9/20–9/22）：实现完成，待人工验收；真实 LLM 调用需用户在 backend/.env 填入兼容服务配置后人工验收。
+- Iteration 5.1（Proposal Quality：prompt v2 允许诚实弃权 + 引用有效≠相关措辞 + benchmark harness）：实现完成，待用户跑 live benchmark（scripts/run_preflight_benchmark.py --mode=live，由用户手动；stub 已进回归）。
 - Iteration 6（报告中心 + 真实评分矩阵 + 带范围的「当前范围尚未发现引用」+ Evidence Drawer）：实现完成，待人工验收；只读装配端点已批准并上线（两个 GET，不改既有表与端点语义）。
 - 产品树治理生效（2026-09-18）：docs/PRODUCT_TREE.md 为功能取舍最高准则（准入三问/树干串行/树冠并行/事实性状态词表）。
 - Iteration 6 方向已定：真实评分矩阵报告（替换 mock）+ 缺失证据发现 + Evidence Drawer + Workbench 报告中心化；验收标准含"5 秒测试"（见 PRODUCT_TREE.md 第七节）。

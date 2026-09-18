@@ -1,5 +1,65 @@
 # Progress log
 
+## 2026-09-18 — Iteration 5.1：Proposal Quality（弃权 + 措辞 + benchmark harness，实现完成，待用户 live benchmark）
+
+提交：
+
+- `2667492` fix: add material exit on preflight report（报告页顶栏「返回材料」+ 未绑定/失败卡片 Workbench 出口，禁止 history.back）
+- `9ce2508` feat: log preflight llm timing without contract change（preflight.llm INFO：model/prompt_version/block_count/prompt_chars/elapsed_ms/candidate_count；usage 存在才记 token）
+- `dcc3565` test: add neg-java and pos-metrics preflight fixtures（benchmark/cases + scripts/run_preflight_benchmark.py，默认 stub 不打网）
+- `e419c4c` feat: raise preflight prompt to v2 with abstention（`p5-criterion-preflight-v2`：直接依据 vs 练习题/教程不算证据；空数组正常且优于牵强；未设 temperature）
+- `28414f5` fix: distinguish citation validity from relevance in proposal ui（徽章「原文引用有效」；有 completed 历史默认展示、按钮「重新预检」；空候选文案「空结果正常」）
+- `7417ff4` fix: say confirmed links not verified support on report（「已确认关联 N 条」+ 引用行「原文已校验」；SCOPE_TMPL 同步；字段 verified_citation_count 不改名）
+- `d5ca232` chore: keep local plan notes untracked（.hermes/ 撤出跟踪并 gitignore）
+
+验证输出（本机 Windows，PowerShell）：
+
+```
+cd backend
+.\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
+...
+Ran 99 tests in 2.160s
+OK
+```
+
+```
+.\backend\.venv\Scripts\python.exe -X utf8 scripts\run_preflight_benchmark.py --mode=stub
+{"case": "neg_java", "passed_count": 0, "candidate_count": 0}
+{"case": "pos_metrics", "passed_count": 1, "candidate_count": 1}
+exit: 0
+```
+
+```
+.\backend\.venv\Scripts\python.exe -X utf8 scripts\check_contracts.py
+PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases
+exit: 0
+```
+
+```
+npm.cmd --prefix frontend run build
+dist/assets/index-kTmqemx1.css  197.79 kB │ gzip:  26.11 kB
+dist/assets/index-DrtnGdDW.js   392.41 kB │ gzip: 123.62 kB
+✓ built in 3.09s
+build exit: 0
+```
+
+```
+cd frontend
+node scripts/check-materials-nav.mjs   -> SUMMARY: 15/15 passed
+node scripts/check-preview-race.mjs    -> SUMMARY: 23/23 passed
+node scripts/check-evidence-annotation.mjs -> SUMMARY: 14/14 passed
+node scripts/check-rubric-link.mjs     -> SUMMARY: 24/24 passed
+node scripts/check-agent-proposal.mjs  -> SUMMARY: 25/25 passed
+node scripts/check-preflight-report.mjs -> SUMMARY: 20/20 passed
+```
+
+已知限制与说明：
+
+- live baseline 待用户跑 `scripts/run_preflight_benchmark.py --mode=live`（DS 不代打用户 key）；live 不进 unittest / CI。
+- 全文 blocks 导致假阳性仍是假设，本切片先用 prompt v2 约束，不上检索/预过滤/向量库。
+- 空结果仍可能慢（仍 1 次 LLM 调用）；不做并发/cache。
+- `verified_citation_count` 为历史字段名，含义是人已确认关联数；仅改显示措辞。
+
 ## 2026-09-18 — Iteration 6：报告中心 + 真实评分矩阵 + Evidence Drawer（实现完成，待人工验收）
 
 完成：

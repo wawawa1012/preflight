@@ -69,7 +69,7 @@
 | 2 | 材料库 | /materials | 10 | ✅ 已有 |
 | 3 | 证据标注（quote 服务端验证） | /materials/:id | 15 | ✅ 已有 |
 | 4 | 评分标准绑定与人工关联 | /materials/:id | 20 | ✅ 已有 |
-| 5 | AI 预检（提案+验证门+人工裁决） | /materials/:id | 60 | ✅ 已有（Iteration 5） |
+| 5 | AI 预检（提案+验证门+人工裁决） | /materials/:id | 60 | ✅ 已有（Iteration 5）；I5.1 质量：弃权 + 措辞，待 live benchmark |
 | 6 | 评分矩阵报告（真实数据） | 材料报告页 | 75 | 实现中（Iteration 6，待人工验收） |
 | 7 | 缺失证据发现（如实呈现检索范围） | 材料报告页 | （含在 6） | 实现中（Iteration 6，待人工验收） |
 | 8 | Evidence Drawer（点击直达原文行） | 材料报告页 | （含在 6） | 实现中（Iteration 6，待人工验收） |
