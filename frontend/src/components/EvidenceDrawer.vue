@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Block } from '../types/contracts'
+import { locatorLabel } from '../utils/locatorLabel'
 
 interface DrawerHighlight {
   line_number: number
@@ -18,6 +19,9 @@ const props = defineProps<{
 }>()
 
 defineEmits<{ 'update:open': [value: boolean] }>()
+
+// 标题只说位置：kind 由 Locator 决定（md = 第 N 行）；取不到 Block 时给兜底，不猜。
+const title = computed(() => `原文 · ${locatorLabel(props.block?.locator ?? null)}`)
 
 // Unicode：必须 Array.from 对齐 Python 的 code point start/end，不能用 UTF-16 slice。
 const segments = computed(() => {
@@ -38,7 +42,7 @@ const segments = computed(() => {
 <template>
   <USlideover
     :open="open"
-    :title="`原文 · 第 ${highlight?.line_number ?? '?'} 行`"
+    :title="title"
     @update:open="$emit('update:open', $event)"
   >
     <template #body>

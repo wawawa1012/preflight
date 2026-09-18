@@ -1,5 +1,8 @@
 // Iteration 6 检查（SSR 载入 + setup 行为级，不引入测试框架）：
 // 报告页矩阵、缺失范围句、citation → Drawer 原文、409/404 导航不变量、措辞纪律。
+// R0 增量：I7/I8 不依赖绑定（各自装、各自画，409 也显示）；待核对区块排在关键陈述之上；
+// 顶栏「核验评分要求」才是唯一 POST 入口（进行中 I7/I8 不卸；material_too_large 只写在该行）；
+// Drawer 标题统一走 locatorLabel（md 仍是「第 N 行」）。
 // 运行：cd frontend && node scripts/check-preflight-report.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp, h } from 'vue'
@@ -14,14 +17,91 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
-function reportFetch(reportBody, status = 200, proposalsBody = [], proposalStatus = 200, signalsBody = [], findingsBody = [], findingsStatus = 200) {
-  return async (input) => {
+// 请求记录 + 提案 POST 的可注入行为（核验评分要求）。
+const state = {
+  calls: [],
+  proposals: 0,
+  postedCriterionIds: [],
+  defer: false,
+  releases: [],
+  failures: {},
+}
+const resetState = () => {
+  state.calls = []
+  state.proposals = 0
+  state.postedCriterionIds = []
+  state.defer = false
+  state.releases = []
+  state.failures = {}
+}
+const materialFetchCount = () => state.calls.filter((call) => /\/api\/v1\/materials\/[^/]+$/.test(call.url)).length
+
+const proposalFixture = (criterionId) => ({
+  id: `ap_${criterionId}`,
+  material_id: 'mat_x',
+  criterion_id: criterionId,
+  rubric_id: 'rubric_syn',
+  rubric_revision: 1,
+  provider: 'test',
+  model: 'test',
+  prompt_version: 'p5-criterion-preflight-v2',
+  status: 'completed',
+  error: null,
+  created_at: '2026-09-18T00:00:00+00:00',
+  candidates: [],
+})
+
+function stubFetch(options = {}) {
+  const {
+    report: reportBody = null,
+    reportStatus = 200,
+    hangReport = false,
+    proposals: proposalsBody = [],
+    proposalsStatus = 200,
+    signals: signalsBody = [],
+    signalsStatus = 200,
+    findings: findingsBody = [],
+    findingsStatus = 200,
+    material: materialBody = null,
+  } = options
+  return async (input, init = {}) => {
     const url = String(input)
-    if (url.includes('statement-signals')) return jsonResponse(signalsBody)
+    const method = (init && init.method) || 'GET'
+    state.calls.push({ url, method })
+    if (method === 'POST' && url.includes('/agent-proposals')) {
+      state.proposals += 1
+      const criterionId = init.body ? JSON.parse(init.body).criterion_id : ''
+      state.postedCriterionIds.push(criterionId)
+      const reply = () => {
+        const failure = state.failures[criterionId]
+        if (failure) return jsonResponse(failure.body, failure.status)
+        return jsonResponse(proposalFixture(criterionId), 201)
+      }
+      if (state.defer) {
+        return new Promise((resolve) => state.releases.push(() => resolve(reply())))
+      }
+      return reply()
+    }
+    if (url.includes('statement-signals')) return jsonResponse(signalsBody, signalsStatus)
     if (url.includes('consistency-findings')) return jsonResponse(findingsBody, findingsStatus)
-    if (url.includes('agent-proposals')) return jsonResponse(proposalsBody, proposalStatus)
-    return jsonResponse(reportBody, status)
+    if (url.includes('agent-proposals')) return jsonResponse(proposalsBody, proposalsStatus)
+    if (/\/api\/v1\/materials\/[^/]+$/.test(url)) return jsonResponse(materialBody ?? reportBody)
+    if (hangReport) return new Promise(() => {})
+    return jsonResponse(reportBody, reportStatus)
   }
+}
+
+// 旧签名包装：既有用例保持不动。
+function reportFetch(reportBody, status = 200, proposalsBody = [], proposalStatus = 200, signalsBody = [], findingsBody = [], findingsStatus = 200) {
+  return stubFetch({
+    report: reportBody,
+    reportStatus: status,
+    proposals: proposalsBody,
+    proposalsStatus: proposalStatus,
+    signals: signalsBody,
+    findings: findingsBody,
+    findingsStatus,
+  })
 }
 
 const reportSource = readFileSync(new URL('../src/views/MaterialReportView.vue', import.meta.url), 'utf8')
@@ -51,7 +131,7 @@ check(
 )
 check('待核对引用点回同一 Drawer', reportSource.includes('openHighlight(citation)'))
 check('扫描逻辑不在 Vue（报告页无数字扫描正则）', !reportSource.includes('\\d'))
-check('Drawer 标题为「原文 · 第 N 行」', drawerSource.includes('原文 · 第'))
+check('Drawer 位置标题统一走 locatorLabel（md 仍是「第 N 行」）', drawerSource.includes('原文 ·') && drawerSource.includes('locatorLabel'))
 check('Drawer 渲染上下块并删掉 quote 重复行', drawerSource.includes('previousBlock') && drawerSource.includes('nextBlock') && !drawerSource.includes('quote：'))
 check('路由登记 /materials/:materialId/report', routerSource.includes("'/materials/:materialId/report'"))
 check('citation 展示 human/agent 溯源徽章', reportSource.includes('proposed_by'))
@@ -64,6 +144,24 @@ check(
   (reportSource.match(/to="\/"/g) ?? []).length >= 3,
   `to="/" 出现 ${(reportSource.match(/to="\/"/g) ?? []).length} 次`,
 )
+check('顶栏提供「核验评分要求」入口', reportSource.includes('核验评分要求'))
+check(
+  '报告页不做 accept（无候选物化端点）',
+  !reportSource.includes('proposal-candidates') && !reportSource.includes('/accept'),
+)
+check(
+  '待核对区块排在关键陈述之上',
+  reportSource.includes('待核对问题') &&
+    reportSource.includes('关键陈述') &&
+    reportSource.indexOf('待核对问题') < reportSource.indexOf('关键陈述'),
+  `待核对@${reportSource.indexOf('待核对问题')} 关键陈述@${reportSource.indexOf('关键陈述')}`,
+)
+check(
+  '材料级区块各自装各自画（v-if 只看自己的数据，不挂 loading）',
+  reportSource.includes('v-if="findingsUnavailable || findings.length > 0"') &&
+    reportSource.includes('v-if="signalsUnavailable || signals.length > 0"'),
+)
+check('核验失败只落在该行（行级 rowError）', reportSource.includes('rowError'))
 
 const block = {
   id: 'blk_1',
@@ -370,6 +468,194 @@ try {
     await flush()
     check('404 进入 notFound 且不渲染矩阵', bindings.notFound.value === true && bindings.report.value === null)
     check('404 SSR 仍有 Workbench 出口', html.includes('href="/"') && html.includes('Workbench'))
+  }
+  // ——— R0：材料级 GET 不依赖绑定 ———
+  // 共用数据：一条关键陈述、一条待核对问题、材料本体（供绑定前补取 blocks）。
+  const r0Signal = {
+    block_id: 'blk_1',
+    line_number: 7,
+    quote: '准确率达到 95%',
+    start: 5,
+    end: 14,
+    signal: 'percentage',
+  }
+  const r0Finding = {
+    material_id: 'mat_x',
+    kind: 'numeric_inconsistency',
+    measure: '准确率',
+    values: ['95%', '90%'],
+    searched_block_count: 1,
+    searched_statement_count: 2,
+    explanation:
+      '同一度量词「准确率」在本材料 2 处给出不同数值：95%、90%；已扫描 1 个 Block 的 2 条关键陈述，请核对后决定以哪一处为准。',
+    citations: [
+      { block_id: 'blk_1', line_number: 7, quote: '95%', start: 5, end: 8, value: '95', unit: '%' },
+      { block_id: 'blk_1', line_number: 7, quote: '90%', start: 12, end: 15, value: '90', unit: '%' },
+    ],
+  }
+  const materialPayload = {
+    id: 'mat_x',
+    filename: 'ev.md',
+    size_bytes: 42,
+    sha256: 'a'.repeat(64),
+    line_count: 1,
+    created_at: '2026-09-16T00:00:00+00:00',
+    blocks: [block],
+  }
+
+  // 报告还在装配：I7/I8 已经到手并可直接渲染，且首次进入不发 POST。
+  {
+    resetState()
+    const { app } = await mount(stubFetch({ hangReport: true, signals: [r0Signal], findings: [r0Finding] }))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '报告装配中：signals + findings 已到手（不等 4 个请求）',
+      bindings.signals.value.length === 1 &&
+        bindings.findings.value.length === 1 &&
+        bindings.report.value === null &&
+        bindings.loading.value === true,
+    )
+    check('首次进入不发任何 POST', state.proposals === 0, `proposals=${state.proposals}`)
+  }
+
+  // 409 未绑定：I7/I8 照常显示 +「去绑定」出口；点击仍能开 Drawer（blocks 由材料端点补取）。
+  {
+    resetState()
+    const { app } = await mount(
+      stubFetch({
+        report: { code: 'rubric_not_bound', message: '该材料尚未绑定评分标准', details: [] },
+        reportStatus: 409,
+        signals: [r0Signal],
+        findings: [r0Finding],
+        material: materialPayload,
+      }),
+    )
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '409 仍显示 signals + findings 且进入未绑定态',
+      bindings.unbound.value === true &&
+        bindings.signals.value.length === 1 &&
+        bindings.findings.value.length === 1 &&
+        bindings.report.value === null,
+    )
+    await bindings.openHighlight(bindings.signals.value[0])
+    await flush()
+    check(
+      '409 点击关键陈述仍能开 Drawer（补取材料 blocks，只取一次）',
+      bindings.drawerOpen.value === true &&
+        bindings.drawerBlock.value?.id === 'blk_1' &&
+        materialFetchCount() === 1,
+      `material=${materialFetchCount()}`,
+    )
+  }
+
+  // 顶栏「核验评分要求」= 唯一 POST 入口；进行中 I7/I8 不卸。
+  {
+    resetState()
+    const { app } = await mount(stubFetch({ report, signals: [r0Signal], findings: [r0Finding] }))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check('装配完成后仍未 POST（核验要人点）', state.proposals === 0, `proposals=${state.proposals}`)
+
+    state.defer = true
+    const running = bindings.verifyCriteria()
+    await flush()
+    check(
+      '核验进行中：verifying=true 且 I7/I8 数据不卸',
+      bindings.verifying.value === true &&
+        bindings.signals.value.length === 1 &&
+        bindings.findings.value.length === 1 &&
+        bindings.report.value !== null,
+    )
+    state.defer = false
+    state.releases.splice(0).forEach((release) => release())
+    await running
+    check(
+      '核验按每条 criterion 各 POST 一次（body 带 criterion_id）',
+      state.proposals === report.criteria.length && state.postedCriterionIds.slice().sort().join(',') === 'c_syn_1,c_syn_2',
+      state.postedCriterionIds.join(','),
+    )
+    check(
+      '核验完成后恢复且无行级错误',
+      bindings.verifying.value === false && Object.keys(bindings.rowError.value).length === 0,
+    )
+  }
+
+  // material_too_large：只写在该行，不升级为整页错误。
+  {
+    resetState()
+    state.failures = {
+      c_syn_1: {
+        status: 400,
+        body: { code: 'material_too_large', message: '材料内容超出单次核验上限', details: ['上限 24000 字符'] },
+      },
+    }
+    const { app } = await mount(stubFetch({ report }))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    await bindings.verifyCriteria()
+    check(
+      'material_too_large 只落在该行',
+      String(bindings.rowError.value.c_syn_1 ?? '').includes('材料超出单次核验上限') &&
+        bindings.rowError.value.c_syn_2 === undefined &&
+        bindings.error.value === '' &&
+        state.proposals === report.criteria.length,
+      JSON.stringify(bindings.rowError.value),
+    )
+  }
+
+  // 未绑定：核验入口不发请求。
+  {
+    resetState()
+    const { app } = await mount(
+      stubFetch({ report: { code: 'rubric_not_bound', message: '该材料尚未绑定评分标准', details: [] }, reportStatus: 409 }),
+    )
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    await bindings.verifyCriteria()
+    check('未绑定时核验入口不发请求', state.proposals === 0 && bindings.verifying.value === false)
+  }
+
+  // locatorLabel：四种 Locator kind + 兜底；Drawer 标题按 kind 走（md 仍是「第 N 行」）。
+  {
+    const locatorModule = await server.ssrLoadModule('/src/utils/locatorLabel.ts')
+    const label = locatorModule.locatorLabel
+    check(
+      'locatorLabel：line/slide/page/paragraph 各自成句',
+      label({ kind: 'line', index: 3 }) === '第 3 行' &&
+        label({ kind: 'slide', index: 3 }) === '第 3 张幻灯片' &&
+        label({ kind: 'page', index: 3 }) === '第 3 页' &&
+        label({ kind: 'paragraph', index: 3 }) === '第 3 段',
+      [label({ kind: 'line', index: 3 }), label({ kind: 'slide', index: 3 })].join(' / '),
+    )
+    check(
+      'locatorLabel：缺 Locator 时给兜底文案',
+      typeof label(null) === 'string' && label(null).length > 0 && !label(null).includes('第 '),
+      label(null),
+    )
+
+    const slideBlock = { ...block, locator: { kind: 'slide', index: 4, end_index: null, block_index: 2 } }
+    const slideContext = {}
+    const slideRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
+    await slideRouter.push('/')
+    await slideRouter.isReady()
+    const slideApp = createSSRApp({
+      render: () =>
+        h(drawerModule.default, {
+          open: true,
+          highlight: { line_number: 4, start: 0, end: 4 },
+          block: slideBlock,
+          filename: 'deck.md',
+          portal: false,
+          unmountOnHide: false,
+        }),
+    })
+    slideApp.use(slideRouter)
+    const slideHtml = await renderToString(slideApp, slideContext)
+    const slideText = slideHtml + Object.values(slideContext.teleports ?? {}).join('')
+    check('Drawer 标题按 locator 类型变化（slide → 第 4 张幻灯片）', slideText.includes('原文 · 第 4 张幻灯片'))
   }
 } finally {
   await server.close()
