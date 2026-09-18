@@ -17,3 +17,4 @@ frontend/components.d.ts
 .vite/
 .zcode/
 *.log
+benchmark/results/

@@ -1,0 +1,14 @@
+{
+  "id": "rubric_bench_pos_metrics",
+  "revision": 1,
+  "title": "Benchmark rubric：关键数字须有原文出处（test-only）",
+  "source_note": "test-only synthetic rubric for benchmark/cases/pos_metrics; not an official rubric",
+  "criteria": [
+    {
+      "id": "crit_metric_source",
+      "title": "关键数字须有原文出处",
+      "requirement": "材料中的关键指标（如准确率）必须有明确的原文数字与上下文。",
+      "required_evidence": ["含关键数字的原文片段"]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "rubric_bench_neg_java",
+  "revision": 1,
+  "title": "Benchmark rubric：软件创新 / 技术实现 / 应用价值（test-only）",
+  "source_note": "test-only synthetic rubric for benchmark/cases/neg_java; not an official rubric",
+  "criteria": [
+    {
+      "id": "crit_innovation",
+      "title": "软件创新",
+      "requirement": "材料需说明本项目自身的创新点，或与已有方案的明显区别。",
+      "required_evidence": ["创新点的原文描述", "与已有方案的对比"]
+    },
+    {
+      "id": "crit_implementation",
+      "title": "技术实现",
+      "requirement": "材料需说明本项目自身的技术实现方式与关键指标。",
+      "required_evidence": ["关键数字及其出处的原文", "技术方案的原文描述"]
+    },
+    {
+      "id": "crit_value",
+      "title": "应用价值",
+      "requirement": "材料需说明本项目自身的应用场景或部署使用情况。",
+      "required_evidence": ["应用场景的原文描述", "部署或使用情况的原文"]
+    }
+  ]
+}
