@@ -126,6 +126,25 @@ try {
     'Workbench 未绑定行显示未绑定',
     workbenchSource.includes('未绑定') && workbenchSource.includes('criteriaLabel'),
   )
+  // 主按钮「开始预检」：按摘要决定目标（有已绑定材料就进报告页，否则去添加材料）。
+  // 锚点用按钮自身的 icon 属性，避免命中 <script> 里的同名注释。
+  const heroButtonBlock = (() => {
+    const at = workbenchSource.indexOf('i-lucide-upload">开始预检')
+    return at < 0 ? '' : workbenchSource.slice(Math.max(0, at - 200), at)
+  })()
+  check(
+    '主按钮「开始预检」绑定动态目标（startTarget）',
+    heroButtonBlock.includes(':to="startTarget"'),
+    heroButtonBlock.slice(-120),
+  )
+  check(
+    '主按钮不再硬编码 /materials/new',
+    !heroButtonBlock.includes('to="/materials/new"'),
+  )
+  check(
+    '行链接：已绑定进报告页、未绑定进详情',
+    workbenchSource.includes('item.bound ? `/materials/${item.material_id}/report` : `/materials/${item.material_id}`'),
+  )
 
   const materials = await context(
     '/src/views/MaterialsView.vue',
@@ -194,6 +213,31 @@ try {
     workbenchBindings.criteriaLabel(boundSummary) === '已确认依据 1 / 2 项' &&
       workbenchBindings.criteriaLabel({ ...boundSummary, criteria_total: null, criteria_with_citations: null }) === '未评估',
     workbenchBindings.criteriaLabel(boundSummary),
+  )
+  check(
+    '主按钮目标：有已绑定材料时进第一条已绑定的报告页',
+    workbenchBindings.startTarget.value === '/materials/mat_demo_1/report',
+    workbenchBindings.startTarget.value,
+  )
+  const unboundOnly = await context('/src/views/WorkbenchView.vue', '/', async (input) =>
+    String(input).includes('/api/v1/preflight-summaries') ? jsonResponse([unboundSummary]) : jsonResponse([]),
+  )
+  const unboundBindings = unboundOnly.app.runWithContext(() => unboundOnly.module.default.setup({}, { expose() {} }))
+  await flush()
+  check(
+    '主按钮目标：没有已绑定材料时回 /materials/new',
+    unboundBindings.startTarget.value === '/materials/new',
+    unboundBindings.startTarget.value,
+  )
+  const mixedOrder = await context('/src/views/WorkbenchView.vue', '/', async (input) =>
+    String(input).includes('/api/v1/preflight-summaries') ? jsonResponse([unboundSummary, boundSummary]) : jsonResponse([]),
+  )
+  const mixedBindings = mixedOrder.app.runWithContext(() => mixedOrder.module.default.setup({}, { expose() {} }))
+  await flush()
+  check(
+    '主按钮目标：跳过未绑定，取摘要顺序里第一条已绑定材料',
+    mixedBindings.startTarget.value === '/materials/mat_demo_1/report',
+    mixedBindings.startTarget.value,
   )
 
   globalThis.fetch = async () => jsonResponse(detail)

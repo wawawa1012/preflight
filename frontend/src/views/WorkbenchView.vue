@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { MaterialPreflightSummary } from '../types/contracts'
 import { formatSavedAt } from '../utils/format'
 
@@ -52,6 +52,12 @@ function criteriaColor(item: MaterialPreflightSummary): 'neutral' | 'success' {
   return item.criteria_total === null || item.criteria_total === undefined ? 'neutral' : 'success'
 }
 
+// 主按钮「开始预检」：有已绑定材料就直接进第一份的报告页；没有则先去添加材料。
+const startTarget = computed(() => {
+  const bound = summaries.value.find((item) => item.bound)
+  return bound ? `/materials/${bound.material_id}/report` : '/materials/new'
+})
+
 loadSummaries()
 </script>
 
@@ -62,7 +68,7 @@ loadSummaries()
     <p class="mt-5 text-slate-400">按评审标准预审材料。每条要求显示已确认关联数；没有引用时说明查过哪里。</p>
 
     <div class="mt-8 flex flex-wrap gap-3">
-      <UButton to="/materials/new" icon="i-lucide-upload">开始预检</UButton>
+      <UButton :to="startTarget" icon="i-lucide-upload">开始预检</UButton>
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
     </div>
 
