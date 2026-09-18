@@ -29,6 +29,18 @@ const summary = {
   created_at: '2026-09-16T06:00:00+00:00',
   block_count: 2,
 }
+const boundSummary = {
+  material_id: 'mat_demo_1',
+  filename: 'ev.md',
+  created_at: '2026-09-16T06:00:00+00:00',
+  block_count: 1,
+  bound: true,
+  rubric_revision: 1,
+  verified_citation_count: 2,
+  criteria_total: 2,
+  criteria_with_citations: 1,
+  criteria_without_citations: 1,
+}
 const detail = {
   id: 'mat_demo_1',
   filename: 'demo.md',
@@ -55,11 +67,27 @@ try {
   }
 
   // A. 渲染层：显式回 Workbench 出口 + 页内导航目标。
-  const workbench = await context('/src/views/WorkbenchView.vue', '/', async () => jsonResponse({}))
+  // 首页会 fetch 预审摘要列表：stub 必须按 URL 返回数组，不能给 `{}`。
+  const workbench = await context('/src/views/WorkbenchView.vue', '/', async (input) => {
+    const url = String(input)
+    if (url.includes('/api/v1/preflight-summaries')) return jsonResponse([])
+    if (url.includes('/api/v1/health')) return jsonResponse({ status: 'ok', contract_version: '0.1.0' })
+    return jsonResponse([])
+  })
   const workbenchHtml = await renderToString(workbench.app)
   check(
     'Workbench 渲染出 Materials 两个入口',
     workbenchHtml.includes('href="/materials"') && workbenchHtml.includes('href="/materials/new"'),
+  )
+  const workbenchSource = readFileSync(new URL('../src/views/WorkbenchView.vue', import.meta.url), 'utf8')
+  check(
+    'Workbench 源码不含禁用词',
+    ['已满足', '已支撑', '覆盖率', '就绪度', 'Trust Layer'].every((word) => !workbenchSource.includes(word)),
+    ['已满足', '已支撑', '覆盖率', '就绪度', 'Trust Layer'].filter((word) => workbenchSource.includes(word)).join('、'),
+  )
+  check(
+    'Workbench 模板含报告中心文案',
+    workbenchSource.includes('已核证引用') && workbenchSource.includes('当前范围尚未发现引用'),
   )
 
   const materials = await context('/src/views/MaterialsView.vue', '/materials', async () => jsonResponse([summary]))
@@ -95,6 +123,24 @@ try {
       materialsBindings.materials.value[0].id === 'mat_demo_1' &&
       materialsBindings.loading.value === false,
     materialsBindings.materials.value.length,
+  )
+
+  // 首页数据层：装载一条已绑定摘要（另一次 mount，stub 返回真实形状）。
+  const workbenchData = await context('/src/views/WorkbenchView.vue', '/', async (input) => {
+    const url = String(input)
+    if (url.includes('/api/v1/preflight-summaries')) return jsonResponse([boundSummary])
+    return jsonResponse([])
+  })
+  const workbenchBindings = workbenchData.app.runWithContext(() =>
+    workbenchData.module.default.setup({}, { expose() {} }),
+  )
+  await flush()
+  check(
+    '首页装载已绑定摘要并显示计数',
+    workbenchBindings.summaries.value.length === 1 &&
+      workbenchBindings.summaries.value[0].filename === 'ev.md' &&
+      workbenchBindings.summaries.value[0].verified_citation_count === 2,
+    workbenchBindings.summaries.value.length,
   )
 
   globalThis.fetch = async () => jsonResponse(detail)
