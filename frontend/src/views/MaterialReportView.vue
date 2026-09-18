@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import type { AgentProposal, Block, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
+import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCount } from '../utils/preflightFacts'
 
@@ -14,6 +14,9 @@ const proposals = ref<AgentProposal[]>([])
 const proposalsUnavailable = ref(false)
 const signals = ref<DetectedStatement[]>([])
 const signalsUnavailable = ref(false)
+// I8 待核对问题：同材料内的数值对照结论由后端纯函数给出，前端只渲染。
+const findings = ref<ConsistencyFinding[]>([])
+const findingsUnavailable = ref(false)
 const loading = ref(true)
 const notFound = ref(false)
 const unbound = ref(false)
@@ -32,11 +35,14 @@ async function loadReport() {
   proposals.value = []
   signalsUnavailable.value = false
   signals.value = []
+  findingsUnavailable.value = false
+  findings.value = []
   try {
-    const [reportRes, proposalRes, signalRes] = await Promise.all([
+    const [reportRes, proposalRes, signalRes, findingRes] = await Promise.all([
       fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/preflight-report`),
       fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/agent-proposals`),
       fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/statement-signals`),
+      fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/consistency-findings`),
     ])
     const body = await reportRes.json().catch(() => null)
     if (reportRes.status === 404) {
@@ -62,6 +68,12 @@ async function loadReport() {
       signals.value = Array.isArray(signalBody) ? (signalBody as DetectedStatement[]) : []
     } else {
       signalsUnavailable.value = true
+    }
+    if (findingRes.ok) {
+      const findingBody = await findingRes.json().catch(() => null)
+      findings.value = Array.isArray(findingBody) ? (findingBody as ConsistencyFinding[]) : []
+    } else {
+      findingsUnavailable.value = true
     }
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '未知错误'
@@ -93,6 +105,11 @@ function openCitation(citation: MaterialPreflightCitation) {
 
 function signalLabel(signal: DetectedStatement['signal']) {
   return { numeric: '数字', percentage: '比例', comparative: '比较', absolute: '绝对化' }[signal]
+}
+
+// 只陈述检测到的事实：同一度量词出现不同数值，或需人工判断；不下裁决、不给结论。
+function findingLabel(kind: ConsistencyFinding['kind']) {
+  return { numeric_inconsistency: '数值不一致', needs_review: '待人工判断' }[kind]
 }
 
 function completedFor(criterionId: string) {
@@ -190,6 +207,46 @@ loadReport()
               <UBadge color="neutral" variant="subtle" size="sm">{{ signalLabel(signal.signal) }}</UBadge>
               <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}” · line {{ signal.line_number }}</span>
             </button>
+          </li>
+        </ul>
+      </section>
+
+      <!-- I8 待核对问题：同一材料内同一度量词的数值对照；每条都能点回原文 Drawer。 -->
+      <section v-if="findingsUnavailable || findings.length > 0" class="rounded-lg border border-slate-800 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-medium text-slate-200">待核对问题</h2>
+          <span class="text-xs text-slate-500">{{ findings.length }} 条 · 同一材料内数值对照</span>
+        </div>
+        <p v-if="findingsUnavailable" class="mt-2 text-xs text-amber-300">待核对问题不可用</p>
+        <ul v-else class="mt-3 space-y-3">
+          <li
+            v-for="finding in findings"
+            :key="`${finding.kind}:${finding.measure}:${finding.citations[0].block_id}:${finding.citations[0].start}`"
+            class="rounded-md border border-slate-800 p-2"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge
+                :color="finding.kind === 'numeric_inconsistency' ? 'warning' : 'neutral'"
+                variant="subtle"
+                size="sm"
+              >
+                {{ findingLabel(finding.kind) }}
+              </UBadge>
+              <span v-if="finding.measure" class="text-xs text-slate-300">度量词：{{ finding.measure }}</span>
+              <span class="font-mono text-xs text-slate-300">{{ finding.values.join(' / ') }}</span>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">{{ finding.explanation }}</p>
+            <ul class="mt-2 space-y-1">
+              <li v-for="citation in finding.citations" :key="`${citation.block_id}:${citation.start}`">
+                <button
+                  type="button"
+                  class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
+                  @click="openHighlight(citation)"
+                >
+                  <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · line {{ citation.line_number }}</span>
+                </button>
+              </li>
+            </ul>
           </li>
         </ul>
       </section>

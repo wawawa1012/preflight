@@ -387,6 +387,31 @@ class DetectedStatement(Contract):
     signal: Literal["numeric", "percentage", "comparative", "absolute"]
 
 
+class ConsistencyCitation(Contract):
+    """I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。"""
+
+    block_id: str
+    line_number: int = Field(ge=1)
+    quote: str = Field(min_length=1)
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+    value: str = Field(min_length=1)
+    unit: str
+
+
+class ConsistencyFinding(Contract):
+    """I8 同材料数值一致性：只在同一度量词下数值不同（或降级需人工判断）时产生。"""
+
+    material_id: str
+    kind: Literal["numeric_inconsistency", "needs_review"]
+    measure: str
+    values: list[str] = Field(min_length=2)
+    searched_block_count: int = Field(ge=0)
+    searched_statement_count: int = Field(ge=0)
+    explanation: str = Field(min_length=1)
+    citations: list[ConsistencyCitation] = Field(min_length=2)
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -417,4 +442,6 @@ class ContractBundle(Contract):
     material_preflight_citation: MaterialPreflightCitation
     material_preflight_missing: MaterialPreflightMissing
     detected_statement: DetectedStatement
+    consistency_citation: ConsistencyCitation
+    consistency_finding: ConsistencyFinding
     error: ApiError

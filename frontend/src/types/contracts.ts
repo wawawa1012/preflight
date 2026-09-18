@@ -228,6 +228,27 @@ export type Quote4 = string;
 export type Start2 = number;
 export type End2 = number;
 export type Signal = "numeric" | "percentage" | "comparative" | "absolute";
+export type BlockId6 = string;
+export type LineNumber2 = number;
+export type Quote5 = string;
+export type Start3 = number;
+export type End3 = number;
+export type Value = string;
+export type Unit = string;
+export type MaterialId6 = string;
+export type Kind2 = "numeric_inconsistency" | "needs_review";
+export type Measure = string;
+/**
+ * @minItems 2
+ */
+export type Values = [string, string, ...string[]];
+export type SearchedBlockCount1 = number;
+export type SearchedStatementCount = number;
+export type Explanation2 = string;
+/**
+ * @minItems 2
+ */
+export type Citations1 = [ConsistencyCitation, ConsistencyCitation, ...ConsistencyCitation[]];
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -256,6 +277,8 @@ export interface ContractBundle {
   material_preflight_citation: MaterialPreflightCitation;
   material_preflight_missing: MaterialPreflightMissing;
   detected_statement: DetectedStatement;
+  consistency_citation: ConsistencyCitation;
+  consistency_finding: ConsistencyFinding;
   error: ApiError;
 }
 export interface RunReport {
@@ -574,6 +597,31 @@ export interface DetectedStatement {
   start: Start2;
   end: End2;
   signal: Signal;
+}
+/**
+ * I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。
+ */
+export interface ConsistencyCitation {
+  block_id: BlockId6;
+  line_number: LineNumber2;
+  quote: Quote5;
+  start: Start3;
+  end: End3;
+  value: Value;
+  unit: Unit;
+}
+/**
+ * I8 同材料数值一致性：只在同一度量词下数值不同（或降级需人工判断）时产生。
+ */
+export interface ConsistencyFinding {
+  material_id: MaterialId6;
+  kind: Kind2;
+  measure: Measure;
+  values: Values;
+  searched_block_count: SearchedBlockCount1;
+  searched_statement_count: SearchedStatementCount;
+  explanation: Explanation2;
+  citations: Citations1;
 }
 export interface ApiError {
   code: Code;

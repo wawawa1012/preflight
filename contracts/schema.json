@@ -202,6 +202,121 @@
       "title": "Claim",
       "type": "object"
     },
+    "ConsistencyCitation": {
+      "additionalProperties": false,
+      "description": "I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。",
+      "properties": {
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "line_number": {
+          "minimum": 1,
+          "title": "Line Number",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        },
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "line_number",
+        "quote",
+        "start",
+        "end",
+        "value",
+        "unit"
+      ],
+      "title": "ConsistencyCitation",
+      "type": "object"
+    },
+    "ConsistencyFinding": {
+      "additionalProperties": false,
+      "description": "I8 同材料数值一致性：只在同一度量词下数值不同（或降级需人工判断）时产生。",
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "numeric_inconsistency",
+            "needs_review"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "measure": {
+          "title": "Measure",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Values",
+          "type": "array"
+        },
+        "searched_block_count": {
+          "minimum": 0,
+          "title": "Searched Block Count",
+          "type": "integer"
+        },
+        "searched_statement_count": {
+          "minimum": 0,
+          "title": "Searched Statement Count",
+          "type": "integer"
+        },
+        "explanation": {
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "citations": {
+          "items": {
+            "$ref": "#/$defs/ConsistencyCitation"
+          },
+          "minItems": 2,
+          "title": "Citations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "material_id",
+        "kind",
+        "measure",
+        "values",
+        "searched_block_count",
+        "searched_statement_count",
+        "explanation",
+        "citations"
+      ],
+      "title": "ConsistencyFinding",
+      "type": "object"
+    },
     "Criterion": {
       "additionalProperties": false,
       "properties": {
@@ -2048,6 +2163,12 @@
     "detected_statement": {
       "$ref": "#/$defs/DetectedStatement"
     },
+    "consistency_citation": {
+      "$ref": "#/$defs/ConsistencyCitation"
+    },
+    "consistency_finding": {
+      "$ref": "#/$defs/ConsistencyFinding"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -2076,6 +2197,8 @@
     "material_preflight_citation",
     "material_preflight_missing",
     "detected_statement",
+    "consistency_citation",
+    "consistency_finding",
     "error"
   ],
   "title": "ContractBundle",
