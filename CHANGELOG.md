@@ -1,5 +1,43 @@
 # Progress log
 
+## 2026-09-18 — Iteration 7：关键陈述扫描 + Drawer 2.0（实现完成，待人工验收）
+
+提交：
+
+- `a481a3d` feat: detect statement signals with pure scanner（`DetectedStatement` 加法进 contracts + schema/TS；`backend/app/claim_inspector.py` 纯函数 `inspect_statements`；GET `/api/v1/materials/{id}/statement-signals`；`test_claim_inspector.py` 10 项先红后绿）
+- `3d573d6` feat: show key statements and drawer context（报告矩阵上方「关键陈述」只渲染该 GET；Drawer 标题「原文 · 第 N 行」+ 上/高亮/下 ±1 行上下文，删除底部 `quote：` 重复行；check-preflight-report 扩到 37 项）
+
+验证输出：
+
+```
+backend: .\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
+Ran 112 tests in 2.061s
+OK
+```
+
+```
+.\backend\.venv\Scripts\python.exe -X utf8 scripts\check_contracts.py
+PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases
+```
+
+```
+cd frontend
+node scripts/check-preflight-report.mjs -> SUMMARY: 37/37 passed（新增：关键陈述栏目/端点、Vue 无扫描正则、Drawer 标题与上下块、无 quote：行）
+node scripts/check-materials-nav.mjs    -> SUMMARY: 15/15 passed
+node scripts/check-agent-proposal.mjs   -> SUMMARY: 49/49 passed
+```
+
+```
+npm.cmd --prefix frontend run build
+dist/assets/index-ygOZRnjG.js  399.49 kB │ gzip: 125.70 kB
+✓ built in 2.88s
+```
+
+说明与边界：
+
+- 信号仅 `numeric | percentage | comparative | absolute`；数字必须带单位或上下文（达到/准确/延迟等）才计入；重叠按 比例 > 绝对化 > 比较 > 数字 去重，全局上限 20，空列表合法。
+- 不改 `MaterialPreflightReport`、不加表、不加 Finding、不调 LLM、不动 Block 切分；详情页不加「关键陈述」栏目。
+
 ## 2026-09-18 — I6.3：预检不再截断 + 失败人话 + 去原生弹窗
 
 - llm.py：删除 `max_tokens=800`（半截 JSON 比多等几秒更差）；延迟只靠 prompt「最多 3 条、rationale≤40 字」；`PROMPT_VERSION` → `p5-criterion-preflight-v2.2`。

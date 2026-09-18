@@ -63,6 +63,6 @@ benchmark/cases/   后续八套 case（当前占位）
 data/              本地材料、数据库、缓存（Git 忽略）
 ```
 
-已实现：GET /api/v1/health、GET /api/v1/report（只读 mock）、POST /api/v1/preview/markdown（临时预览，不保存）、POST /api/v1/materials（保存材料）、GET /api/v1/materials（摘要列表）、GET /api/v1/materials/{id} 与 GET /api/v1/materials/recent（读取；未知 ID/无记录返回 404 + ApiError）、证据标注（POST/GET/DELETE）、GET /api/v1/rubrics（只读标准仓）与材料绑定 / 人工关联（POST/GET/DELETE）、单 criterion Agent 提案（POST/GET + accept/reject）、材料级只读预审装配（GET /api/v1/preflight-summaries、GET /api/v1/materials/{id}/preflight-report）。契约中的其余业务接口是后续实现目标；没有检索或比赛评分。
+已实现：GET /api/v1/health、GET /api/v1/report（只读 mock）、POST /api/v1/preview/markdown（临时预览，不保存）、POST /api/v1/materials（保存材料）、GET /api/v1/materials（摘要列表）、GET /api/v1/materials/{id} 与 GET /api/v1/materials/recent（读取；未知 ID/无记录返回 404 + ApiError）、证据标注（POST/GET/DELETE）、GET /api/v1/rubrics（只读标准仓）与材料绑定 / 人工关联（POST/GET/DELETE）、单 criterion Agent 提案（POST/GET + accept/reject）、材料级只读预审装配（GET /api/v1/preflight-summaries、GET /api/v1/materials/{id}/preflight-report）、关键陈述扫描（GET /api/v1/materials/{id}/statement-signals）。契约中的其余业务接口是后续实现目标；没有检索或比赛评分。
 数据：SQLite 位于 data/preflight.db（Git 忽略），业务表为 materials → blocks，加 evidence_annotations、material_rubric_bindings、criterion_evidence_links；评分标准只读文件放在 data/rubrics/*.json（Git 忽略，目录保留 .gitkeep），启动时校验、非法即拒绝启动，预检命令：`.\backend\.venv\Scripts\python.exe -X utf8 scripts/validate_rubrics.py`。当前仓内无官方标准，GET /api/v1/rubrics 返回空列表，UI 显示“尚未配置评分标准”。
 依赖锁：frontend/package-lock.json、backend/requirements.txt；requirements.in 表示直接依赖范围。

@@ -73,7 +73,7 @@
 | 6 | 评分矩阵报告（真实数据） | 材料报告页 | 75 | 实现中（Iteration 6，待人工验收） |
 | 7 | 缺失证据发现（如实呈现检索范围） | 材料报告页 | （含在 6） | 实现中（Iteration 6，待人工验收） |
 | 8 | Evidence Drawer（点击直达原文行） | 材料报告页 | （含在 6） | 实现中（Iteration 6，待人工验收） |
-| 9 | Claim Inspector | 材料报告页或详情 | TBD | 未开始（Iteration 7） |
+| 9 | Claim Inspector（当前叶子：关键陈述扫描 + Drawer 2.0） | 材料报告页 | 30 | 实现中（Iteration 7，待人工验收） |
 | 10 | 数字矛盾检测 | 报告页风险区 | 30 | Iteration 8 |
 | 11 | 答辩模拟 Grill（追问+应答提纲） | 答辩模拟页 | 45 | Iteration 9 |
 | 12 | 修复建议清单 | 报告页 | 15 | Iteration 10 |
