@@ -1,5 +1,55 @@
 # Progress log
 
+## 2026-09-18 — I8：同材料数值一致性「待核对问题」（实现完成，待人工验收）
+
+提交：`0c8d581` feat: surface within-material numeric inconsistencies（`backend/app/consistency.py` 纯函数 + GET `/api/v1/materials/{id}/consistency-findings` + `ConsistencyFinding`/`ConsistencyCitation` 进 contracts 并 export；报告页「待核对问题」栏目点回现有 Drawer；`backend/tests/test_consistency.py` 15 项，TDD 先红后绿；check-preflight-report 37 → 45 项）
+
+施工位置：独立 worktree `F:\project\Preflight-i8`（分支 `i8-findings`），未 merge，等 Grok。
+
+判定与边界：
+
+- 同一度量词 + 同一单位 + 不同数值 → `kind=numeric_inconsistency`；同一度量词但单位写法不一致，或没有共同度量词、只有同一量纲单位 + 不同数值 → `kind=needs_review`；其余不报（宁漏勿错：同值、单条无对照、不同度量词、span 复验不过、非量纲单位如 个/条/次）。
+- 度量词 = 数值前连接词剥离后的汉字串（「准确率降低到 90%」→「准确率」）；长度 ≥ 3 的写法按后缀归并（「系统准确率」→「准确率」），长度 2 的词不归并，避免把「模型延迟」与「系统延迟」误配。
+- 零 IO、不调 LLM、不写库、不加表；未改 MaterialDetailView / MaterialsView / WorkbenchView / llm.py / storage 表；前端不做扫描（报告页 `\d` 仍为 0 处）。
+- 每条 citation 都能在 Block 原文复验 `quote == text[start:end]`；explanation 自带范围（N 个 Block、M 条关键陈述）。
+
+验证输出：
+
+```
+backend: .\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests
+Ran 135 tests in 2.803s
+OK
+```
+
+```
+backend: .\.venv\Scripts\python.exe -X utf8 -m unittest tests.test_consistency -v
+实现前：ModuleNotFoundError: No module named 'app.consistency'（先红）
+实现后：Ran 15 tests in 0.106s — OK（后绿）
+```
+
+```
+.\backend\.venv\Scripts\python.exe -X utf8 scripts\check_contracts.py
+PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases
+```
+
+```
+cd frontend
+node scripts/check-preflight-report.mjs   -> SUMMARY: 45/45 passed（新增：请求 consistency-findings、待核对问题栏目、事实标签、点回 Drawer、端点不可用降级）
+node scripts/check-materials-nav.mjs      -> SUMMARY: 25/25 passed
+node scripts/check-agent-proposal.mjs     -> SUMMARY: 85/85 passed
+node scripts/check-evidence-annotation.mjs-> SUMMARY: 14/14 passed
+node scripts/check-rubric-link.mjs        -> SUMMARY: 25/25 passed
+node scripts/check-preview-race.mjs       -> SUMMARY: 23/23 passed
+```
+
+```
+npm.cmd run build
+dist/assets/index-BGX_GRCD.js  413.85 kB │ gzip: 129.91 kB
+✓ built in 3.77s
+```
+
+Live smoke（worktree 自己的 data/，端口 8012，测完即停）：POST 201 一份含「准确率达到 95%」「准确率达到 90%」「延迟 200 毫秒」「吞吐量达到 1200」的材料 → GET consistency-findings 只返回 1 条 numeric_inconsistency（准确率 95% vs 90%，line 3 与 line 5，各带 span）；延迟与吞吐量各只有一处，未报；未知材料 404；测完 DELETE 204。
+
 ## 2026-09-18 — 7.1b：「最新预检」只渲染待审核候选（实现完成，待人工验收）
 
 提交：
