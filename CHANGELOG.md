@@ -1,5 +1,35 @@
 # Progress log
 
+## 2026-09-18 — 7.1b：「最新预检」只渲染待审核候选（实现完成，待人工验收）
+
+提交：
+
+- `29dd98c` feat: list only reviewable candidates in latest preflight（详情页候选列表改为渲染 `acceptableCandidatesFor`：passed + unreviewed + 尚未与该 criterion 建过同一 block+quote 关联；已关联/已裁决/无效候选不再出卡片；无效候选改由一行「原文引用无效 N 条：code（未列入待审核）」交代验证门结果；check-agent-proposal 80 → 85 项）
+
+验证输出：
+
+```
+cd frontend
+node scripts/check-agent-proposal.mjs -> SUMMARY: 85/85 passed
+node scripts/check-materials-nav.mjs  -> SUMMARY: 25/25 passed
+node scripts/check-preflight-report.mjs -> SUMMARY: 37/37 passed
+node scripts/check-evidence-annotation.mjs -> SUMMARY: 14/14 passed
+node scripts/check-rubric-link.mjs -> SUMMARY: 25/25 passed
+node scripts/check-preview-race.mjs -> SUMMARY: 23/23 passed
+```
+
+```
+npm.cmd run build
+dist/assets/index-BRZGtTmC.js  411.94 kB │ gzip: 129.43 kB
+✓ built in 4.39s
+```
+
+说明与边界：
+
+- 列表、批量入口（「接受本条全部原文有效」）与「已发现 N 条候选，待审核」徽章现在同一集合，卡片数与徽章计数不会再不一致。
+- 待审核判定沿用 `candidateLinkedFor`（与后端 duplicate_link 同判定），未新增契约字段；后端零改动。
+- 无效候选的「无效：code」红字徽章随卡片退场，验证门结果改为列表上方一行机器码文本（含条数与 code），避免静默消失。
+
 ## 2026-09-18 — 空页填满切片：材料删除 + 行内 k/n（实现完成，待人工验收）
 
 提交：

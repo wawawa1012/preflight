@@ -30,6 +30,7 @@
 - 定位升级与交接（2026-09-18）：产品定位升级为"AI 时代可信声明预审（Trust Layer）"，比赛材料预审为第一个垂直模板（见 PRODUCT_TREE.md 定位节与垂直场景节；对外表述用价值句，Trust Layer 仅内部 North Star）。治理模型：Grok 任 Principal Architect / Product Lead（方向、规划、架构裁决、最终 review），DS 为默认施工 implementer，用户指定的工作包可由 Grok 亲自施工；任意时刻同一工作树只有一个 current implementer；GLM 转只读 reviewer。Grok 第一轮任务 = handoff verification（核对 HEAD/status/真实测试基线/页面路由/账本差距，并独立给出对 Iteration 6 方向的判断），验证通过并经用户批准后才开工。
 - 时间线澄清（节点以官方通知为准）：10/7 内部 Feature Freeze；10/8–10 bugfix / 校赛材料 / Demo；10/10 校赛完成节点；10/15 20:00 省赛报名/缴费截止（不是作品开发截止）；省赛阶段安排依赛事通知。
 - 空页填满切片（2026-09-18）：DELETE /api/v1/materials/{id} + /materials 行内 UModal 删除确认 + Workbench 与 /materials 行「k/n 条要求已有关联」+ /materials/new 拖拽区缩短；实现完成，待人工验收。
+- 7.1b（2026-09-18）：「最新预检」列表只渲染待审核候选（passed+unreviewed 且尚未与该 criterion 建过同一 block+quote 关联）；已关联候选不再出卡片，已裁决/无效候选同样退场，验证门结果留一行机器码；实现完成，待人工验收；提交 29dd98c，check-agent-proposal 85/85，build 通过。
 - Iteration 7.1（材料详情易用性：已关联候选显示「已关联」禁接受/拒绝、每条 Criterion「接受本条全部原文有效」批量接受、「证据」与全文 Block 默认折叠）：实现完成，待人工验收；提交 166288f，前端脚本 80/25/14/37/23 全绿，build 通过。
 
 ## 保底顺序
