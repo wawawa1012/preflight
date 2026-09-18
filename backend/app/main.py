@@ -6,12 +6,14 @@ from pydantic import BaseModel
 from typing import Literal
 
 from . import llm, rubric_store, storage
+from .claim_inspector import inspect_statements
 from .contracts import (
     AgentProposal,
     AgentProposalCreate,
     ApiError,
     CriterionEvidenceLink,
     CriterionEvidenceLinkCreate,
+    DetectedStatement,
     EvidenceAnnotation,
     EvidenceAnnotationCreate,
     MarkdownPreview,
@@ -128,6 +130,15 @@ def material_preflight_report(material_id: str) -> MaterialPreflightReport:
     if report is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
     return report
+
+
+# I7 关键陈述扫描：确定性纯函数现算，不写库、不调 LLM。
+@app.get("/api/v1/materials/{material_id}/statement-signals", response_model=list[DetectedStatement])
+def material_statement_signals(material_id: str) -> list[DetectedStatement]:
+    material = storage.get_material(material_id)
+    if material is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return inspect_statements(material.blocks)
 
 
 # 证据标注：quote 服务端校验必须来自 Block 原文；material_id/proposed_by 由服务端设定。

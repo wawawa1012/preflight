@@ -376,6 +376,17 @@ class MaterialPreflightSummary(Contract):
     criteria_without_citations: int | None = None
 
 
+class DetectedStatement(Contract):
+    """I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。"""
+
+    block_id: str
+    line_number: int = Field(ge=1)
+    quote: str = Field(min_length=1)
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+    signal: Literal["numeric", "percentage", "comparative", "absolute"]
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -405,4 +416,5 @@ class ContractBundle(Contract):
     material_preflight_criterion_row: MaterialPreflightCriterionRow
     material_preflight_citation: MaterialPreflightCitation
     material_preflight_missing: MaterialPreflightMissing
+    detected_statement: DetectedStatement
     error: ApiError

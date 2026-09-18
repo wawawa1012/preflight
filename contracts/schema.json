@@ -362,6 +362,56 @@
       "title": "CriterionEvidenceLinkCreate",
       "type": "object"
     },
+    "DetectedStatement": {
+      "additionalProperties": false,
+      "description": "I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。",
+      "properties": {
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "line_number": {
+          "minimum": 1,
+          "title": "Line Number",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        },
+        "signal": {
+          "enum": [
+            "numeric",
+            "percentage",
+            "comparative",
+            "absolute"
+          ],
+          "title": "Signal",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "line_number",
+        "quote",
+        "start",
+        "end",
+        "signal"
+      ],
+      "title": "DetectedStatement",
+      "type": "object"
+    },
     "DiffEntry": {
       "additionalProperties": false,
       "properties": {
@@ -1995,6 +2045,9 @@
     "material_preflight_missing": {
       "$ref": "#/$defs/MaterialPreflightMissing"
     },
+    "detected_statement": {
+      "$ref": "#/$defs/DetectedStatement"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -2022,6 +2075,7 @@
     "material_preflight_criterion_row",
     "material_preflight_citation",
     "material_preflight_missing",
+    "detected_statement",
     "error"
   ],
   "title": "ContractBundle",

@@ -222,6 +222,12 @@ export type VerifiedCitationCount1 = number;
 export type CriteriaTotal = number | null;
 export type CriteriaWithCitations = number | null;
 export type CriteriaWithoutCitations = number | null;
+export type BlockId5 = string;
+export type LineNumber1 = number;
+export type Quote4 = string;
+export type Start2 = number;
+export type End2 = number;
+export type Signal = "numeric" | "percentage" | "comparative" | "absolute";
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -249,6 +255,7 @@ export interface ContractBundle {
   material_preflight_criterion_row: MaterialPreflightCriterionRow;
   material_preflight_citation: MaterialPreflightCitation;
   material_preflight_missing: MaterialPreflightMissing;
+  detected_statement: DetectedStatement;
   error: ApiError;
 }
 export interface RunReport {
@@ -556,6 +563,17 @@ export interface MaterialPreflightSummary {
   criteria_total?: CriteriaTotal;
   criteria_with_citations?: CriteriaWithCitations;
   criteria_without_citations?: CriteriaWithoutCitations;
+}
+/**
+ * I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。
+ */
+export interface DetectedStatement {
+  block_id: BlockId5;
+  line_number: LineNumber1;
+  quote: Quote4;
+  start: Start2;
+  end: End2;
+  signal: Signal;
 }
 export interface ApiError {
   code: Code;
