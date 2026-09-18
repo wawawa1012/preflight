@@ -628,6 +628,16 @@ init()
                 · rev{{ binding.rubric_revision }} · 来源：{{ boundRubric ? boundRubric.source_note : '标准文件不可用' }}
               </span>
             </p>
+            <UButton
+              class="mt-3"
+              size="sm"
+              color="neutral"
+              variant="subtle"
+              icon="i-lucide-table"
+              :to="`/materials/${materialId}/report`"
+            >
+              查看预审报告
+            </UButton>
             <p v-if="!boundRubric" class="mt-2 text-xs text-red-400">绑定的评分标准版本已不可用</p>
             <div v-else class="mt-3 space-y-3">
               <div
