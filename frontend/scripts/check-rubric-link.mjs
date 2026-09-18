@@ -321,7 +321,9 @@ try {
     }
     const bindings = await mount('/materials/mat_x#block-blk_1')
     check('带 #block-* 打开时定位并高亮', scrolled === true && bindings.highlightedBlockId.value === 'blk_1')
-    bindings.goToBlock('blk_missing')
+    check('带 #block-* 打开时自动展开全文 Block 列表', bindings.blocksOpen.value === true)
+    // goToBlock 现在先展开折叠的 Block 列表再定位（async），这里显式等待完成。
+    await bindings.goToBlock('blk_missing')
     check('目标 Block 不存在时明确提示', bindings.anchorNotice.value.includes('找不到'))
     delete globalThis.document
   }

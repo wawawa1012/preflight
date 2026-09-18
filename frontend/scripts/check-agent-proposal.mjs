@@ -1,5 +1,7 @@
-// Iteration 5 检查（SSR 载入 + setup 行为级，不引入测试框架）：
+// Iteration 7.1 检查（SSR 载入 + setup 行为级，不引入测试框架）：
 // 未绑定禁用 AI 预检、busy 互斥、invalid 候选可见且不可接受、accept 物化、409/400 文案、措辞纪律。
+// 7.1 增量：已关联候选（与后端 duplicate_link 同判定）、批量「接受本条全部原文有效」、
+// 「证据」/全文 Block 默认折叠、空预检「未发现」只留徽章一处。
 // 合成 rubric/提案只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-agent-proposal.mjs
 import { readFileSync } from 'node:fs'
@@ -45,6 +47,23 @@ check(
 check('禁止原生 confirm/alert', !detailSource.includes('window.confirm') && !detailSource.includes('window.alert'))
 check('全已预检时按钮为「再预检全部」', detailSource.includes('再预检全部'))
 check('顶栏显示预检进度而非整钮死转', detailSource.includes('preflightAllLabel'))
+check('批量接受按钮文案为「接受本条全部原文有效」', detailSource.includes('接受本条全部原文有效'))
+check(
+  '「证据」与全文 Block 列表默认折叠',
+  detailSource.includes('const evidenceOpen = ref(false)') && detailSource.includes('const blocksOpen = ref(false)'),
+)
+check(
+  '两个折叠标题都可展开（aria-expanded 绑定 state）',
+  detailSource.includes(':aria-expanded="evidenceOpen"') && detailSource.includes(':aria-expanded="blocksOpen"'),
+)
+check(
+  '空预检「未发现」只在徽章出现一处（不写第三处）',
+  (detailSource.match(/尚未发现/g) ?? []).length === 1 && (detailSource.match(/未发现/g) ?? []).length === 1,
+)
+check(
+  '新增文案不含「没有发现/暂无」类缺席陈述',
+  !detailSource.includes('没有发现') && !detailSource.includes('暂无'),
+)
 
 const blockOne = {
   id: 'blk_1',
@@ -74,13 +93,13 @@ const RUBRIC = {
 }
 const BINDING = { material_id: 'mat_x', rubric_id: 'rubric_syn', rubric_revision: 1, created_at: '2026-09-16T00:00:00+00:00' }
 
-function candidate(id, status, code = null) {
+function candidate(id, status, code = null, quote = '准确率达到 95%') {
   return {
     id,
     proposal_id: 'ap_1',
     ordinal: id === 'apc_1' ? 0 : 1,
     block_id: 'blk_1',
-    quote: status === 'invalid' ? '不存在的引用' : '准确率达到 95%',
+    quote,
     rationale: 'synthetic：可能相关',
     risk_note: null,
     validation_status: status,
@@ -93,7 +112,29 @@ function candidate(id, status, code = null) {
   }
 }
 
-function proposal(status = 'completed', candidates = [candidate('apc_1', 'passed'), candidate('apc_2', 'invalid', 'quote_not_found')]) {
+// 已关联候选的判定基准：人工先关联的同一句原文（block_id + quote 与候选一致）。
+const LINKED_ANNOTATION = {
+  id: 'ev_manual_1',
+  material_id: 'mat_x',
+  block_id: 'blk_1',
+  source: { block_id: 'blk_1', start: 5, end: 14, quote: '准确率达到 95%' },
+  note: null,
+  proposed_by: 'human',
+  created_at: '2026-09-16T00:00:00+00:00',
+}
+const LINKED_LINK = {
+  id: 'cel_manual_1',
+  material_id: 'mat_x',
+  annotation_id: 'ev_manual_1',
+  rubric_id: 'rubric_syn',
+  rubric_revision: 1,
+  criterion_id: 'c_syn_1',
+  rationale: 'synthetic：人工已关联',
+  proposed_by: 'human',
+  created_at: '2026-09-16T00:00:00+00:00',
+}
+
+function proposal(status = 'completed', candidates = [candidate('apc_1', 'passed'), candidate('apc_2', 'invalid', 'quote_not_found', '不存在的引用')]) {
   return {
     id: 'ap_1',
     material_id: 'mat_x',
@@ -122,8 +163,11 @@ const state = {
   proposeFailure: null,
   failCriterion: '',
   acceptStatus: 201,
+  acceptDuplicateFor: '',
+  acceptDefer: false,
+  acceptReleases: [],
   rejectStatus: 200,
-  counts: { propose: 0, accept: 0, reject: 0 },
+  counts: { propose: 0, accept: 0, reject: 0, linksGet: 0 },
 }
 
 function resetState() {
@@ -138,8 +182,11 @@ function resetState() {
   state.proposeFailure = null
   state.failCriterion = ''
   state.acceptStatus = 201
+  state.acceptDuplicateFor = ''
+  state.acceptDefer = false
+  state.acceptReleases = []
   state.rejectStatus = 200
-  state.counts = { propose: 0, accept: 0, reject: 0 }
+  state.counts = { propose: 0, accept: 0, reject: 0, linksGet: 0 }
 }
 
 globalThis.fetch = async (url, options = {}) => {
@@ -148,7 +195,10 @@ globalThis.fetch = async (url, options = {}) => {
   if (method === 'GET' && target === '/api/v1/rubrics') return jsonResponse([RUBRIC])
   if (method === 'GET' && target.endsWith('/rubric-binding')) return jsonResponse(state.binding)
   if (method === 'GET' && target.endsWith('/evidence-annotations')) return jsonResponse(state.annotations)
-  if (method === 'GET' && target.endsWith('/criterion-evidence-links')) return jsonResponse(state.links)
+  if (method === 'GET' && target.endsWith('/criterion-evidence-links')) {
+    state.counts.linksGet += 1
+    return jsonResponse(state.links)
+  }
   if (method === 'GET' && target.endsWith('/agent-proposals')) return jsonResponse(state.proposals)
   if (method === 'GET' && target.startsWith('/api/v1/materials/')) return jsonResponse(MATERIAL)
   if (method === 'POST' && target.endsWith('/agent-proposals')) {
@@ -185,60 +235,73 @@ globalThis.fetch = async (url, options = {}) => {
   }
   if (method === 'POST' && target.includes('/proposal-candidates/') && target.endsWith('/accept')) {
     state.counts.accept += 1
-    if (state.acceptStatus !== 201) {
-      const code =
-        state.acceptStatus === 409 ? 'duplicate_link' : state.acceptStatus === 400 ? 'invalid_candidate' : 'span_mismatch'
-      return jsonResponse({ code, message: '接受失败示例', details: [] }, state.acceptStatus)
+    const candidateId = decodeURIComponent(target.split('/proposal-candidates/')[1].replace('/accept', ''))
+    const send = () => {
+      if (state.acceptDuplicateFor === candidateId) {
+        return jsonResponse({ code: 'duplicate_link', message: '该原文已关联此评分要求', details: [] }, 409)
+      }
+      if (state.acceptStatus !== 201) {
+        const code = state.acceptStatus === 400 ? 'invalid_candidate' : 'span_mismatch'
+        return jsonResponse({ code, message: '接受失败示例', details: [] }, state.acceptStatus)
+      }
+      const owner = state.proposals.find((item) => item.candidates.some((entry) => entry.id === candidateId))
+      const source = owner.candidates.find((entry) => entry.id === candidateId)
+      const annotation = {
+        id: `ev_${candidateId}`,
+        material_id: 'mat_x',
+        block_id: source.block_id,
+        source: { block_id: source.block_id, start: 5, end: 14, quote: source.quote },
+        note: null,
+        proposed_by: 'agent',
+        created_at: '2026-09-16T00:00:00+00:00',
+      }
+      const link = {
+        id: `cel_${candidateId}`,
+        material_id: 'mat_x',
+        annotation_id: annotation.id,
+        rubric_id: owner.rubric_id,
+        rubric_revision: owner.rubric_revision,
+        criterion_id: owner.criterion_id,
+        rationale: source.rationale,
+        proposed_by: 'agent',
+        created_at: '2026-09-16T00:00:00+00:00',
+      }
+      state.annotations = [...state.annotations, annotation]
+      state.links = [...state.links, link]
+      state.proposals = state.proposals.map((item) => ({
+        ...item,
+        candidates: item.candidates.map((entry) =>
+          entry.id === candidateId
+            ? {
+                ...entry,
+                review_status: 'accepted',
+                created_annotation_id: annotation.id,
+                created_link_id: link.id,
+              }
+            : entry,
+        ),
+      }))
+      return jsonResponse({ annotation, link }, 201)
     }
-    const annotation = {
-      id: 'ev_agent_1',
-      material_id: 'mat_x',
-      block_id: 'blk_1',
-      source: { block_id: 'blk_1', start: 5, end: 14, quote: '准确率达到 95%' },
-      note: null,
-      proposed_by: 'agent',
-      created_at: '2026-09-16T00:00:00+00:00',
+    if (state.acceptDefer) {
+      return new Promise((resolve) => {
+        state.acceptReleases.push(() => resolve(send()))
+      })
     }
-    const link = {
-      id: 'cel_agent_1',
-      material_id: 'mat_x',
-      annotation_id: 'ev_agent_1',
-      rubric_id: 'rubric_syn',
-      rubric_revision: 1,
-      criterion_id: 'c_syn_1',
-      rationale: 'synthetic：可能相关',
-      proposed_by: 'agent',
-      created_at: '2026-09-16T00:00:00+00:00',
-    }
-    state.annotations = [...state.annotations, annotation]
-    state.links = [...state.links, link]
-    state.proposals = state.proposals.map((item) => ({
-      ...item,
-      candidates: item.candidates.map((itemCandidate) =>
-        itemCandidate.id === 'apc_1'
-          ? {
-              ...itemCandidate,
-              review_status: 'accepted',
-              created_annotation_id: annotation.id,
-              created_link_id: link.id,
-            }
-          : itemCandidate,
-      ),
-    }))
-    return jsonResponse({ annotation, link }, 201)
+    return send()
   }
   if (method === 'POST' && target.includes('/proposal-candidates/') && target.endsWith('/reject')) {
     state.counts.reject += 1
+    const candidateId = decodeURIComponent(target.split('/proposal-candidates/')[1].replace('/reject', ''))
     const reason = JSON.parse(options.body).reason
     state.proposals = state.proposals.map((item) => ({
       ...item,
-      candidates: item.candidates.map((itemCandidate) =>
-        itemCandidate.id === 'apc_1'
-          ? { ...itemCandidate, review_status: 'rejected', reject_reason: reason }
-          : itemCandidate,
+      candidates: item.candidates.map((entry) =>
+        entry.id === candidateId ? { ...entry, review_status: 'rejected', reject_reason: reason } : entry,
       ),
     }))
-    return jsonResponse(state.proposals[0].candidates[0], state.rejectStatus)
+    const owner = state.proposals.find((item) => item.candidates.some((entry) => entry.id === candidateId))
+    return jsonResponse(owner.candidates.find((entry) => entry.id === candidateId), state.rejectStatus)
   }
   throw new Error(`unexpected fetch: ${method} ${target}`)
 }
@@ -402,20 +465,167 @@ try {
     check('accept 后候选状态刷新为 accepted', bindings.latestProposalFor('c_syn_1').candidates[0].review_status === 'accepted')
   }
 
-  // 409/400 文案：duplicate_link / invalid_candidate / span_mismatch。
-  for (const [status, expected] of [
-    [409, 'duplicate_link'],
-    [400, 'invalid_candidate'],
-  ]) {
-    resetState()
-    state.acceptStatus = status
+  // 已与该 criterion 关联过的候选：显示「已关联」，禁止接受/拒绝，不写 duplicate_link 红字主句。
+  resetState()
+  {
+    state.proposals = [
+      proposal('completed', [
+        candidate('apc_1', 'passed'),
+        candidate('apc_2', 'passed', null, '整体稳定'),
+        candidate('apc_3', 'invalid', 'quote_not_found', '不存在的引用'),
+      ]),
+    ]
+    state.annotations = [LINKED_ANNOTATION]
+    state.links = [LINKED_LINK]
+    const bindings = await mount()
+    const linked = bindings.latestProposalFor('c_syn_1').candidates[0]
+    const fresh = bindings.latestProposalFor('c_syn_1').candidates[1]
+    check('已关联候选被识别（与后端 duplicate_link 同判定）', bindings.candidateLinkedFor('c_syn_1', linked) === true)
+    check('未关联候选不被误判为已关联', bindings.candidateLinkedFor('c_syn_1', fresh) === false)
+    check('待审核徽章不计已关联候选', bindings.criterionPending('c_syn_1') === 1)
+    check('已关联候选不在可接受集合内', bindings.acceptableCandidatesFor('c_syn_1').length === 1)
+
+    await bindings.acceptCandidate(linked)
+    check('已关联候选点接受不发请求', state.counts.accept === 0 && state.counts.linksGet === 1)
+    check(
+      '已关联候选点接受不写红字主句',
+      bindings.proposalError.value === '' && bindings.proposalNotice.value.includes('已关联'),
+      bindings.proposalNotice.value,
+    )
+
+    await bindings.acceptPassedFor('c_syn_1')
+    check(
+      '批量接受跳过已关联候选，只接受剩下的',
+      state.counts.accept === 1 && bindings.annotations.value.length === 2 && bindings.links.value.length === 2,
+      `accept=${state.counts.accept}`,
+    )
+    check(
+      '批量接受提示按实际接受条数',
+      bindings.proposalNotice.value === '已接受 1 条候选并物化为引用（agent）',
+      bindings.proposalNotice.value,
+    )
+    check('已关联候选的 pending 不随批量消失（仍显示已关联）', bindings.candidateLinkedFor('c_syn_1', linked) === true)
+  }
+
+  // 批量接受：逐一接受 passed+unreviewed，invalid 跳过；完成后候选刷新且入口消失。
+  resetState()
+  {
+    state.proposals = [
+      proposal('completed', [
+        candidate('apc_1', 'passed'),
+        candidate('apc_2', 'passed', null, '整体稳定'),
+        candidate('apc_3', 'invalid', 'quote_not_found', '不存在的引用'),
+      ]),
+    ]
+    const bindings = await mount()
+    check('批量入口只数 passed+unreviewed', bindings.acceptableCandidatesFor('c_syn_1').length === 2)
+    await bindings.acceptPassedFor('c_syn_1')
+    check(
+      '批量接受逐一物化 annotation 与 link',
+      state.counts.accept === 2 &&
+        bindings.annotations.value.length === 2 &&
+        bindings.links.value.length === 2 &&
+        bindings.links.value[0].proposed_by === 'agent',
+    )
+    check(
+      '批量接受提示',
+      bindings.proposalNotice.value === '已接受 2 条候选并物化为引用（agent）' && bindings.proposalError.value === '',
+      bindings.proposalNotice.value,
+    )
+    check(
+      '批量接受后候选刷新为 accepted 且入口消失',
+      bindings.latestProposalFor('c_syn_1').candidates.filter((item) => item.review_status === 'accepted').length === 2 &&
+        bindings.acceptableCandidatesFor('c_syn_1').length === 0,
+    )
+  }
+
+  // 批量进行中：互斥（重复点击/单条接受都被拦截），完成后恢复。
+  resetState()
+  {
+    state.proposals = [
+      proposal('completed', [candidate('apc_1', 'passed'), candidate('apc_2', 'passed', null, '整体稳定')]),
+    ]
+    state.acceptDefer = true
+    const bindings = await mount()
+    const pending = bindings.acceptPassedFor('c_syn_1')
+    await flush()
+    check('批量接受中 busy=true', bindings.busy.value === true)
+    await bindings.acceptPassedFor('c_syn_1')
+    await bindings.acceptCandidate(bindings.latestProposalFor('c_syn_1').candidates[0])
+    check('批量进行中重复入口被拦截', state.counts.accept === 1, `accept=${state.counts.accept}`)
+    state.acceptDefer = false
+    state.acceptReleases.splice(0).forEach((release) => release())
+    await pending
+    check('批量完成后恢复且全部接受', bindings.busy.value === false && state.counts.accept === 2, `accept=${state.counts.accept}`)
+  }
+
+  // 服务端 duplicate_link（客户端镜像滞后）：不写红字主句，刷新关联让候选收敛到「已关联」。
+  resetState()
+  {
+    state.proposals = [proposal()]
+    state.acceptDuplicateFor = 'apc_1'
+    const bindings = await mount()
+    const before = state.counts.linksGet
+    await bindings.acceptCandidate(bindings.latestProposalFor('c_syn_1').candidates[0])
+    check('accept 409 duplicate_link 不写红字主句', bindings.proposalError.value === '', bindings.proposalError.value)
+    check(
+      'accept 409 duplicate_link 刷新关联并提示已关联',
+      state.counts.linksGet > before && bindings.proposalNotice.value.includes('已关联'),
+      bindings.proposalNotice.value,
+    )
+  }
+
+  // 批量里出现 duplicate_link：记为跳过，不写红字主句、不重复建关联。
+  resetState()
+  {
+    state.proposals = [
+      proposal('completed', [candidate('apc_1', 'passed'), candidate('apc_2', 'passed', null, '整体稳定')]),
+    ]
+    state.acceptDuplicateFor = 'apc_2'
+    const bindings = await mount()
+    await bindings.acceptPassedFor('c_syn_1')
+    check(
+      '批量中 duplicate_link 记为跳过',
+      bindings.proposalNotice.value.includes('已接受 1 条') && bindings.proposalNotice.value.includes('已跳过'),
+      bindings.proposalNotice.value,
+    )
+    check(
+      '批量跳过不写红字主句且不重复建关联',
+      bindings.proposalError.value === '' && bindings.links.value.length === 1 && state.counts.accept === 2,
+      `${bindings.proposalError.value} | links=${bindings.links.value.length}`,
+    )
+  }
+
+  // 折叠：「证据」与全文 Block 默认收起，标题可展开；「查看原文」自动展开 Block。
+  resetState()
+  {
+    state.proposals = [proposal()]
+    const bindings = await mount()
+    check('「证据」默认折叠', bindings.evidenceOpen.value === false)
+    check('全文 Block 列表默认折叠', bindings.blocksOpen.value === false)
+    bindings.toggleEvidence()
+    check('「证据」标题可展开', bindings.evidenceOpen.value === true)
+    bindings.toggleEvidence()
+    check('「证据」标题可再次收起', bindings.evidenceOpen.value === false)
+    bindings.toggleBlocks()
+    check('全文 Block 标题可展开', bindings.blocksOpen.value === true)
+    bindings.toggleBlocks()
+    check('全文 Block 标题可再次收起', bindings.blocksOpen.value === false)
+    await bindings.goToBlock('blk_1')
+    check('「查看原文」自动展开全文 Block 列表', bindings.blocksOpen.value === true)
+  }
+
+  // 其他 accept 失败码仍按机器码报错（只有 duplicate_link 改走「已关联」人话）。
+  resetState()
+  state.acceptStatus = 400
+  {
     const bindings = await mount()
     await bindings.runPreflight(RUBRIC.criteria[0])
     const passed = bindings.latestProposalFor('c_syn_1').candidates[0]
     await bindings.acceptCandidate(passed)
     check(
-      `accept ${status} 文案含 ${expected}`,
-      bindings.proposalError.value.includes(expected) && bindings.annotations.value.length === 0,
+      'accept 400 文案含 invalid_candidate',
+      bindings.proposalError.value.includes('invalid_candidate') && bindings.annotations.value.length === 0,
       bindings.proposalError.value,
     )
   }

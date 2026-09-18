@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type {
   AgentProposal,
@@ -15,13 +15,7 @@ import type {
 import BlockList from '../components/BlockList.vue'
 import MaterialHeader from '../components/MaterialHeader.vue'
 import { formatSavedAt } from '../utils/format'
-import {
-  confirmedCount,
-  latestCompletedProposal,
-  latestProposal,
-  passedCount,
-  pendingPassedCount,
-} from '../utils/preflightFacts'
+import { confirmedCount, latestCompletedProposal, latestProposal, passedCount } from '../utils/preflightFacts'
 
 const route = useRoute()
 const materialId = String(route.params.materialId)
@@ -74,12 +68,17 @@ const preflightStartedAt = ref<Record<string, number>>({})
 const preflightNow = ref(Date.now())
 let preflightClock: ReturnType<typeof setInterval> | null = null
 const acceptingCandidateId = ref('')
+const acceptingBatchCriterionId = ref('')
 const rejectingCandidateId = ref('')
 const rejectFormId = ref('')
 const rejectReasonInput = ref('')
 const proposalError = ref('')
 const proposalErrorDetail = ref('')
 const proposalNotice = ref('')
+
+// —— 折叠（易用性：默认收起长列表，标题可展开） ——
+const evidenceOpen = ref(false)
+const blocksOpen = ref(false)
 
 // —— 锚点导航 ——
 const highlightedBlockId = ref('')
@@ -95,6 +94,7 @@ const busy = computed(
     deletingLinkId.value !== '' ||
     proposingIds.value.length > 0 ||
     acceptingCandidateId.value !== '' ||
+    acceptingBatchCriterionId.value !== '' ||
     rejectingCandidateId.value !== '',
 )
 
@@ -260,6 +260,8 @@ async function saveAnnotation() {
     selectedBlock.value = null
     quoteInput.value = ''
     noteInput.value = ''
+    // 「证据」默认折叠：刚保存的引用要看得见。
+    evidenceOpen.value = true
     annotationNotice.value = '已保存证据标注'
   } catch (cause) {
     annotationError.value = cause instanceof Error ? cause.message : '未知错误'
@@ -432,8 +434,37 @@ function criterionConfirmed(criterionId: string) {
   return confirmedCount(links.value, criterionId)
 }
 
+function criterionIdForCandidate(candidate: ProposalCandidate) {
+  return proposals.value.find(item => item.id === candidate.proposal_id)?.criterion_id ?? ''
+}
+
+/** 与后端 duplicate_link 同一判定：该 criterion 下已有 block_id + quote 相同的关联。 */
+function candidateLinkedFor(criterionId: string, candidate: ProposalCandidate) {
+  if (!criterionId) return false
+  return links.value.some((link) => {
+    if (link.criterion_id !== criterionId) return false
+    const annotation = annotationFor(link.annotation_id)
+    return annotation !== null && annotation.block_id === candidate.block_id && annotation.source.quote === candidate.quote
+  })
+}
+
+/** 可批量接受：验证门通过、未裁决、且没有已存在关联（已关联的跳过）。 */
+function candidateAcceptable(criterionId: string, candidate: ProposalCandidate) {
+  return (
+    candidate.validation_status === 'passed' &&
+    candidate.review_status === 'unreviewed' &&
+    !candidateLinkedFor(criterionId, candidate)
+  )
+}
+
+function acceptableCandidatesFor(criterionId: string) {
+  const proposal = latestProposalFor(criterionId)
+  if (!proposal || proposal.status !== 'completed') return []
+  return proposal.candidates.filter(item => candidateAcceptable(criterionId, item))
+}
+
 function criterionPending(criterionId: string) {
-  return pendingPassedCount(completedProposalFor(criterionId))
+  return acceptableCandidatesFor(criterionId).length
 }
 
 function criterionEmptyPreflight(criterionId: string) {
@@ -555,10 +586,34 @@ function humanizePreflightError(raw: string | null | undefined) {
   return text
 }
 
+function isDuplicateLinkError(raw: string) {
+  return raw.includes('duplicate_link')
+}
+
+function humanizeAcceptFailure(raw: string) {
+  if (raw.includes('candidate_not_found')) return '找不到该候选，未接受。'
+  if (raw.includes('invalid_candidate')) return '候选原文校验不通过，未接受。'
+  if (raw.includes('span_mismatch')) return '原文已变化，未接受该候选。'
+  return raw
+}
+
+function batchAcceptNotice(accepted: number, skipped: number) {
+  if (accepted === 0) {
+    return skipped > 0 ? `${skipped} 条候选的原文已关联此评分要求，未重复建立关联` : '没有可接受的候选'
+  }
+  return `已接受 ${accepted} 条候选并物化为引用（agent）${skipped > 0 ? `；${skipped} 条原文已关联，已跳过` : ''}`
+}
+
 async function acceptCandidate(candidate: ProposalCandidate) {
   if (busy.value) return
   if (candidate.validation_status !== 'passed') {
     proposalError.value = '原文引用无效的候选不能接受'
+    return
+  }
+  const criterionId = criterionIdForCandidate(candidate)
+  if (candidateLinkedFor(criterionId, candidate)) {
+    // 已关联的候选不再发请求，主句也不是红字：它已经是人确认过的关联。
+    proposalNotice.value = '该候选的原文已关联此评分要求'
     return
   }
   acceptingCandidateId.value = candidate.id
@@ -574,10 +629,65 @@ async function acceptCandidate(candidate: ProposalCandidate) {
     await loadProposals()
     proposalNotice.value = '已接受候选并物化为引用（agent）'
   } catch (cause) {
-    proposalError.value = cause instanceof Error ? cause.message : '未知错误'
+    const raw = cause instanceof Error ? cause.message : '未知错误'
+    if (isDuplicateLinkError(raw)) {
+      // 客户端镜像滞后（别处已建过同一关联）：刷新关联让候选收敛到「已关联」，不写红字主句。
+      await Promise.all([loadAnnotations(), loadLinks(), loadProposals()])
+      proposalNotice.value = '该候选的原文已关联此评分要求'
+    } else {
+      proposalError.value = raw
+    }
   } finally {
     acceptingCandidateId.value = ''
   }
+}
+
+/** 批量接受：逐条接受 passed+unreviewed（已关联的跳过），失败不中断其余候选。 */
+async function acceptPassedFor(criterionId: string) {
+  if (busy.value) return
+  const targets = acceptableCandidatesFor(criterionId)
+  if (targets.length === 0) return
+  acceptingBatchCriterionId.value = criterionId
+  proposalError.value = ''
+  proposalErrorDetail.value = ''
+  proposalNotice.value = ''
+  let accepted = 0
+  let skipped = 0
+  let firstFailure = ''
+  try {
+    for (const candidate of targets) {
+      try {
+        const acceptance = (await requestJson(
+          `/api/v1/materials/${encodeURIComponent(materialId)}/proposal-candidates/${encodeURIComponent(candidate.id)}/accept`,
+          { method: 'POST' },
+        )) as ProposalAcceptance
+        annotations.value = [...annotations.value, acceptance.annotation]
+        links.value = [...links.value, acceptance.link]
+        accepted += 1
+      } catch (cause) {
+        const raw = cause instanceof Error ? cause.message : ''
+        if (isDuplicateLinkError(raw)) {
+          skipped += 1
+        } else if (!firstFailure) {
+          firstFailure = raw
+        }
+      }
+    }
+    if (skipped > 0) await loadLinks()
+    await loadProposals()
+    proposalNotice.value = batchAcceptNotice(accepted, skipped)
+    if (firstFailure) proposalError.value = humanizeAcceptFailure(firstFailure)
+  } finally {
+    acceptingBatchCriterionId.value = ''
+  }
+}
+
+function toggleEvidence() {
+  evidenceOpen.value = !evidenceOpen.value
+}
+
+function toggleBlocks() {
+  blocksOpen.value = !blocksOpen.value
 }
 
 function askReject(candidate: ProposalCandidate) {
@@ -620,11 +730,14 @@ async function rejectCandidate(candidate: ProposalCandidate) {
 
 // —— 锚点导航：定位并短暂高亮；找不到时明确提示 ——
 
-function goToBlock(blockId: string) {
+async function goToBlock(blockId: string) {
   if (!blockId) {
     anchorNotice.value = '该关联对应的 Block 已不存在'
     return
   }
+  // 全文 Block 默认折叠：先展开再定位，否则「查看原文」点了没反应。
+  blocksOpen.value = true
+  await nextTick()
   const element = typeof document !== 'undefined' ? document.getElementById(`block-${blockId}`) : null
   if (!element) {
     anchorNotice.value = '找不到该引用对应的 Block（可能已被移除）'
@@ -878,9 +991,23 @@ init()
                       上次预检失败：{{ humanizePreflightError(latestProposalFor(criterion.id)!.error) }}
                     </p>
                     <div v-else class="mt-2 space-y-2">
-                      <p class="text-xs text-slate-500">
-                        AI 提议可能相关，需你判断；「原文引用有效」只表示这句话在材料里。
-                      </p>
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <p class="text-xs text-slate-500">
+                          AI 提议可能相关，需你判断；「原文引用有效」只表示这句话在材料里。
+                        </p>
+                        <UButton
+                          v-if="acceptableCandidatesFor(criterion.id).length > 0"
+                          size="xs"
+                          color="primary"
+                          variant="subtle"
+                          icon="i-lucide-check-check"
+                          :loading="acceptingBatchCriterionId === criterion.id"
+                          :disabled="busy && acceptingBatchCriterionId !== criterion.id"
+                          @click="acceptPassedFor(criterion.id)"
+                        >
+                          接受本条全部原文有效
+                        </UButton>
+                      </div>
                       <ul class="space-y-2">
                       <li
                         v-for="candidate in latestProposalFor(criterion.id)!.candidates"
@@ -912,9 +1039,20 @@ init()
                             无效：{{ candidate.validation_code }}
                           </UBadge>
                           <UBadge v-else color="neutral" variant="subtle" size="sm">待验证</UBadge>
-                          <UBadge color="neutral" variant="subtle" size="sm">{{ candidate.review_status }}</UBadge>
+                          <UBadge
+                            v-if="candidateLinkedFor(criterion.id, candidate)"
+                            color="info"
+                            variant="subtle"
+                            size="sm"
+                          >
+                            已关联
+                          </UBadge>
+                          <UBadge v-else color="neutral" variant="subtle" size="sm">{{ candidate.review_status }}</UBadge>
                         </div>
-                        <div v-if="candidate.review_status === 'unreviewed'" class="mt-2 flex flex-wrap items-center gap-2">
+                        <div
+                          v-if="candidate.review_status === 'unreviewed' && !candidateLinkedFor(criterion.id, candidate)"
+                          class="mt-2 flex flex-wrap items-center gap-2"
+                        >
                           <UButton
                             size="xs"
                             :loading="acceptingCandidateId === candidate.id"
@@ -1000,15 +1138,24 @@ init()
         </p>
       </section>
 
-      <!-- 证据区：标注列表 + 反馈；表单在选中的 Block 行内展开。 -->
+      <!-- 证据区：默认折叠；标题可展开。标注列表 + 反馈；表单在选中的 Block 行内展开。 -->
       <section class="mt-4 rounded-lg border border-slate-800">
-        <div class="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-          <h2 class="text-sm font-medium text-slate-300">证据</h2>
-          <span class="text-xs text-slate-500">{{ annotations.length }} 条标注</span>
-        </div>
-        <p v-if="annotationsLoading" class="px-3 py-3 text-sm text-slate-400">正在读取证据标注…</p>
-        <p v-else-if="annotationsError" class="px-3 py-3 text-sm text-red-400" role="alert">{{ annotationsError }}</p>
-        <template v-else>
+        <button
+          type="button"
+          class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+          :aria-expanded="evidenceOpen"
+          @click="toggleEvidence"
+        >
+          <span class="text-sm font-medium text-slate-300">证据</span>
+          <span class="flex items-center gap-2 text-xs text-slate-500">
+            {{ annotations.length }} 条标注
+            <UIcon :name="evidenceOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+          </span>
+        </button>
+        <div v-if="evidenceOpen" class="border-t border-slate-800">
+          <p v-if="annotationsLoading" class="px-3 py-3 text-sm text-slate-400">正在读取证据标注…</p>
+          <p v-else-if="annotationsError" class="px-3 py-3 text-sm text-red-400" role="alert">{{ annotationsError }}</p>
+          <template v-else>
           <p v-if="annotations.length === 0" class="px-3 py-3 text-sm text-slate-500">
             还没有已保存的引用。预检点「接受」会出现在这里；也可在 Block 行手动圈一句。
           </p>
@@ -1107,53 +1254,69 @@ init()
         <p v-if="annotationNotice" class="border-t border-slate-800 px-3 py-2 text-xs text-emerald-400">
           {{ annotationNotice }}
         </p>
+        </div>
       </section>
 
-      <div class="mt-4">
-        <BlockList
-          :blocks="material.blocks"
-          :annotated-counts="annotatedCounts"
-          :highlight-block-id="highlightedBlockId"
+      <!-- 全文 Block：默认折叠；标题可展开。标注/圈句都在 Block 行内。 -->
+      <section class="mt-4 rounded-lg border border-slate-800">
+        <button
+          type="button"
+          class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+          :aria-expanded="blocksOpen"
+          @click="toggleBlocks"
         >
-          <template #cite="{ block }">
-            <UButton
-              v-if="!selectedBlock || selectedBlock.id !== block.id"
-              class="ml-auto shrink-0"
-              size="xs"
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-quote"
-              :disabled="busy"
-              title="AI 预检未找到时，可手动圈一句原文再关联。平时请用上面的接受。"
-              @click="selectBlock(block)"
-            >
-              标注
-            </UButton>
-            <div v-else class="w-full rounded-md border border-slate-800 bg-slate-950/60 p-3">
-              <p class="text-xs text-slate-500">引用 line {{ block.locator.index }} · quote 必须是原文子串，可改窄</p>
-              <input
-                v-model="quoteInput"
-                class="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-sm text-slate-200"
-              />
-              <textarea
-                v-model="noteInput"
-                rows="2"
-                placeholder="note（可选）"
-                class="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
-              ></textarea>
-              <div class="mt-2 flex items-center gap-2">
-                <UButton size="sm" :loading="savingAnnotation" :disabled="savingAnnotation" @click="saveAnnotation">
-                  {{ savingAnnotation ? '正在保存…' : '保存标注' }}
-                </UButton>
-                <UButton size="sm" color="neutral" variant="ghost" :disabled="savingAnnotation" @click="cancelSelection">
-                  取消
-                </UButton>
+          <span class="text-sm font-medium text-slate-300">全文 Block 列表</span>
+          <span class="flex items-center gap-2 text-xs text-slate-500">
+            共 {{ material.blocks.length }} 个
+            <UIcon :name="blocksOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+          </span>
+        </button>
+        <div v-if="blocksOpen" class="border-t border-slate-800 p-3">
+          <BlockList
+            :blocks="material.blocks"
+            :annotated-counts="annotatedCounts"
+            :highlight-block-id="highlightedBlockId"
+          >
+            <template #cite="{ block }">
+              <UButton
+                v-if="!selectedBlock || selectedBlock.id !== block.id"
+                class="ml-auto shrink-0"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-quote"
+                :disabled="busy"
+                title="AI 预检未找到时，可手动圈一句原文再关联。平时请用上面的接受。"
+                @click="selectBlock(block)"
+              >
+                标注
+              </UButton>
+              <div v-else class="w-full rounded-md border border-slate-800 bg-slate-950/60 p-3">
+                <p class="text-xs text-slate-500">引用 line {{ block.locator.index }} · quote 必须是原文子串，可改窄</p>
+                <input
+                  v-model="quoteInput"
+                  class="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-sm text-slate-200"
+                />
+                <textarea
+                  v-model="noteInput"
+                  rows="2"
+                  placeholder="note（可选）"
+                  class="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
+                ></textarea>
+                <div class="mt-2 flex items-center gap-2">
+                  <UButton size="sm" :loading="savingAnnotation" :disabled="savingAnnotation" @click="saveAnnotation">
+                    {{ savingAnnotation ? '正在保存…' : '保存标注' }}
+                  </UButton>
+                  <UButton size="sm" color="neutral" variant="ghost" :disabled="savingAnnotation" @click="cancelSelection">
+                    取消
+                  </UButton>
+                </div>
+                <p v-if="annotationError" class="mt-2 text-xs text-red-400" role="alert">{{ annotationError }}</p>
               </div>
-              <p v-if="annotationError" class="mt-2 text-xs text-red-400" role="alert">{{ annotationError }}</p>
-            </div>
-          </template>
-        </BlockList>
-      </div>
+            </template>
+          </BlockList>
+        </div>
+      </section>
     </template>
   </main>
 </template>
