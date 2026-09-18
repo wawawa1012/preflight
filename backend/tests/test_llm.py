@@ -80,6 +80,14 @@ class BuildMessagesTest(unittest.TestCase):
         self.assertIn("blk_1", user)
         self.assertIn("准确率达到 95%", user)
 
+    def test_prompt_v2_requires_direct_evidence_and_allows_abstention(self) -> None:
+        messages = llm.build_messages(make_criterion(), [make_block()])
+        joined = messages[0]["content"] + messages[1]["content"]
+        self.assertIn("直接依据", joined)
+        self.assertIn("练习", joined)
+        self.assertIn("candidates 必须为 []", joined)
+        self.assertNotIn("最多 8", joined)
+
     def test_oversize_prompt_is_rejected_not_truncated(self) -> None:
         huge = make_block(text="长文本" * 20000)
         with self.assertRaises(llm.PromptTooLarge):
