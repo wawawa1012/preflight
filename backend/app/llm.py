@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,9 @@ from .contracts import Block, Criterion
 PROMPT_VERSION = "p5-criterion-preflight-v2"
 MAX_PROMPT_CHARS = 24000
 DEFAULT_TIMEOUT_S = 60.0
+# OpenCode Go 网关按会话路由，要求稳定的 x-opencode-session，且 UA 不能是通用 SDK 名。
+_SESSION_ID = f"preflight-{uuid.uuid4().hex}"
+_CLIENT_HEADERS = {"User-Agent": "preflight/0.1", "x-opencode-session": _SESSION_ID}
 
 _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
@@ -190,7 +194,12 @@ def _usage_fields(usage: object) -> str:
 
 
 def complete(settings: LlmSettings, messages: list[dict[str, str]]) -> str:
-    client = OpenAI(base_url=settings.base_url, api_key=settings.api_key, timeout=settings.timeout_s)
+    client = OpenAI(
+        base_url=settings.base_url,
+        api_key=settings.api_key,
+        timeout=settings.timeout_s,
+        default_headers=_CLIENT_HEADERS,
+    )
     started = time.perf_counter()
     try:
         response = client.chat.completions.create(

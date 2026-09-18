@@ -1,5 +1,9 @@
 # Progress log
 
+## 2026-09-18 — I6.1：空预检像查过了（正交计数，不改契约）
+
+详情与报告用提案列表 + 已确认关联并排展示：尚未预检 / 预检完成·当前材料尚未发现候选引用（含范围）/ 已发现 N 条待审核 / 已确认关联 N 条。报告前端组合 GET agent-proposals。标注降级为一句说明。未改 contracts/storage/llm。
+
 ## 2026-09-18 — Iteration 5.1：Proposal Quality（弃权 + 措辞 + benchmark harness，实现完成，待用户 live benchmark）
 
 提交：

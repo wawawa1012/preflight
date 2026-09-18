@@ -23,6 +23,13 @@ check('候选徽章写「原文引用有效」', detailSource.includes('原文�
 check('未绑定时 guard 阻止发起预检', detailSource.includes('if (busy.value || !boundRubric.value) return'))
 check('invalid 候选有醒目错误码徽章', detailSource.includes('无效：'))
 check('接受按钮对非 passed 候选禁用', detailSource.includes("candidate.validation_status !== 'passed'"))
+check('空预检主句不是「尚未关联引用」独占', detailSource.includes('预检完成 · 当前材料尚未发现候选引用'))
+check('正交展示待审核与已确认关联', detailSource.includes('已发现') && detailSource.includes('已确认关联'))
+check('标注 title 含手动圈一句', detailSource.includes('手动圈一句'))
+check(
+  '尚未关联引用仅用于尚未预检',
+  detailSource.includes('!completedProposalFor(criterion.id)'),
+)
 
 const blockOne = {
   id: 'blk_1',

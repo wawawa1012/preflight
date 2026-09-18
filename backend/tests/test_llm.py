@@ -210,6 +210,30 @@ class CompleteErrorMappingTest(unittest.TestCase):
         with self.assertRaises(llm.LlmInvalidResponse):
             llm.propose_candidates(make_criterion(), [make_block()])
 
+    def test_client_sends_opencode_session_and_product_ua(self) -> None:
+        captured: dict = {}
+
+        class StubCompletions:
+            def create(self, **kwargs):
+                raise llm.OpenAIError("stop-after-init")
+
+        class StubChat:
+            completions = StubCompletions()
+
+        class StubClient:
+            def __init__(self, **kwargs) -> None:
+                captured.update(kwargs)
+                self.chat = StubChat()
+
+        llm.OpenAI = StubClient
+        with self.assertRaises(llm.LlmUnavailable):
+            llm.propose_candidates(make_criterion(), [make_block()])
+        headers = captured.get("default_headers") or {}
+        self.assertEqual(headers.get("User-Agent"), "preflight/0.1")
+        session = headers.get("x-opencode-session") or ""
+        self.assertTrue(session.startswith("preflight-"), session)
+        self.assertEqual(session, llm._SESSION_ID)
+
 
 class LlmLoggingTest(unittest.TestCase):
     """I5.1：调用观测日志（不改契约）。token 仅在 usage 存在时记录。"""

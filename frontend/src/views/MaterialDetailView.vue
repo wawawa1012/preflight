@@ -15,6 +15,13 @@ import type {
 import BlockList from '../components/BlockList.vue'
 import MaterialHeader from '../components/MaterialHeader.vue'
 import { formatSavedAt } from '../utils/format'
+import {
+  confirmedCount,
+  latestCompletedProposal,
+  latestProposal,
+  passedCount,
+  pendingPassedCount,
+} from '../utils/preflightFacts'
 
 const route = useRoute()
 const materialId = String(route.params.materialId)
@@ -410,7 +417,24 @@ async function loadProposals() {
 }
 
 function latestProposalFor(criterionId: string) {
-  return proposals.value.find(item => item.criterion_id === criterionId) ?? null
+  return latestProposal(proposals.value, criterionId)
+}
+
+function completedProposalFor(criterionId: string) {
+  return latestCompletedProposal(proposals.value, criterionId)
+}
+
+function criterionConfirmed(criterionId: string) {
+  return confirmedCount(links.value, criterionId)
+}
+
+function criterionPending(criterionId: string) {
+  return pendingPassedCount(completedProposalFor(criterionId))
+}
+
+function criterionEmptyPreflight(criterionId: string) {
+  const completed = completedProposalFor(criterionId)
+  return completed !== null && passedCount(completed) === 0
 }
 
 function preflightButtonLabel(criterionId: string) {
@@ -598,7 +622,17 @@ init()
           <span class="mx-1">/</span>
           <span class="text-slate-300">{{ material.filename }}</span>
         </p>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+        <div class="flex flex-wrap items-center gap-3">
+          <UButton
+            :to="`/materials/${materialId}/report`"
+            color="neutral"
+            variant="subtle"
+            icon="i-lucide-table"
+          >
+            查看预审报告
+          </UButton>
+          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+        </div>
       </div>
 
       <MaterialHeader
@@ -639,16 +673,6 @@ init()
                 · rev{{ binding.rubric_revision }} · 来源：{{ boundRubric ? boundRubric.source_note : '标准文件不可用' }}
               </span>
             </p>
-            <UButton
-              class="mt-3"
-              size="sm"
-              color="neutral"
-              variant="subtle"
-              icon="i-lucide-table"
-              :to="`/materials/${materialId}/report`"
-            >
-              查看预审报告
-            </UButton>
             <p v-if="!boundRubric" class="mt-2 text-xs text-red-400">绑定的评分标准版本已不可用</p>
             <div v-else class="mt-3 space-y-3">
               <div
@@ -658,6 +682,46 @@ init()
               >
                 <p class="text-sm font-medium text-slate-200">{{ criterion.title }}</p>
                 <p class="mt-1 text-xs text-slate-500">{{ criterion.requirement }}</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <UBadge
+                    v-if="!completedProposalFor(criterion.id)"
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    尚未预检
+                  </UBadge>
+                  <UBadge
+                    v-if="criterionEmptyPreflight(criterion.id)"
+                    color="neutral"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    预检完成 · 当前材料尚未发现候选引用
+                  </UBadge>
+                  <UBadge
+                    v-if="criterionPending(criterion.id) > 0"
+                    color="warning"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    已发现 {{ criterionPending(criterion.id) }} 条候选，待审核
+                  </UBadge>
+                  <UBadge
+                    v-if="criterionConfirmed(criterion.id) > 0"
+                    color="success"
+                    variant="subtle"
+                    size="sm"
+                  >
+                    已确认关联 {{ criterionConfirmed(criterion.id) }} 条
+                  </UBadge>
+                </div>
+                <p
+                  v-if="criterionEmptyPreflight(criterion.id) && material"
+                  class="mt-1 text-xs text-slate-500"
+                >
+                  范围：{{ material.filename }} · {{ material.blocks.length }} 个 Block
+                </p>
                 <div class="mt-2 space-y-2">
                   <div v-for="link in linksFor(criterion.id)" :key="link.id" class="rounded-md bg-slate-900/60 p-2">
                     <p class="font-mono text-xs text-slate-300">
@@ -692,7 +756,12 @@ init()
                       </UButton>
                     </div>
                   </div>
-                  <p v-if="linksFor(criterion.id).length === 0" class="text-xs text-slate-500">尚未关联引用</p>
+                  <p
+                    v-if="criterionConfirmed(criterion.id) === 0 && !completedProposalFor(criterion.id)"
+                    class="text-xs text-slate-500"
+                  >
+                    尚未关联引用
+                  </p>
                 </div>
 
                 <!-- AI 预检：只产生候选；接受/拒绝由人裁决。 -->
@@ -848,7 +917,7 @@ init()
         <p v-else-if="annotationsError" class="px-3 py-3 text-sm text-red-400" role="alert">{{ annotationsError }}</p>
         <template v-else>
           <p v-if="annotations.length === 0" class="px-3 py-3 text-sm text-slate-500">
-            还没有证据标注；在下方 Block 行点击“标注”，quote 会预填整块原文。
+            还没有已保存的引用。预检点「接受」会出现在这里；也可在 Block 行手动圈一句。
           </p>
           <ul v-else class="divide-y divide-slate-800">
             <li v-for="item in annotations" :key="item.id" class="px-3 py-2">
@@ -962,6 +1031,7 @@ init()
               variant="ghost"
               icon="i-lucide-quote"
               :disabled="busy"
+              title="AI 预检未找到时，可手动圈一句原文再关联。平时请用上面的接受。"
               @click="selectBlock(block)"
             >
               标注

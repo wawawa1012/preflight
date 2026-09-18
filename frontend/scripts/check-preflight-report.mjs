@@ -14,6 +14,14 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
+function reportFetch(reportBody, status = 200, proposalsBody = [], proposalStatus = 200) {
+  return async (input) => {
+    const url = String(input)
+    if (url.includes('agent-proposals')) return jsonResponse(proposalsBody, proposalStatus)
+    return jsonResponse(reportBody, status)
+  }
+}
+
 const reportSource = readFileSync(new URL('../src/views/MaterialReportView.vue', import.meta.url), 'utf8')
 const drawerSource = readFileSync(new URL('../src/components/EvidenceDrawer.vue', import.meta.url), 'utf8')
 const routerSource = readFileSync(new URL('../src/router/index.ts', import.meta.url), 'utf8')
@@ -26,6 +34,9 @@ check(
 )
 check('Drawer 使用 USlideover', drawerSource.includes('USlideover'))
 check('报告页标签为「已确认关联」且不再用「已核证」', reportSource.includes('已确认关联') && !reportSource.includes('已核证'))
+check('空预检文案在报告源码中', reportSource.includes('预检完成 · 当前材料尚未发现候选引用'))
+check('报告组合 agent-proposals', reportSource.includes('agent-proposals'))
+check('正交：待审核与已确认可同时出现在模板', reportSource.includes('已发现') && reportSource.includes('已确认关联'))
 check('引用行标注「原文已校验」', reportSource.includes('原文已校验'))
 check('路由登记 /materials/:materialId/report', routerSource.includes("'/materials/:materialId/report'"))
 check('citation 展示 human/agent 溯源徽章', reportSource.includes('proposed_by'))
@@ -112,7 +123,7 @@ try {
 
   // 正常态：一行有引用，一行带范围句。
   {
-    const { app } = await mount(async () => jsonResponse(report))
+    const { app } = await mount(reportFetch(report))
     const html = await renderToString(app)
     check('正常态 SSR 含 Workbench 出口', html.includes('href="/"') && html.includes('Workbench'))
     const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
@@ -125,8 +136,8 @@ try {
     check('有引用行计数为 1 且 quote/line 正确', byId.c_syn_1.verified_citation_count === 1 && byId.c_syn_1.citations[0].line_number === 7 && byId.c_syn_1.citations[0].quote === '准确率达到 95%')
     check('零引用行 missing 说明含文件名与 Block 数', byId.c_syn_2.missing.explanation.includes('ev.md') && byId.c_syn_2.missing.explanation.includes('1 个 Block'))
     check(
-      '零引用行源码渲染范围句文案',
-      reportSource.includes('当前范围尚未发现引用') && reportSource.includes('row.missing.explanation'),
+      '零引用行源码用正交预检文案而非灰徽章独占',
+      reportSource.includes('预检完成 · 当前材料尚未发现候选引用') && reportSource.includes('emptyPreflight'),
     )
 
     bindings.openCitation(byId.c_syn_1.citations[0])
@@ -156,6 +167,68 @@ try {
       'Drawer HTML 含行号与 quote',
       drawerText.includes('Line 7') && drawerText.includes('准确率达到 95%'),
       (teleported || drawerHtml).slice(0, 160),
+    )
+  }
+
+  const emptyProposal = {
+    id: 'ap_empty',
+    material_id: 'mat_x',
+    criterion_id: 'c_syn_2',
+    rubric_id: 'rubric_syn',
+    rubric_revision: 1,
+    provider: 'test',
+    model: 'test',
+    prompt_version: 'p5-criterion-preflight-v2',
+    status: 'completed',
+    error: null,
+    created_at: '2026-09-18T00:00:00+00:00',
+    candidates: [],
+  }
+  const pendingCandidate = (id) => ({
+    id,
+    proposal_id: 'ap_mix',
+    ordinal: 0,
+    block_id: 'blk_1',
+    quote: '准确率达到 95%',
+    rationale: '相关',
+    risk_note: null,
+    validation_status: 'passed',
+    validation_code: null,
+    review_status: 'unreviewed',
+    reject_reason: null,
+    created_annotation_id: null,
+    created_link_id: null,
+    created_at: '2026-09-18T00:00:00+00:00',
+  })
+
+  {
+    const emptyReport = { ...report, criteria: [report.criteria[1]] }
+    const { app } = await mount(reportFetch(emptyReport, 200, [emptyProposal]))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '空预检：completed 且无 passed 候选',
+      bindings.emptyPreflight('c_syn_2') === true && bindings.neverPreflighted('c_syn_2') === false,
+    )
+    check(
+      '空预检范围来自报告 filename 与 block_count',
+      bindings.report.value.filename === 'ev.md' && bindings.report.value.block_count === 1,
+    )
+  }
+
+  {
+    const mixProposal = {
+      ...emptyProposal,
+      id: 'ap_mix',
+      criterion_id: 'c_syn_1',
+      candidates: [pendingCandidate('apc_1'), pendingCandidate('apc_2')],
+    }
+    const { app } = await mount(reportFetch(report, 200, [mixProposal]))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '已确认关联与待审核正交共存',
+      bindings.report.value.criteria[0].verified_citation_count === 1 && bindings.pendingFor('c_syn_1') === 2,
     )
   }
 
