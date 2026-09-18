@@ -14,9 +14,10 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
-function reportFetch(reportBody, status = 200, proposalsBody = [], proposalStatus = 200) {
+function reportFetch(reportBody, status = 200, proposalsBody = [], proposalStatus = 200, signalsBody = []) {
   return async (input) => {
     const url = String(input)
+    if (url.includes('statement-signals')) return jsonResponse(signalsBody)
     if (url.includes('agent-proposals')) return jsonResponse(proposalsBody, proposalStatus)
     return jsonResponse(reportBody, status)
   }
@@ -39,6 +40,11 @@ check('有确认关联的空预检文案在报告源码中', reportSource.includ
 check('报告组合 agent-proposals', reportSource.includes('agent-proposals'))
 check('正交：待审核与已确认可同时出现在模板', reportSource.includes('已发现') && reportSource.includes('已确认关联'))
 check('引用行标注「原文已校验」', reportSource.includes('原文已校验'))
+check('报告页含关键陈述栏目', reportSource.includes('关键陈述'))
+check('报告页请求 statement-signals', reportSource.includes('statement-signals'))
+check('扫描逻辑不在 Vue（报告页无数字扫描正则）', !reportSource.includes('\\d'))
+check('Drawer 标题为「原文 · 第 N 行」', drawerSource.includes('原文 · 第'))
+check('Drawer 渲染上下块并删掉 quote 重复行', drawerSource.includes('previousBlock') && drawerSource.includes('nextBlock') && !drawerSource.includes('quote：'))
 check('路由登记 /materials/:materialId/report', routerSource.includes("'/materials/:materialId/report'"))
 check('citation 展示 human/agent 溯源徽章', reportSource.includes('proposed_by'))
 check(
@@ -142,7 +148,13 @@ try {
     )
 
     bindings.openCitation(byId.c_syn_1.citations[0])
-    check('点击 citation 后 Drawer 打开', bindings.drawerOpen.value === true && bindings.selectedCitation.value.link_id === 'cel_1')
+    check(
+      '点击 citation 后 Drawer 打开且带上高亮范围',
+      bindings.drawerOpen.value === true &&
+        bindings.highlight.value.start === 5 &&
+        bindings.highlight.value.end === 14 &&
+        bindings.drawerBlock.value.id === 'blk_1',
+    )
     // reka-ui 的 Teleport 仅在挂载后或 forceMount 时渲染；SSR 检视时用 fallthrough props 强制内联渲染。
     const drawerContext = {}
     const drawerRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
@@ -152,8 +164,10 @@ try {
       render: () =>
         h(drawerModule.default, {
           open: true,
-          citation: byId.c_syn_1.citations[0],
+          highlight: { line_number: 7, start: 5, end: 14 },
           block,
+          previousBlock: { ...block, id: 'blk_0', text: '上一行：项目简介。' },
+          nextBlock: { ...block, id: 'blk_2', text: '下一行：结论。' },
           filename: 'ev.md',
           portal: false,
           unmountOnHide: false,
@@ -165,9 +179,38 @@ try {
     const teleported = Object.values(drawerContext.teleports ?? {}).join('')
     const drawerText = drawerHtml + teleported
     check(
-      'Drawer HTML 含行号与 quote',
-      drawerText.includes('Line 7') && drawerText.includes('准确率达到 95%'),
-      (teleported || drawerHtml).slice(0, 160),
+      'Drawer 标题为「原文 · 第 7 行」并含高亮 quote',
+      drawerText.includes('原文 · 第 7 行') && drawerText.includes('准确率达到 95%'),
+      (teleported || drawerHtml).slice(0, 200),
+    )
+    check(
+      'Drawer 含上下块原文且不再重复 quote：行',
+      drawerText.includes('上一行：项目简介。') && drawerText.includes('下一行：结论。') && !drawerText.includes('quote：'),
+    )
+  }
+
+  // 关键陈述：报告只渲染 statement-signals，点击开 Drawer。
+  {
+    const signal = {
+      block_id: 'blk_1',
+      line_number: 7,
+      quote: '准确率达到 95%',
+      start: 5,
+      end: 14,
+      signal: 'percentage',
+    }
+    const { app } = await mount(reportFetch(report, 200, [], 200, [signal]))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      '关键陈述来自 statement-signals 且带 kind',
+      bindings.signals.value.length === 1 && bindings.signals.value[0].signal === 'percentage',
+    )
+    check('关键陈述文案映射为中文 kind', bindings.signalLabel('percentage') === '比例')
+    bindings.openHighlight(bindings.signals.value[0])
+    check(
+      '点击关键陈述打开同一 Drawer',
+      bindings.drawerOpen.value === true && bindings.highlight.value.quote === undefined && bindings.drawerBlock.value.id === 'blk_1',
     )
   }
 

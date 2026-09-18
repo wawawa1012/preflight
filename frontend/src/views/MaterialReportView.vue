@@ -1,24 +1,27 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import type { AgentProposal, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
+import type { AgentProposal, Block, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCount } from '../utils/preflightFacts'
 
-// 材料级预审报告：关联来自装配端点；预检态由提案列表前端组合。正交计数，不是互斥 enum。
+// 材料级预审报告：关联来自装配端点；关键陈述来自 statement-signals；预检态由提案列表前端组合。
 const route = useRoute()
 const materialId = String(route.params.materialId)
 
 const report = ref<MaterialPreflightReport | null>(null)
 const proposals = ref<AgentProposal[]>([])
 const proposalsUnavailable = ref(false)
+const signals = ref<DetectedStatement[]>([])
+const signalsUnavailable = ref(false)
 const loading = ref(true)
 const notFound = ref(false)
 const unbound = ref(false)
 const error = ref('')
 
 const drawerOpen = ref(false)
-const selectedCitation = ref<MaterialPreflightCitation | null>(null)
+const highlight = ref<{ line_number: number; start: number; end: number } | null>(null)
+const drawerBlockId = ref('')
 
 async function loadReport() {
   loading.value = true
@@ -27,10 +30,13 @@ async function loadReport() {
   unbound.value = false
   proposalsUnavailable.value = false
   proposals.value = []
+  signalsUnavailable.value = false
+  signals.value = []
   try {
-    const [reportRes, proposalRes] = await Promise.all([
+    const [reportRes, proposalRes, signalRes] = await Promise.all([
       fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/preflight-report`),
       fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/agent-proposals`),
+      fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/statement-signals`),
     ])
     const body = await reportRes.json().catch(() => null)
     if (reportRes.status === 404) {
@@ -51,6 +57,12 @@ async function loadReport() {
     } else {
       proposalsUnavailable.value = true
     }
+    if (signalRes.ok) {
+      const signalBody = await signalRes.json().catch(() => null)
+      signals.value = Array.isArray(signalBody) ? (signalBody as DetectedStatement[]) : []
+    } else {
+      signalsUnavailable.value = true
+    }
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '未知错误'
   } finally {
@@ -58,13 +70,29 @@ async function loadReport() {
   }
 }
 
-function blockFor(citation: MaterialPreflightCitation) {
-  return report.value?.blocks.find((block) => block.id === citation.block_id) ?? null
+const drawerBlock = computed(() => blockAt(0))
+const previousBlock = computed(() => blockAt(-1))
+const nextBlock = computed(() => blockAt(1))
+
+function blockAt(offset: number): Block | null {
+  const blocks = report.value?.blocks ?? []
+  const index = blocks.findIndex((item) => item.id === drawerBlockId.value)
+  if (index < 0) return null
+  return blocks[index + offset] ?? null
+}
+
+function openHighlight(target: { block_id: string; line_number: number; start: number; end: number }) {
+  highlight.value = { line_number: target.line_number, start: target.start, end: target.end }
+  drawerBlockId.value = target.block_id
+  drawerOpen.value = true
 }
 
 function openCitation(citation: MaterialPreflightCitation) {
-  selectedCitation.value = citation
-  drawerOpen.value = true
+  openHighlight(citation)
+}
+
+function signalLabel(signal: DetectedStatement['signal']) {
+  return { numeric: '数字', percentage: '比例', comparative: '比较', absolute: '绝对化' }[signal]
 }
 
 function completedFor(criterionId: string) {
@@ -144,6 +172,28 @@ loadReport()
 
     <div v-else-if="report" class="mt-6 space-y-4">
       <p v-if="proposalsUnavailable" class="text-xs text-amber-300">预检记录不可用</p>
+
+      <!-- 关键陈述：确定性扫描结果，只标出值得核对的句子，不判真假。 -->
+      <section v-if="signalsUnavailable || signals.length > 0" class="rounded-lg border border-slate-800 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-sm font-medium text-slate-200">关键陈述</h2>
+          <span class="text-xs text-slate-500">{{ signals.length }} 条 · 数字 / 比例 / 比较 / 绝对化</span>
+        </div>
+        <p v-if="signalsUnavailable" class="mt-2 text-xs text-amber-300">关键陈述不可用</p>
+        <ul v-else class="mt-3 space-y-2">
+          <li v-for="signal in signals" :key="`${signal.block_id}:${signal.start}`">
+            <button
+              type="button"
+              class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
+              @click="openHighlight(signal)"
+            >
+              <UBadge color="neutral" variant="subtle" size="sm">{{ signalLabel(signal.signal) }}</UBadge>
+              <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}” · line {{ signal.line_number }}</span>
+            </button>
+          </li>
+        </ul>
+      </section>
+
       <div v-for="row in report.criteria" :key="row.criterion_id" class="rounded-lg border border-slate-800 p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div class="min-w-0">
@@ -199,8 +249,10 @@ loadReport()
 
     <EvidenceDrawer
       :open="drawerOpen"
-      :citation="selectedCitation"
-      :block="selectedCitation ? blockFor(selectedCitation) : null"
+      :highlight="highlight"
+      :block="drawerBlock"
+      :previous-block="previousBlock"
+      :next-block="nextBlock"
       :filename="report?.filename ?? ''"
       @update:open="drawerOpen = $event"
     />
