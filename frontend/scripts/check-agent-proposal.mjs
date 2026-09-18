@@ -2,6 +2,8 @@
 // 未绑定禁用 AI 预检、busy 互斥、invalid 候选可见且不可接受、accept 物化、409/400 文案、措辞纪律。
 // 7.1 增量：已关联候选（与后端 duplicate_link 同判定）、批量「接受本条全部原文有效」、
 // 「证据」/全文 Block 默认折叠、空预检「未发现」只留徽章一处。
+// 7.1b 增量：「最新预检」列表只渲染待审核候选（passed+unreviewed 且尚未与该 criterion 建过
+// 同一 block+quote 关联）；已关联/已裁决/无效候选不再出卡片，无效只留一行机器码交代。
 // 合成 rubric/提案只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-agent-proposal.mjs
 import { readFileSync } from 'node:fs'
@@ -26,7 +28,16 @@ check(
   '预检 guard 只看绑定与同条重复（不吃全局 busy）',
   detailSource.includes('!boundRubric.value || proposingIds.value.includes(criterion.id)'),
 )
-check('invalid 候选有醒目错误码徽章', detailSource.includes('无效：'))
+check(
+  '「最新预检」列表只渲染待审核候选（已关联/无效/已裁决不出卡片）',
+  detailSource.includes('v-for="candidate in acceptableCandidatesFor(criterion.id)"') &&
+    !detailSource.includes('v-for="candidate in latestProposalFor(criterion.id)!.candidates"') &&
+    !detailSource.includes('v-if="candidateLinkedFor(criterion.id, candidate)"'),
+)
+check(
+  '无效候选不再出卡片，但验证门机器码仍如实交代',
+  !detailSource.includes('无效：') && detailSource.includes('原文引用无效') && detailSource.includes('validation_code'),
+)
 check('接受按钮对非 passed 候选禁用', detailSource.includes("candidate.validation_status !== 'passed'"))
 check('空预检主句不是「尚未关联引用」独占', detailSource.includes('预检完成 · 当前材料尚未发现候选引用'))
 check('正交展示待审核与已确认关联', detailSource.includes('已发现') && detailSource.includes('已确认关联'))
@@ -463,6 +474,7 @@ try {
         bindings.links.value[0].proposed_by === 'agent',
     )
     check('accept 后候选状态刷新为 accepted', bindings.latestProposalFor('c_syn_1').candidates[0].review_status === 'accepted')
+    check('已裁决候选不再出现在列表', bindings.acceptableCandidatesFor('c_syn_1').length === 0)
   }
 
   // 已与该 criterion 关联过的候选：显示「已关联」，禁止接受/拒绝，不写 duplicate_link 红字主句。
@@ -484,6 +496,16 @@ try {
     check('未关联候选不被误判为已关联', bindings.candidateLinkedFor('c_syn_1', fresh) === false)
     check('待审核徽章不计已关联候选', bindings.criterionPending('c_syn_1') === 1)
     check('已关联候选不在可接受集合内', bindings.acceptableCandidatesFor('c_syn_1').length === 1)
+    check(
+      '已关联候选不出现在预检列表（列表只剩待审核候选）',
+      bindings.acceptableCandidatesFor('c_syn_1').map((item) => item.id).join(',') === 'apc_2',
+      bindings.acceptableCandidatesFor('c_syn_1').map((item) => item.id).join(','),
+    )
+    check(
+      '无效候选只留一行机器码（含条数与 code）',
+      bindings.invalidCandidatesSummary('c_syn_1') === '原文引用无效 1 条：quote_not_found（未列入待审核）',
+      bindings.invalidCandidatesSummary('c_syn_1'),
+    )
 
     await bindings.acceptCandidate(linked)
     check('已关联候选点接受不发请求', state.counts.accept === 0 && state.counts.linksGet === 1)
@@ -550,6 +572,7 @@ try {
     const pending = bindings.acceptPassedFor('c_syn_1')
     await flush()
     check('批量接受中 busy=true', bindings.busy.value === true)
+    check('没有无效候选时不出门结果行', bindings.invalidCandidatesSummary('c_syn_1') === '')
     await bindings.acceptPassedFor('c_syn_1')
     await bindings.acceptCandidate(bindings.latestProposalFor('c_syn_1').candidates[0])
     check('批量进行中重复入口被拦截', state.counts.accept === 1, `accept=${state.counts.accept}`)

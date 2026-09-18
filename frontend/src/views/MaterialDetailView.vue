@@ -467,6 +467,18 @@ function criterionPending(criterionId: string) {
   return acceptableCandidatesFor(criterionId).length
 }
 
+/** 列表只渲染待审核候选；被验证门挡下（或已裁决/已关联）的候选不出卡片，但机器码仍要如实交代。 */
+function invalidCandidatesSummary(criterionId: string) {
+  const proposal = latestProposalFor(criterionId)
+  if (!proposal || proposal.status !== 'completed') return ''
+  const invalid = proposal.candidates.filter((item) => item.validation_status === 'invalid')
+  if (invalid.length === 0) return ''
+  const codes = [...new Set(invalid.map((item) => item.validation_code).filter(Boolean))]
+  return codes.length > 0
+    ? `原文引用无效 ${invalid.length} 条：${codes.join('、')}（未列入待审核）`
+    : `原文引用无效 ${invalid.length} 条（未列入待审核）`
+}
+
 function criterionEmptyPreflight(criterionId: string) {
   const completed = completedProposalFor(criterionId)
   return completed !== null && passedCount(completed) === 0
@@ -1008,9 +1020,12 @@ init()
                           接受本条全部原文有效
                         </UButton>
                       </div>
+                      <p v-if="invalidCandidatesSummary(criterion.id)" class="text-xs text-slate-500">
+                        {{ invalidCandidatesSummary(criterion.id) }}
+                      </p>
                       <ul class="space-y-2">
                       <li
-                        v-for="candidate in latestProposalFor(criterion.id)!.candidates"
+                        v-for="candidate in acceptableCandidatesFor(criterion.id)"
                         :key="candidate.id"
                         class="rounded-md border border-slate-800 p-2"
                       >
@@ -1022,42 +1037,13 @@ init()
                           <span v-if="candidate.risk_note"> · 风险：{{ candidate.risk_note }}</span>
                         </p>
                         <div class="mt-1 flex flex-wrap items-center gap-2">
-                          <UBadge
-                            v-if="candidate.validation_status === 'passed'"
-                            color="success"
-                            variant="subtle"
-                            size="sm"
-                          >
-                            原文引用有效
-                          </UBadge>
-                          <UBadge
-                            v-else-if="candidate.validation_status === 'invalid'"
-                            color="error"
-                            variant="subtle"
-                            size="sm"
-                          >
-                            无效：{{ candidate.validation_code }}
-                          </UBadge>
-                          <UBadge v-else color="neutral" variant="subtle" size="sm">待验证</UBadge>
-                          <UBadge
-                            v-if="candidateLinkedFor(criterion.id, candidate)"
-                            color="info"
-                            variant="subtle"
-                            size="sm"
-                          >
-                            已关联
-                          </UBadge>
-                          <UBadge v-else color="neutral" variant="subtle" size="sm">{{ candidate.review_status }}</UBadge>
+                          <UBadge color="success" variant="subtle" size="sm">原文引用有效</UBadge>
                         </div>
-                        <div
-                          v-if="candidate.review_status === 'unreviewed' && !candidateLinkedFor(criterion.id, candidate)"
-                          class="mt-2 flex flex-wrap items-center gap-2"
-                        >
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
                           <UButton
                             size="xs"
                             :loading="acceptingCandidateId === candidate.id"
-                            :disabled="busy || candidate.validation_status !== 'passed'"
-                            :title="candidate.validation_status === 'passed' ? undefined : '原文引用无效的候选不能接受'"
+                            :disabled="busy"
                             @click="acceptCandidate(candidate)"
                           >
                             接受
