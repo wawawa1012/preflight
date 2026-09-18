@@ -1,5 +1,49 @@
 # Progress log
 
+## 2026-09-18 — Iteration 7.1：材料详情易用性（已关联候选 / 批量接受 / 默认折叠｜实现完成，待人工验收）
+
+提交：
+
+- `166288f` feat: guard linked candidates and fold detail lists（详情页：已与该 Criterion 建过同一 `block_id + quote` 关联的候选显示「已关联」、不提供接受/拒绝、不再出现 duplicate_link 红字主句；每条 Criterion 增加「接受本条全部原文有效」批量入口；「证据」与全文 Block 列表默认折叠、标题可展开；「查看原文」与保存标注后自动展开）
+
+验证输出：
+
+```
+cd frontend
+node scripts/check-agent-proposal.mjs  -> SUMMARY: 80/80 passed（新增 7.1：已关联判定/不写红字主句/批量跳过与计数/批量互斥/折叠默认与展开/未发现仅一处）
+node scripts/check-rubric-link.mjs     -> SUMMARY: 25/25 passed（新增：带 #block-* 深链自动展开全文 Block 列表）
+node scripts/check-evidence-annotation.mjs -> SUMMARY: 14/14 passed
+node scripts/check-preflight-report.mjs    -> SUMMARY: 37/37 passed
+node scripts/check-preview-race.mjs        -> SUMMARY: 23/23 passed
+```
+
+```
+npm.cmd run build（vite build && vue-tsc --noEmit）
+dist/assets/index-BXkvLNj4.js  412.24 kB │ gzip: 129.47 kB
+✓ built in 4.07s
+```
+
+```
+cd backend && ./.venv/Scripts/python.exe -X utf8 -m unittest discover -s tests
+Ran 120 tests in 2.723s
+OK
+（前端改动无后端语义变更；该次运行的工作树同时含并发的删材料工作包改动，不属于本包范围）
+```
+
+```
+./backend/.venv/Scripts/python.exe -X utf8 scripts/check_contracts.py
+PASS: schema freshness, fixture structure/references, quote checks, evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases
+```
+
+说明与边界：
+
+- 已关联判定与后端 `duplicate_link` 同口径（同一 material + criterion 下 `block_id` 与 `quote` 相同）；只在前端镜像判定，不新建关联、不改存储与端点语义。
+- 服务端仍可能因镜像滞后返回 409 `duplicate_link`：前端改为刷新 annotations/links/proposals 让候选收敛到「已关联」，并以提示句呈现，不写红字主句；其他 accept 失败码仍按机器码报错。
+- 「已发现 N 条候选，待审核」计数改为可接受候选（passed 且未裁决且未关联），与批量入口计数一致；报告页未改。
+- 空预检的「未发现」陈述仍只有徽章一处（按 UI_SPEC 保留范围行），未新增第三处；未做「静默自动 accept 全部预检」。
+- `goToBlock` 变为 async（先展开列表再定位）；`check-rubric-link.mjs` 的调用点相应显式 await，并补了深链自动展开的断言。
+- 未改 contracts/storage/LLM/FTS/换绑/Block 切分/报告页；仅新增 2 个前端状态与 3 个前端文案/行为。
+
 ## 2026-09-18 — Iteration 7：关键陈述扫描 + Drawer 2.0（实现完成，待人工验收）
 
 提交：
