@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import type { Block, MaterialSummary } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
+import PageHeader from '../components/review/PageHeader.vue'
+import EmptyState from '../components/review/EmptyState.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 
 // 质询（Grill）：把当前材料里已发现的问题摊成一副编号追问卡片；只读材料，不打分。
@@ -153,20 +155,13 @@ loadMaterials()
 </script>
 
 <template>
-  <main class="mx-auto max-w-4xl px-6 py-10">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <p class="text-sm font-medium text-violet-400">GRILL</p>
-        <h1 class="mt-2 text-3xl font-semibold tracking-tight">质询</h1>
-        <p class="mt-2 text-sm text-slate-400">根据材料里已经发现的问题，列出评审可能追问的点。</p>
-        <p class="mt-1 text-xs text-slate-500">只列可能被追问的点，不是打分。</p>
-        <p class="mt-1 text-xs text-slate-500">引用必须能在原文里对上，对不上的已丢弃。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
-      </div>
-    </div>
+  <main class="mx-auto max-w-6xl px-6 py-10">
+    <PageHeader title="质询" subtitle="根据材料里已经发现的问题，列出评审可能追问的点">
+      <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
+      <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
+    </PageHeader>
+    <!-- 小字说明：只列追问不打分；引用必须对上原文（对不上的已丢弃）。 -->
+    <p class="mt-3 text-xs text-slate-500">只列可能被追问的点，不是打分；引用必须能在原文里对上，对不上的已丢弃。</p>
 
     <UCard class="mt-6">
       <p v-if="loading" class="text-sm text-slate-400">正在读取材料列表…</p>
@@ -209,7 +204,12 @@ loadMaterials()
         <h2 class="text-sm font-medium text-slate-200">追问清单</h2>
         <span class="text-xs text-slate-500">{{ questions.length }} 条 · 每条都引用材料原文</span>
       </div>
-      <p v-if="emptyResult" class="mt-3 text-sm text-slate-400">当前范围没有可引用的追问（空结果合法）。</p>
+      <EmptyState
+        v-if="emptyResult"
+        class="mt-4"
+        title="当前范围没有可引用的追问（空结果合法）"
+        hint="引用对不上原文的追问已丢弃。"
+      />
       <ol v-else class="mt-4 space-y-3">
         <li
           v-for="(question, index) in questions"
@@ -220,7 +220,7 @@ loadMaterials()
             <span class="select-none font-mono text-2xl leading-none text-violet-400/80">{{ String(index + 1).padStart(2, '0') }}</span>
             <div class="min-w-0 flex-1">
               <p class="text-base leading-relaxed text-slate-100">{{ question.prompt }}</p>
-              <p class="mt-3 text-xs text-slate-500">依据</p>
+              <p class="mt-3 text-xs text-slate-500">依据 · 针对已核对的原文</p>
               <button
                 type="button"
                 class="mt-1 w-full rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-left transition hover:border-violet-500/40 hover:bg-slate-800/60"

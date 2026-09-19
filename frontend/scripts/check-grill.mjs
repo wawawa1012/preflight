@@ -3,6 +3,8 @@
 // 选中一份材料后点「生成追问」才 POST /api/v1/grill（body 只含该 material_id）；
 // 空追问是合法结果；结果是编号追问卡片（01 起），依据 = 引用原文 + 位置，点开 Drawer
 // （按需 GET 该材料 blocks，位置按 locatorLabel）；失败可见 + 重试；措辞纪律（不是打分只在小字、无禁用词）。
+// 共享件纪律：页头消费 PageHeader（H1 由组件渲染，title 质询）、空追问消费 EmptyState、页面 max-w-6xl；
+// 依据不新增「为什么会问」字段（quote + 位置，注明针对已核对的原文）。
 // 合成数据只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-grill.mjs
 import { readFileSync } from 'node:fs'
@@ -19,6 +21,8 @@ const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
 const viewSource = readFileSync(new URL('../src/views/GrillView.vue', import.meta.url), 'utf8')
+const headerSource = readFileSync(new URL('../src/components/review/PageHeader.vue', import.meta.url), 'utf8')
+const emptySource = readFileSync(new URL('../src/components/review/EmptyState.vue', import.meta.url), 'utf8')
 
 const materialsFixture = [
   { id: 'mat_a', filename: 'alpha.md', created_at: '2026-09-19T06:00:00+00:00', block_count: 2 },
@@ -108,14 +112,26 @@ try {
       initialHtml.includes('href="/materials"') &&
       initialHtml.includes('href="/"'),
   )
-  // 英雄区纪律：H1 就是「质询」，打分/参赛/提交前/不是打分都不许进标题。
-  const h1Match = viewSource.match(/<h1[^>]*>([^<]*)<\/h1>/)
+  // 页头纪律：H1 交给共享 PageHeader 渲染（title/subtitle 按约定），禁用词不许进英雄区。
+  const headerTitle = viewSource.match(/<PageHeader[^>]*\stitle="([^"]+)"/)
+  const headerSubtitle = viewSource.match(/<PageHeader[^>]*\ssubtitle="([^"]+)"/)
+  const heroTexts = [headerTitle ? headerTitle[1] : '', headerSubtitle ? headerSubtitle[1] : '']
   check(
-    'H1 是「质询」且英雄区不含禁用词（打分/参赛/提交前/不是打分）',
-    Boolean(h1Match) &&
-      h1Match[1].trim() === '质询' &&
-      ['打分', '参赛', '提交前', '不是打分'].every((word) => !h1Match[1].includes(word)),
-    h1Match ? h1Match[1].trim() : '没有 H1',
+    '页头消费共享 PageHeader：title「质询」+ 指定副标题，H1 由组件渲染',
+    viewSource.includes("import PageHeader from '../components/review/PageHeader.vue'") &&
+      !viewSource.includes('<h1') &&
+      headerSource.includes('<h1') &&
+      headerSource.includes('{{ title }}') &&
+      headerTitle?.[1] === '质询' &&
+      headerSubtitle?.[1] === '根据材料里已经发现的问题，列出评审可能追问的点',
+    headerTitle ? headerTitle[1] : '没有 PageHeader',
+  )
+  check(
+    '英雄区不含禁用词（打分/参赛/提交前/不是打分）',
+    Boolean(headerTitle) &&
+      Boolean(headerSubtitle) &&
+      heroTexts.every((text) => ['打分', '参赛', '提交前', '不是打分'].every((word) => !text.includes(word))),
+    heroTexts.join(' | '),
   )
   check(
     '打开页面零 POST（不自动生成追问）',
@@ -272,8 +288,12 @@ try {
   check('GrillView 明说不扫描整个材料库', viewSource.includes('不会自动扫描材料库'))
   // 措辞纪律：不是打分只做小字说明，不进标题；禁用词一个都不许出现（含全大写的 WORKBENCH 与 ChatGPT）。
   check(
-    '「不是打分」只在小字说明里，不进 H1',
-    viewSource.includes('不是打分') && Boolean(h1Match) && !h1Match[1].includes('打分'),
+    '「不是打分」只在小字说明里，不进页头标题',
+    viewSource.includes('不是打分') &&
+      Boolean(headerTitle) &&
+      Boolean(headerSubtitle) &&
+      heroTexts.every((text) => !text.includes('打分')),
+    heroTexts.join(' | '),
   )
   const forbiddenWords = ['已满足', '已支撑', '覆盖率', '分数', '参赛', '提交前', 'ChatGPT']
   const forbiddenHits = forbiddenWords.filter((word) => viewSource.includes(word))
@@ -287,6 +307,31 @@ try {
     viewSource.includes("String(index + 1).padStart(2, '0')") &&
       viewSource.includes('依据') &&
       viewSource.includes('追问清单'),
+  )
+  // 共享件：空追问走 EmptyState；页面宽度与共享页头一致。
+  check(
+    '空追问消费共享 EmptyState（空结果不手搓段落）',
+    viewSource.includes("import EmptyState from '../components/review/EmptyState.vue'") &&
+      emptySource.includes('{{ title }}') &&
+      /<EmptyState[^>]*title="当前范围没有可引用的追问/.test(viewSource),
+  )
+  check('页面宽度与共享页头一致（max-w-6xl，不用 4xl）', viewSource.includes('max-w-6xl') && !viewSource.includes('max-w-4xl'))
+  // 依据纪律：依据 = 已复验的引用 + 位置；不加「为什么会问」字段。
+  const questionInterface = viewSource.match(/interface GrillQuestion \{([^}]*)\}/)
+  const questionFields = questionInterface
+    ? questionInterface[1]
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '')
+        .map((line) => line.split(':')[0].trim())
+    : []
+  check(
+    '依据 = 引用 + 位置，注明针对已核对的原文（不新增「为什么会问」字段）',
+    viewSource.includes('针对已核对的原文') &&
+      viewSource.includes('{{ question.quote }}') &&
+      viewSource.includes('rowLocation(question.block_id)') &&
+      JSON.stringify(questionFields) === JSON.stringify(['prompt', 'quote', 'block_id', 'start', 'end']),
+    questionFields.join(','),
   )
   check('引用纪律写在卡片说明里', viewSource.includes('引用必须能在原文里对上，对不上的已丢弃。'))
   check(
