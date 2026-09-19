@@ -49,6 +49,14 @@ const drawerBlockId = ref('')
 
 const allBlocks = computed(() => report.value?.blocks ?? materialBlocks.value)
 
+// 预检概览（C1）：材料级计数不依赖报告；已确认依据只在报告到手后给 k / n，否则给 —。
+const overviewCounts = computed(() => {
+  const base = `待核对 ${findings.value.length} · 关键陈述 ${signals.value.length}`
+  if (!report.value) return `${base} · 已确认依据 —`
+  const confirmed = report.value.criteria.reduce((sum, row) => sum + row.verified_citation_count, 0)
+  return `${base} · 已确认依据 ${confirmed} / ${report.value.criteria.length} 项`
+})
+
 // 引用/信号行只说位置：kind 由该 Block 的 Locator 决定（md 显示行号，slide/page/paragraph 各自成句）。
 // Block 未到手（未绑定、blocks 未取）时退回 line_number —— 它就是 locator.index，本季只有 md 入库，不发明第二套编号。
 function rowLocation(blockId: string, lineNumber: number): string {
@@ -270,14 +278,17 @@ loadProposals()
       <div>
         <p class="text-sm font-medium text-violet-400">PREFLIGHT REPORT</p>
         <h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ report ? report.filename : '预审报告' }}</h1>
+        <p class="mt-1 text-xs text-slate-500">按每条审查要求在原文里找依据</p>
+        <p class="mt-2 text-sm text-slate-300">预检概览 · {{ overviewCounts }}</p>
         <p class="mt-2 text-sm text-slate-400">
           <span v-if="report">{{ report.rubric_title }} · rev{{ report.rubric_revision }} · {{ report.block_count }} 个 Block</span>
           <span v-else>材料级信号不需要绑定；绑定后才有可逐条核验的评分要求</span>
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
+        <!-- 顶栏唯一核验入口：旧的「核验评分要求」入口 -->
         <UButton v-if="report" icon="i-lucide-sparkles" :loading="verifying" @click="verifyCriteria">
-          {{ verifying ? '核验中…' : '核验评分要求' }}
+          {{ verifying ? '核验中…' : '开始核验' }}
         </UButton>
         <UButton :to="`/materials/${materialId}`" color="neutral" variant="subtle" icon="i-lucide-file-text">返回材料</UButton>
         <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>

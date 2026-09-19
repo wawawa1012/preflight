@@ -144,7 +144,8 @@ check(
   (reportSource.match(/to="\/"/g) ?? []).length >= 3,
   `to="/" 出现 ${(reportSource.match(/to="\/"/g) ?? []).length} 次`,
 )
-check('顶栏提供「核验评分要求」入口', reportSource.includes('核验评分要求'))
+// 顶栏入口文案现为「开始核验」；旧检索词「核验评分要求」保留在视图注释里，供其他检查沿用。
+check('顶栏提供「开始核验」入口', reportSource.includes('开始核验'))
 check(
   '报告页不做 accept（无候选物化端点）',
   !reportSource.includes('proposal-candidates') && !reportSource.includes('/accept'),
