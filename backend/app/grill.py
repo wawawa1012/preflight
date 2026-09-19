@@ -39,6 +39,12 @@ SYSTEM_PROMPT = (
 )
 
 
+class GrillRequest(BaseModel):
+    """答辩追问请求：只接受用户显式选中的一份材料。"""
+
+    material_id: str = Field(min_length=1)
+
+
 class GrillQuestion(BaseModel):
     """答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。"""
 

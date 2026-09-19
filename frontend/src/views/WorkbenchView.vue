@@ -48,6 +48,8 @@ loadSummaries()
       <UButton to="/materials/new" icon="i-lucide-upload">添加材料</UButton>
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
       <UButton to="/compare" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare">两材料对照</UButton>
+      <UButton to="/diff" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare-arrows">修改效果</UButton>
+      <UButton to="/grill" color="neutral" variant="ghost" size="sm" icon="i-lucide-messages-square">答辩追问</UButton>
     </div>
     <p class="mt-3 text-xs text-slate-500">上传后直接进入核验页</p>
 

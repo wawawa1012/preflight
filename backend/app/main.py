@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 
-from . import cross_compare, llm, repair_suggest, rubric_store, storage
+from . import cross_compare, diff, grill, llm, repair_suggest, rubric_store, storage
 from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
@@ -175,6 +175,29 @@ def create_comparison(payload: CrossCompareRequest) -> CrossCompareResponse:
     if material_b is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id_b}"])
     return cross_compare.compare_materials(material_a, material_b)
+
+
+# 修改前后 Finding 集合差：人显式选两份材料；同 id 400，缺一 404。不落库。
+@app.post("/api/v1/diffs", response_model=diff.DiffResponse)
+def create_diff(payload: diff.DiffRequest) -> diff.DiffResponse:
+    if payload.material_id_before == payload.material_id_after:
+        raise diff.SameMaterialDiff(payload.material_id_before)
+    before = storage.get_material(payload.material_id_before)
+    if before is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id_before}"])
+    after = storage.get_material(payload.material_id_after)
+    if after is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id_after}"])
+    return diff.diff_findings(before, after)
+
+
+# 答辩追问：当前材料的 findings + 陈述 → LLM；引用复验不过则丢弃。不落库。
+@app.post("/api/v1/grill", response_model=list[grill.GrillQuestion])
+def create_grill(payload: grill.GrillRequest) -> list[grill.GrillQuestion]:
+    material = storage.get_material(payload.material_id)
+    if material is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id}"])
+    return grill.generate_grill(material)
 
 
 # 修复建议：一条「待核对问题」交给 LLM 给改稿方向；不落库、不改材料。
@@ -419,6 +442,12 @@ async def citation_mismatch(request: Request, exc: repair_suggest.CitationMismat
 
 @app.exception_handler(cross_compare.SameMaterialCompare)
 async def same_material_compare(request: Request, exc: cross_compare.SameMaterialCompare) -> JSONResponse:
+    error = ApiError(code=exc.code, message=exc.message, details=exc.details)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(diff.SameMaterialDiff)
+async def same_material_diff(request: Request, exc: diff.SameMaterialDiff) -> JSONResponse:
     error = ApiError(code=exc.code, message=exc.message, details=exc.details)
     return JSONResponse(status_code=400, content=error.model_dump())
 
