@@ -1,7 +1,7 @@
 // Materials 导航 invariant 检查（真实 SSR 渲染 + 数据状态 + 行为级 setup，不引入测试框架）：
 // 二级工作区必须有显式回 Workbench 的入口；并核对 Golden Journey 的关键链接与数据。
 // 本轮追加：行内「已确认依据 k / n 项」（只来自 preflight-summaries）、未绑定、UModal 删除确认。
-// 本轮修订：Workbench 主按钮固定「添加材料」→ /materials/new（startTarget 退役）；页脚 Mock 诊断块删除。
+// 本轮修订：首页主 CTA 改为「开始审查」大卡 → /materials/new；新增 AppShell 一级导航检查（品牌 Preflight）。
 // 运行：cd frontend && node scripts/check-materials-nav.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp } from 'vue'
@@ -14,6 +14,15 @@ const results = []
 const check = (name, ok, detail = '') => results.push({ name, ok: Boolean(ok), detail })
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+// 以锚点为中心取一段源码窗口：断言「文案与链接处在同一个区块内」。
+const near = (source, anchor, span = 240) => {
+  const at = source.indexOf(anchor)
+  return at < 0 ? '' : source.slice(Math.max(0, at - span), at + span)
+}
+
+// 首页禁用词：旧口号与不可用的能力词都不允许回到文案里。
+const bannedWords = ['已满足', '已支撑', '覆盖率', '就绪度', 'Trust Layer', '提交前', '参赛', '评分工具', '不是打分', 'WORKBENCH']
+
 const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -23,6 +32,9 @@ const routes = [
   { path: '/materials', component: { template: '<div />' } },
   { path: '/materials/new', component: { template: '<div />' } },
   { path: '/materials/:materialId', component: { template: '<div />' } },
+  { path: '/compare', component: { template: '<div />' } },
+  { path: '/diff', component: { template: '<div />' } },
+  { path: '/grill', component: { template: '<div />' } },
 ]
 
 const summary = {
@@ -105,14 +117,15 @@ try {
   })
   const workbenchHtml = await renderToString(workbench.app)
   check(
-    'Workbench 渲染出 Materials 两个入口',
-    workbenchHtml.includes('href="/materials"') && workbenchHtml.includes('href="/materials/new"'),
+    'Workbench 渲染开始审查 CTA → /materials/new',
+    workbenchHtml.includes('href="/materials/new"') && workbenchHtml.includes('开始审查'),
   )
+  check('Workbench 渲染「最近审查」区块', workbenchHtml.includes('最近审查'))
   const workbenchSource = readFileSync(new URL('../src/views/WorkbenchView.vue', import.meta.url), 'utf8')
   check(
     'Workbench 源码不含禁用词',
-    ['已满足', '已支撑', '覆盖率', '就绪度', 'Trust Layer'].every((word) => !workbenchSource.includes(word)),
-    ['已满足', '已支撑', '覆盖率', '就绪度', 'Trust Layer'].filter((word) => workbenchSource.includes(word)).join('、'),
+    bannedWords.every((word) => !workbenchSource.includes(word)),
+    bannedWords.filter((word) => workbenchSource.includes(word)).join('、'),
   )
   check(
     'Workbench 模板含「已确认依据 k / n 项」与范围句',
@@ -126,28 +139,56 @@ try {
     'Workbench 未绑定行显示未绑定',
     workbenchSource.includes('未绑定') && workbenchSource.includes('criteriaLabel'),
   )
-  // 主按钮「添加材料」：固定指向 /materials/new（startTarget 已退役）。
-  // 锚点用按钮自身的 icon 属性，避免命中 <script> 里的同名注释。
-  const heroButtonBlock = (() => {
-    const at = workbenchSource.indexOf('i-lucide-upload">添加材料')
-    return at < 0 ? '' : workbenchSource.slice(Math.max(0, at - 200), at)
-  })()
+  // 主 CTA：一张大卡承担「开始审查」→ /materials/new；旧主按钮「添加材料」退役。
   check(
-    '主按钮「添加材料」固定指向 /materials/new',
-    heroButtonBlock.includes('to="/materials/new"') && workbenchSource.includes('i-lucide-upload">添加材料'),
-    heroButtonBlock.slice(-120),
+    '主 CTA「开始审查」固定指向 /materials/new',
+    near(workbenchSource, '上传材料并按标准检查').includes('to="/materials/new"') &&
+      near(workbenchSource, '上传材料并按标准检查').includes('开始审查'),
   )
   check(
-    '主按钮不再用 startTarget 动态目标',
-    !workbenchSource.includes('startTarget'),
+    '空态 CTA 为「开始审查」→ /materials/new',
+    near(workbenchSource, '还没有材料').includes('to="/materials/new"') &&
+      near(workbenchSource, '还没有材料').includes('开始审查'),
   )
   check(
-    '空态按钮同为「添加材料」→ /materials/new',
-    workbenchSource.includes('<UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">添加材料</UButton>'),
+    '旧主按钮「添加材料」与 startTarget 已退役',
+    !workbenchSource.includes('添加材料') && !workbenchSource.includes('startTarget'),
   )
+  check(
+    'Workbench 不再出现旧标题与旧副标题',
+    !workbenchSource.includes('WORKBENCH') &&
+      !workbenchSource.includes('让关键结论回到原文') &&
+      !workbenchSource.includes('不是打分'),
+  )
+  check('Workbench 新标题为「让重要结论有据可查」', workbenchSource.includes('让重要结论有据可查'))
   check(
     '行链接：已绑定进报告页、未绑定进详情',
     workbenchSource.includes('item.bound ? `/materials/${item.material_id}/report` : `/materials/${item.material_id}`'),
+  )
+
+  // AppShell：品牌 Preflight、五项一级入口、按 useRoute().path 高亮（含子路由归属）。
+  const shell = await context('/src/components/AppShell.vue', '/compare', async () => jsonResponse([]))
+  const shellHtml = await renderToString(shell.app)
+  check(
+    'AppShell 渲染品牌 Preflight 与五个一级入口',
+    shellHtml.includes('Preflight') &&
+      ['/', '/compare', '/diff', '/grill', '/materials'].every((path) => shellHtml.includes(`href="${path}"`)),
+  )
+  check('AppShell 不出现 WORKBENCH 品牌', !shellHtml.includes('WORKBENCH'))
+  const shellBindings = shell.app.runWithContext(() => shell.module.default.setup({}, { expose() {} }))
+  check(
+    'AppShell 按 useRoute().path 高亮当前项',
+    shellBindings.isActive('/compare') === true &&
+      shellBindings.isActive('/') === false &&
+      shellBindings.isActive('/materials') === false,
+  )
+  const shellMaterials = await context('/src/components/AppShell.vue', '/materials/mat_demo_1', async () => jsonResponse([]))
+  const shellMaterialsBindings = shellMaterials.app.runWithContext(() =>
+    shellMaterials.module.default.setup({}, { expose() {} }),
+  )
+  check(
+    'AppShell 子路由归属一级入口（/materials/:id → 材料）',
+    shellMaterialsBindings.isActive('/materials') === true && shellMaterialsBindings.isActive('/diff') === false,
   )
 
   const materials = await context(
@@ -219,8 +260,8 @@ try {
     workbenchBindings.criteriaLabel(boundSummary),
   )
   check(
-    '主按钮固定 /materials/new：setup 不再暴露 startTarget',
-    workbenchBindings.startTarget === undefined && !workbenchSource.includes('startTarget'),
+    '首页 setup 暴露 loadSummaries 与 criteriaLabel（行为级可测）',
+    typeof workbenchBindings.loadSummaries === 'function' && typeof workbenchBindings.criteriaLabel === 'function',
   )
 
   globalThis.fetch = async () => jsonResponse(detail)

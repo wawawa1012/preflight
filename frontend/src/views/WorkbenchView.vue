@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import type { MaterialPreflightSummary } from '../types/contracts'
 import { formatSavedAt } from '../utils/format'
 
-// 报告中心：只展示只读装配出的预审摘要，不做满足判定。
+// 首页：只读装配的审查摘要 + 固定入口；只陈述已实现能力。
 const summaries = ref<MaterialPreflightSummary[]>([])
 const loading = ref(true)
 const error = ref('')
@@ -39,36 +39,46 @@ loadSummaries()
 </script>
 
 <template>
-  <main class="mx-auto max-w-4xl px-6 py-20">
-    <p class="mb-4 text-sm font-medium text-violet-400">WORKBENCH</p>
-    <h1 class="text-4xl font-semibold tracking-tight">让关键结论回到原文</h1>
-    <p class="mt-5 text-slate-400">核验是按每条审查要求在原文找依据，不是打分。</p>
+  <main class="mx-auto max-w-4xl px-6 py-12">
+    <h1 class="text-2xl font-semibold tracking-tight">让重要结论有据可查</h1>
+    <p class="mt-3 text-slate-400">按你的审查标准检查材料中的依据、关键陈述、一致性与风险。</p>
 
-    <div class="mt-8 flex flex-wrap gap-3">
-      <UButton to="/materials/new" icon="i-lucide-upload">添加材料</UButton>
-      <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
-      <UButton to="/compare" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare">两材料对照</UButton>
-      <UButton to="/diff" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare-arrows">修改效果</UButton>
-      <UButton to="/grill" color="neutral" variant="ghost" size="sm" icon="i-lucide-messages-square">答辩追问</UButton>
-    </div>
-    <p class="mt-3 text-xs text-slate-500">上传后直接进入核验页</p>
+    <!-- 主入口：一张大卡承担唯一 CTA，不铺一排小按钮。 -->
+    <UCard class="mt-8">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p class="text-base font-medium text-slate-100">开始审查</p>
+          <p class="mt-1 text-sm text-slate-400">上传材料并按标准检查</p>
+        </div>
+        <UButton to="/materials/new" size="lg" icon="i-lucide-upload">开始审查</UButton>
+      </div>
+    </UCard>
 
-    <section class="mt-12">
+    <section class="mt-10">
+      <h2 class="text-sm font-medium text-slate-400">快速工具</h2>
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <UButton to="/compare" color="neutral" variant="subtle" icon="i-lucide-git-compare" block>一致性检查</UButton>
+        <UButton to="/diff" color="neutral" variant="subtle" icon="i-lucide-git-compare-arrows" block>修改效果</UButton>
+        <UButton to="/grill" color="neutral" variant="subtle" icon="i-lucide-messages-square" block>质询</UButton>
+      </div>
+    </section>
+
+    <section class="mt-10">
       <div class="flex items-center justify-between">
-        <h2 class="text-lg font-medium">预审概览</h2>
+        <h2 class="text-sm font-medium text-slate-400">最近审查</h2>
         <span class="text-xs text-slate-500">{{ summaries.length }} 份材料</span>
       </div>
 
       <UCard v-if="loading" class="mt-4">
-        <p class="text-sm text-slate-400">正在读取预审摘要…</p>
+        <p class="text-sm text-slate-400">正在读取审查摘要…</p>
       </UCard>
       <UCard v-else-if="error" class="mt-4">
-        <p class="text-sm text-red-400" role="alert">无法加载预审摘要：{{ error }}</p>
+        <p class="text-sm text-red-400" role="alert">无法加载审查摘要：{{ error }}</p>
         <UButton class="mt-4" size="sm" icon="i-lucide-refresh-cw" @click="loadSummaries">重试</UButton>
       </UCard>
       <UCard v-else-if="summaries.length === 0" class="mt-4">
-        <p class="text-sm text-slate-400">还没有材料。先上传一份 Markdown 并绑定评分标准。</p>
-        <UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">添加材料</UButton>
+        <p class="text-sm text-slate-400">还没有材料</p>
+        <UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">开始审查</UButton>
       </UCard>
 
       <div v-else class="mt-4 divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">

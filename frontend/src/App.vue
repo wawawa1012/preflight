@@ -1,3 +1,7 @@
 <template>
-  <UApp><RouterView /></UApp>
+  <UApp>
+    <AppShell>
+      <RouterView />
+    </AppShell>
+  </UApp>
 </template>
