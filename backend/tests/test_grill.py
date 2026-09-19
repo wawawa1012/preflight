@@ -213,8 +213,8 @@ class GrillPureTest(unittest.TestCase):
         self.assertIn("尚未发现数值对照问题", user["content"])
         self.assertIn("未扫描到关键陈述", user["content"])
 
-    def test_prompt_has_no_conclusion_words(self) -> None:
-        for forbidden in ("已满足", "已支撑", "分数"):
+    def test_prompt_has_no_conclusion_or_contest_words(self) -> None:
+        for forbidden in ("已满足", "已支撑", "分数", "参赛"):
             self.assertNotIn(forbidden, grill.SYSTEM_PROMPT)
 
 

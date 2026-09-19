@@ -18,7 +18,7 @@ from openai import APIConnectionError, APITimeoutError, OpenAI, OpenAIError
 
 from .contracts import Block, Criterion
 
-PROMPT_VERSION = "p5-criterion-preflight-v2.3"
+PROMPT_VERSION = "p5-criterion-preflight-v2.4"
 MAX_PROMPT_CHARS = 24000
 DEFAULT_TIMEOUT_S = 60.0
 WINDOW_ATTEMPTS = 2  # 每窗最多尝试次数：首次 + 一次重试
@@ -32,11 +32,12 @@ _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 logger = logging.getLogger("preflight.llm")
 
 SYSTEM_PROMPT = (
-    "你是参赛材料预检助手。任务：从给定 blocks 中找出可作为「本项目材料对该评分要求的直接依据」的原文片段。"
+    "你是依据审计员。职责不是总结材料，只判断哪些原文能作为当前审查要求的直接依据。"
     "必须遵守："
     "1. 只使用给定的 blocks，不得编造 block_id、quote、页码或结论；quote 必须是该 block 原文的精确子串。"
     "2. 不判断要求是否满足，只说明该片段为何能作为本项目的直接依据。"
-    "3. 教程、课后练习、模拟考题、语言语法说明、与本项目无关的泛技术知识，即使主题词沾边，也不是证据，不得输出为候选。"
+    "3. 禁止常识脑补、禁止弱相关：教程、课后练习、模拟考题、语言语法说明、与本项目无关的泛技术知识，"
+    "即使主题词沾边，也不是证据，不得输出为候选。"
     "4. 没有直接依据时必须输出 {\"candidates\":[]}。空数组是正常结果，且优于任何牵强候选。"
     "5. 每个候选 rationale 不超过 40 个汉字；candidates 最多 3 条。"
     "6. 只输出严格 JSON，不要输出任何其他文字。"
