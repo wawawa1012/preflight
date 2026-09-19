@@ -4,6 +4,7 @@
 // 结果是变化时间线：hero 两个大数字（修改前 = 已解决+仍存在，修改后 = 仍存在+新增），
 // 三组固定 已解决(emerald) / 仍存在(amber) / 新增(rose)，空组是合法结果；
 // 引用点开 Drawer（按需 GET 两份材料 blocks，位置按 locatorLabel）。
+// 页头/空态消费共享 review/PageHeader + review/EmptyState；页宽 max-w-6xl；结果区少边框（色调底 + divide 分隔）。
 // /diff 已挂进 router/index.ts（本脚本只断言，不改路由）。合成数据只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-diff.mjs
 import { readFileSync } from 'node:fs'
@@ -319,6 +320,33 @@ try {
   check(
     '按钮与三组标题在源码中',
     viewSource.includes('比较修改效果') && viewSource.includes('已解决') && viewSource.includes('仍存在') && viewSource.includes('新增'),
+  )
+  check(
+    'DiffView 消费共享页头与空态（review/PageHeader + review/EmptyState）',
+    viewSource.includes("import PageHeader from '../components/review/PageHeader.vue'") &&
+      viewSource.includes("import EmptyState from '../components/review/EmptyState.vue'") &&
+      templateSource.includes('<PageHeader') &&
+      (templateSource.match(/<EmptyState/g) || []).length === 2,
+  )
+  check(
+    '页宽 max-w-6xl，标题经 PageHeader 传入（模板不再自铺 h1）',
+    viewSource.includes('max-w-6xl') &&
+      !viewSource.includes('max-w-4xl') &&
+      templateSource.includes('title="修改前后少了什么问题"') &&
+      !templateSource.includes('<h1'),
+  )
+  check(
+    '材料不足两份与读取失败都走 EmptyState，各自带 CTA',
+    viewSource.includes('至少需要两份已保存的材料才能看修改前后的变化') &&
+      viewSource.includes('添加材料') &&
+      viewSource.includes('材料列表读取失败') &&
+      viewSource.includes('重试'),
+  )
+  check(
+    'less border：结果区不逐块加边框，改用色调底 + divide 分隔',
+    !templateSource.includes('border border-slate-800') &&
+      templateSource.includes('divide-y divide-slate-800') &&
+      viewSource.includes('bg-slate-950/40'),
   )
   check('路由 /diff 指向 DiffView', routerSource.includes("path: '/diff'") && routerSource.includes('DiffView'))
 } finally {

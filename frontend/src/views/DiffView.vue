@@ -2,11 +2,14 @@
 import { computed, ref } from 'vue'
 import type { Block, ConsistencyFinding, MaterialSummary } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
+import PageHeader from '../components/review/PageHeader.vue'
+import EmptyState from '../components/review/EmptyState.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 
 // 修改前后变化时间线：只比较两个下拉里由人显式选中的「修改前 / 修改后」两个材料 id。
 // 打开页面只 GET 材料列表；POST /api/v1/diffs 只由「比较修改效果」按钮触发，不会自动扫描材料库。
 // 契约与后端 app/diff.py 同形，自带在本视图内，不改共享 types。
+// 页头/空态消费共享 review/PageHeader + review/EmptyState；页宽 max-w-6xl；结果区少边框（色调底 + divide）。
 interface DiffRequest {
   material_id_before: string
   material_id_after: string
@@ -60,7 +63,7 @@ const groups = computed(() =>
       ],
 )
 
-// 组色调只做视觉提示（点 / 大数字 / 卡片描边），不改文案语义。
+// 组色调只做视觉提示（点 / 大数字 / 卡片底色），不改文案语义。
 const toneDot: Record<string, string> = {
   emerald: 'border-emerald-400 bg-emerald-950',
   amber: 'border-amber-400 bg-amber-950',
@@ -72,9 +75,9 @@ const toneCount: Record<string, string> = {
   rose: 'text-rose-300',
 }
 const toneCard: Record<string, string> = {
-  emerald: 'border-emerald-900/70',
-  amber: 'border-amber-900/70',
-  rose: 'border-rose-900/70',
+  emerald: 'bg-emerald-950/30',
+  amber: 'bg-amber-950/30',
+  rose: 'bg-rose-950/30',
 }
 
 // Drawer 需要 Block 本体：点开引用时才按需 GET 两份版本的 blocks（只读）。
@@ -209,67 +212,66 @@ loadMaterials()
 </script>
 
 <template>
-  <main class="mx-auto max-w-4xl px-6 py-10">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-semibold tracking-tight">修改前后少了什么问题</h1>
-        <p class="mt-2 text-sm text-slate-400">看审查发现哪些已解决、哪些还在、哪些是新的。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
-      </div>
-    </div>
+  <main class="mx-auto max-w-6xl px-6 py-10">
+    <PageHeader title="修改前后少了什么问题" subtitle="看审查发现哪些已解决、哪些还在、哪些是新的。">
+      <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
+      <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
+    </PageHeader>
 
-    <UCard class="mt-6">
-      <p v-if="loading" class="text-sm text-slate-400">正在读取材料列表…</p>
-      <div v-else-if="loadError">
-        <p class="text-sm text-slate-400">请求失败：{{ loadError }}</p>
-        <UButton class="mt-4" size="sm" icon="i-lucide-refresh-cw" @click="loadMaterials">重试</UButton>
+    <!-- 选材面板：材料够两份才渲染表单；空态/错误态走共享 EmptyState，不再各自套边框。 -->
+    <UCard v-if="!loading && !loadError && materials.length >= 2" class="mt-6">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="text-xs text-slate-400">
+          修改前
+          <select
+            v-model="materialIdBefore"
+            aria-label="修改前材料"
+            class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+          >
+            <option value="">请选择材料</option>
+            <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
+          </select>
+        </label>
+        <label class="text-xs text-slate-400">
+          修改后
+          <select
+            v-model="materialIdAfter"
+            aria-label="修改后材料"
+            class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+          >
+            <option value="">请选择材料</option>
+            <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
+          </select>
+        </label>
       </div>
-      <div v-else-if="materials.length < 2">
-        <p class="text-sm text-slate-300">至少需要两份已保存的材料才能看修改前后的变化。</p>
-        <UButton class="mt-4" size="sm" to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
+      <p class="mt-3 text-xs text-slate-500">只对照选中的两份版本；点引用可回看原文。</p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <UButton icon="i-lucide-git-compare" :loading="diffing" :disabled="!canDiff" @click="compare">
+          {{ diffing ? '对照中…' : '比较修改效果' }}
+        </UButton>
+        <span v-if="sameSelection" class="text-xs text-amber-300">不能对照同一份材料，请选择两份不同的材料</span>
       </div>
-      <div v-else>
-        <div class="grid gap-4 sm:grid-cols-2">
-          <label class="text-xs text-slate-400">
-            修改前
-            <select
-              v-model="materialIdBefore"
-              aria-label="修改前材料"
-              class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
-            >
-              <option value="">请选择材料</option>
-              <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
-            </select>
-          </label>
-          <label class="text-xs text-slate-400">
-            修改后
-            <select
-              v-model="materialIdAfter"
-              aria-label="修改后材料"
-              class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
-            >
-              <option value="">请选择材料</option>
-              <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
-            </select>
-          </label>
-        </div>
-        <p class="mt-3 text-xs text-slate-500">只对照选中的两份版本；点引用可回看原文。</p>
-        <div class="mt-4 flex flex-wrap items-center gap-3">
-          <UButton icon="i-lucide-git-compare" :loading="diffing" :disabled="!canDiff" @click="compare">
-            {{ diffing ? '对照中…' : '比较修改效果' }}
-          </UButton>
-          <span v-if="sameSelection" class="text-xs text-amber-300">不能对照同一份材料，请选择两份不同的材料</span>
-        </div>
-        <p v-if="diffError" class="mt-3 text-sm text-red-400" role="alert">{{ diffError }}</p>
-      </div>
+      <p v-if="diffError" class="mt-3 text-sm text-red-400" role="alert">{{ diffError }}</p>
     </UCard>
+
+    <p v-else-if="loading" class="mt-6 text-sm text-slate-400">正在读取材料列表…</p>
+
+    <EmptyState v-else-if="loadError" class="mt-6" title="材料列表读取失败" :hint="loadError">
+      <UButton icon="i-lucide-refresh-cw" @click="loadMaterials">重试</UButton>
+    </EmptyState>
+
+    <EmptyState
+      v-else
+      class="mt-6"
+      title="材料不足两份"
+      hint="至少需要两份已保存的材料才能看修改前后的变化。"
+    >
+      <UButton to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
+    </EmptyState>
 
     <!-- 变化结果：先给两个大数字（修改前 N 个待处理 → 修改后 M 个待处理），再按时间线摊开三组。 -->
     <section v-if="result" class="mt-6">
-      <div class="rounded-xl border border-slate-800 bg-slate-900/40 px-6 py-5">
+      <div class="rounded-xl bg-slate-950/40 px-6 py-5">
         <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
           <div>
             <p class="text-xs text-slate-400">修改前</p>
@@ -311,7 +313,7 @@ loadMaterials()
               :class="toneDot[group.tone]"
               aria-hidden="true"
             ></span>
-            <div class="rounded-xl border bg-slate-900/30 p-4" :class="toneCard[group.tone]">
+            <div class="rounded-xl p-4" :class="toneCard[group.tone]">
               <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h3 class="text-base font-semibold text-slate-100">{{ group.title }}</h3>
                 <span class="text-3xl font-semibold leading-none tracking-tight" :class="toneCount[group.tone]">{{ group.findings.length }}</span>
@@ -319,11 +321,11 @@ loadMaterials()
                 <span class="ml-auto text-xs text-slate-500">{{ group.hint }}</span>
               </div>
               <p v-if="group.findings.length === 0" class="mt-2 text-xs text-slate-500">本组为空，这是合法结果。</p>
-              <ul v-else class="mt-3 space-y-2">
+              <ul v-else class="mt-3 divide-y divide-slate-800/70">
                 <li
                   v-for="finding in group.findings"
                   :key="`${finding.kind}:${finding.measure}:${finding.citations[0].block_id}:${finding.citations[0].start}`"
-                  class="rounded-md border border-slate-800 bg-slate-900/40 p-3"
+                  class="py-3"
                 >
                   <div class="flex flex-wrap items-center gap-2">
                     <UBadge
