@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 import RepairSuggestionPanel from '../components/RepairSuggestionPanel.vue'
@@ -9,6 +9,7 @@ import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCoun
 
 // 材料级预审报告：装配结果（需要绑定）与材料级信号（不需要绑定）各自装、各自画。
 const route = useRoute()
+const router = useRouter()
 const materialId = String(route.params.materialId)
 
 // —— 报告主体：受绑定与装配状态影响 ——
@@ -63,6 +64,10 @@ const overviewCounts = computed(() => {
 
 // 引用/信号行只说位置：kind 由该 Block 的 Locator 决定（md 显示行号，slide/page/paragraph 各自成句）。
 // Block 未到手（未绑定、blocks 未取）时退回 line_number —— 它就是 locator.index，本季只有 md 入库，不发明第二套编号。
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 function rowLocation(blockId: string, lineNumber: number): string {
   const locator = allBlocks.value.find((item) => item.id === blockId)?.locator
   return locator ? locatorLabel(locator) : locatorLabel({ kind: 'line', index: lineNumber })
@@ -301,42 +306,73 @@ loadProposals()
 
     <!-- 材料级区块：不依赖绑定，各自装、各自画（待核对问题在关键陈述之上）。 -->
     <div v-if="!notFound" class="mt-6 space-y-4">
-      <!-- 审查团队条：三个角色各报各自的事实来源；一致性与关键陈述都是程序扫描，依据核验才调用模型。 -->
-      <section class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+      <!-- 审查团队：职责卡。一致性与关键陈述是程序扫描，依据核验才调用模型；修复/质询按需。 -->
+      <section class="rounded-lg bg-slate-950/40 p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h2 class="text-sm font-medium text-slate-200">审查团队</h2>
           <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描，依据核验才调用模型</span>
         </div>
-        <ul class="mt-3 grid gap-2 sm:grid-cols-3">
-          <li class="rounded-md border border-slate-800 bg-slate-950/40 p-3">
-            <p class="text-xs text-slate-400">依据核验</p>
-            <p class="mt-1 text-sm text-slate-200">
-              <span v-if="verifying">正在按审查标准查找依据</span>
-              <span v-else-if="report">已确认依据 {{ confirmedCitationCount }} / {{ report.criteria.length }} 项</span>
-              <span v-else-if="unbound">未绑定审查标准</span>
-              <span v-else-if="loading">正在装配报告…</span>
-              <span v-else>报告未装配</span>
-            </p>
+        <ul class="mt-3 grid gap-2 sm:grid-cols-5">
+          <li>
+            <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="scrollToSection('review-criteria')">
+              <p class="text-xs text-slate-200">依据审计员</p>
+              <p class="mt-0.5 text-[10px] text-violet-300">模型</p>
+              <p class="mt-1 text-xs text-slate-400">按审查要求寻找可直接引用的原文</p>
+              <p class="mt-2 text-sm text-slate-200">
+                <span v-if="verifying">正在按审查标准查找依据</span>
+                <span v-else-if="report">已确认依据 {{ confirmedCitationCount }} / {{ report.criteria.length }} 项</span>
+                <span v-else-if="unbound">未绑定审查标准</span>
+                <span v-else-if="loading">正在读取审查要求</span>
+                <span v-else>尚未读取审查要求</span>
+              </p>
+            </button>
           </li>
-          <li class="rounded-md border border-slate-800 bg-slate-950/40 p-3">
-            <p class="text-xs text-slate-400">一致性审查</p>
-            <p class="mt-1 text-sm text-slate-200">
-              <span v-if="findingsUnavailable">扫描不可用</span>
-              <span v-else>待核对 {{ findings.length }} 条</span>
-            </p>
+          <li>
+            <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="scrollToSection('pending-findings')">
+              <p class="text-xs text-slate-200">一致性检查</p>
+              <p class="mt-0.5 text-[10px] text-slate-500">程序</p>
+              <p class="mt-1 text-xs text-slate-400">检查同一指标在材料中的不同说法</p>
+              <p class="mt-2 text-sm text-slate-200">
+                <span v-if="findingsUnavailable">扫描不可用</span>
+                <span v-else>待核对 {{ findings.length }} 条</span>
+              </p>
+            </button>
           </li>
-          <li class="rounded-md border border-slate-800 bg-slate-950/40 p-3">
-            <p class="text-xs text-slate-400">关键陈述审查</p>
-            <p class="mt-1 text-sm text-slate-200">
-              <span v-if="signalsUnavailable">扫描不可用</span>
-              <span v-else>标记 {{ signals.length }} 条</span>
-            </p>
+          <li>
+            <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="scrollToSection('key-statements')">
+              <p class="text-xs text-slate-200">关键陈述检查</p>
+              <p class="mt-0.5 text-[10px] text-slate-500">程序</p>
+              <p class="mt-1 text-xs text-slate-400">标出值得进一步核查的数字和强表述</p>
+              <p class="mt-2 text-sm text-slate-200">
+                <span v-if="signalsUnavailable">扫描不可用</span>
+                <span v-else>标记 {{ signals.length }} 条</span>
+              </p>
+            </button>
+          </li>
+          <li>
+            <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="scrollToSection('pending-findings')">
+              <p class="text-xs text-slate-200">修复顾问</p>
+              <p class="mt-0.5 text-[10px] text-violet-300">按需 · 模型</p>
+              <p class="mt-1 text-xs text-slate-400">针对已发现的数值冲突给改稿方向</p>
+              <p class="mt-2 text-sm text-slate-200">
+                <span v-if="repairFinding">已生成 1 条建议</span>
+                <span v-else>点待处理问题后才运行</span>
+              </p>
+            </button>
+          </li>
+          <li>
+            <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="router.push('/grill')">
+              <p class="text-xs text-slate-200">质询官</p>
+              <p class="mt-0.5 text-[10px] text-violet-300">按需 · 模型</p>
+              <p class="mt-1 text-xs text-slate-400">根据已发现问题列出需要解释的点</p>
+              <p class="mt-2 text-sm text-slate-200">需要时在质询页生成追问</p>
+            </button>
           </li>
         </ul>
       </section>
 
       <!-- I8 待核对问题（首屏主区：待处理问题）：同一材料内同一度量词的数值对照；每条都能点回原文 Drawer。 -->
-      <section class="rounded-lg border border-amber-900/50 bg-amber-950/10 p-5">
+      <section id="pending-findings" class="rounded-lg border border-amber-900/50 bg-amber-950/10 p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h2 class="text-lg font-semibold text-slate-100">待处理问题</h2>
           <div class="flex flex-wrap items-center gap-2">
@@ -423,7 +459,7 @@ loadProposals()
     </UCard>
 
     <UCard v-else-if="error" class="mt-4">
-      <h2 class="text-lg font-medium">无法装配报告</h2>
+      <h2 class="text-lg font-medium">无法读取审查要求</h2>
       <p class="mt-2 text-sm text-slate-400">请求失败：{{ error }}</p>
       <div class="mt-6 flex flex-wrap gap-3">
         <UButton icon="i-lucide-refresh-cw" @click="loadReport">重试</UButton>
@@ -433,7 +469,7 @@ loadProposals()
 
     <div v-else-if="report" class="mt-4 space-y-4">
       <!-- Phase 3：审查要求进度 —— 每条要求一行；行内显示本条核验状态，失败只落在该行。 -->
-      <h2 class="text-sm font-medium text-slate-200">审查要求进度</h2>
+      <h2 id="review-criteria" class="text-sm font-medium text-slate-200">审查要求进度</h2>
       <p v-if="proposalsUnavailable" class="text-xs text-amber-300">预检记录不可用</p>
 
       <div v-for="row in report.criteria" :key="row.criterion_id" class="rounded-lg border border-slate-800 p-4">
@@ -498,7 +534,7 @@ loadProposals()
     </div>
 
     <!-- 关键陈述：确定性扫描结果，只标出值得核对的句子，不判真假；排在评分要求矩阵之后。 -->
-    <section v-if="(signalsUnavailable || signals.length > 0) && !notFound" class="mt-4 rounded-lg border border-slate-800 p-4">
+    <section id="key-statements" v-if="(signalsUnavailable || signals.length > 0) && !notFound" class="mt-4 rounded-lg border border-slate-800 p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 class="text-sm font-medium text-slate-200">关键陈述</h2>
         <span class="text-xs text-slate-500">{{ signals.length }} 条 · 数字 / 比例 / 比较 / 绝对化</span>

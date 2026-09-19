@@ -150,12 +150,18 @@ check('顶栏提供「核验审查要求」入口', reportSource.includes("{{ ve
 // 审查团队条：头部之下、待处理问题之上；三个角色各报各自的事实来源（两条程序扫描、一条调用模型）。
 // 核验中的依据核验行改口「正在按审查标准查找依据」，不与已确认计数同时出现。
 check(
-  '审查团队条：三个角色齐备且排在待处理问题之上（依据核验 / 一致性审查 / 关键陈述审查）',
+  '审查团队：五个职责卡排在待处理问题之上（依据审计员 / 一致性检查 / 关键陈述检查 / 修复顾问 / 质询官）',
   reportSource.includes('审查团队') &&
-    reportSource.includes('依据核验') &&
-    reportSource.includes('一致性审查') &&
-    reportSource.includes('关键陈述审查') &&
+    reportSource.includes('依据审计员') &&
+    reportSource.includes('一致性检查') &&
+    reportSource.includes('关键陈述检查') &&
+    reportSource.includes('修复顾问') &&
+    reportSource.includes('质询官') &&
+    reportSource.includes('模型') &&
+    reportSource.includes('程序') &&
     reportSource.includes('正在按审查标准查找依据') &&
+    reportSource.includes('点待处理问题后才运行') &&
+    reportSource.includes('需要时在质询页生成追问') &&
     reportSource.indexOf('>审查团队</h2>') > reportSource.indexOf('>本次核验</p>') &&
     reportSource.indexOf('>审查团队</h2>') < reportSource.indexOf('>待处理问题</h2>'),
   `团队@${reportSource.indexOf('>审查团队</h2>')} 待处理@${reportSource.indexOf('>待处理问题</h2>')}`,
@@ -314,9 +320,17 @@ try {
 
   async function mount(fetchImpl) {
     globalThis.fetch = fetchImpl
+    const stub = { template: '<div />' }
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: '/materials/:materialId/report', component: module.default }],
+      routes: [
+        { path: '/materials/:materialId/report', component: module.default },
+        { path: '/', component: stub },
+        { path: '/compare', component: stub },
+        { path: '/grill', component: stub },
+        { path: '/materials', component: stub },
+        { path: '/materials/:materialId', component: stub },
+      ],
     })
     await router.push('/materials/mat_x/report')
     await router.isReady()
@@ -332,7 +346,7 @@ try {
     const html = await renderToString(app)
     check(
       '正常态 SSR 含回审查首页出口（按钮文案「审查」）',
-      html.includes('href="/"') && html.includes('审查</'),
+      html.includes('href="/"') && html.includes('审查<!--'),
       html.slice(Math.max(0, html.indexOf('href="/"') - 40), html.indexOf('href="/"') + 60),
     )
     const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
@@ -550,7 +564,7 @@ try {
     const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
     await flush()
     check('409 进入未绑定态且不渲染矩阵', bindings.unbound.value === true && bindings.report.value === null)
-    check('409 SSR 仍有回审查首页出口（按钮文案「审查」）', html.includes('href="/"') && html.includes('审查</'))
+    check('409 SSR 仍有回审查首页出口（按钮文案「审查」）', html.includes('href="/"') && html.includes('审查<!--'))
     check('409 提供去材料详情绑定的入口', reportSource.includes('尚未绑定评分标准') && reportSource.includes('`/materials/${materialId}`'))
   }
 
@@ -563,7 +577,7 @@ try {
     const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
     await flush()
     check('404 进入 notFound 且不渲染矩阵', bindings.notFound.value === true && bindings.report.value === null)
-    check('404 SSR 仍有回审查首页出口（按钮文案「审查」）', html.includes('href="/"') && html.includes('审查</'))
+    check('404 SSR 仍有回审查首页出口（按钮文案「审查」）', html.includes('href="/"') && html.includes('审查<!--'))
   }
   // ——— R0：材料级 GET 不依赖绑定 ———
   // 共用数据：一条关键陈述、一条待核对问题、材料本体（供绑定前补取 blocks）。
