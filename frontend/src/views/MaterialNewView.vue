@@ -28,7 +28,7 @@ const currentStep = computed(() => (selectedFile.value ? 1 : 0))
 const previewMeta = computed(() => {
   const current = preview.value
   if (!current) return ''
-  return `${current.size_bytes} 字节 · ${current.line_count} 行 · ${current.blocks.length} 个 Block · sha256 ${current.sha256.slice(0, 12)}…`
+  return `${current.size_bytes} 字节 · ${current.line_count} 行 · ${current.blocks.length} 段原文 · sha256 ${current.sha256.slice(0, 12)}…`
 })
 
 // 选择文件的唯一入口：input change 与 drag/drop 都走这里，保证校验与清状态一致。

@@ -102,7 +102,7 @@ loadSummaries()
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="min-w-0">
               <p class="truncate text-sm text-slate-200">{{ item.filename }}</p>
-              <p class="mt-1 text-xs text-slate-500">{{ item.block_count }} 个 Block · {{ formatSavedAt(item.created_at) }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ item.block_count }} 段原文 · {{ formatSavedAt(item.created_at) }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <template v-if="item.bound">
