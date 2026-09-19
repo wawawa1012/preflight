@@ -657,6 +657,56 @@ try {
     const slideText = slideHtml + Object.values(slideContext.teleports ?? {}).join('')
     check('Drawer 标题按 locator 类型变化（slide → 第 4 张幻灯片）', slideText.includes('原文 · 第 4 张幻灯片'))
   }
+
+  // 引用/信号行的位置文案：待核对引用 / 关键陈述 / 矩阵引用三类行不再写死「line N」，
+  // 位置说法由该 Block 的 Locator 决定（md 仍读行号，slide/page/paragraph 各自成句）。
+  {
+    check(
+      '引用/信号行不再写死 line N',
+      !reportSource.includes('line {{') && !reportSource.includes('· line '),
+      reportSource.includes('line {{') || reportSource.includes('· line ') ? '仍有 line {{…}} / · line' : '无',
+    )
+    check(
+      '报告页引入 locatorLabel 决定行位置说法',
+      reportSource.includes("from '../utils/locatorLabel'") && reportSource.includes('locatorLabel('),
+    )
+    check(
+      '三类引用行共用同一位置助手（待核对 2 处 + 关键陈述 1 处）',
+      (reportSource.match(/rowLocation\(citation\.block_id, citation\.line_number\)/g) ?? []).length === 2 &&
+        reportSource.includes('rowLocation(signal.block_id, signal.line_number)'),
+      `citation 行=${(reportSource.match(/rowLocation\(citation\.block_id, citation\.line_number\)/g) ?? []).length}`,
+    )
+    check(
+      '视图源码不写死位置字面（第 N … 一律走 locatorLabel）',
+      !/第\s*(\d|N|\{\{|\$\{)/.test(reportSource),
+      (reportSource.match(/第\s*(\d|N|\{\{|\$\{)/) ?? ['无'])[0],
+    )
+
+    resetState()
+    const { app } = await mount(stubFetch({ report }))
+    const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      'md 引用行位置 = 第 7 行（按 Block.locator，而非写死行号）',
+      bindings.rowLocation?.('blk_1', 7) === '第 7 行',
+      String(bindings.rowLocation?.('blk_1', 7)),
+    )
+    check(
+      'Block 未到手时退回行号（line_number 即 locator.index，位置不丢）',
+      bindings.rowLocation?.('blk_missing', 7) === '第 7 行',
+      String(bindings.rowLocation?.('blk_missing', 7)),
+    )
+
+    const slideRowBlock = { ...block, id: 'blk_slide', locator: { kind: 'slide', index: 4, end_index: null, block_index: 2 } }
+    const slideRowMount = await mount(stubFetch({ report: { ...report, blocks: [slideRowBlock] } }))
+    const slideRowBindings = slideRowMount.app.runWithContext(() => module.default.setup({}, { expose() {} }))
+    await flush()
+    check(
+      'slide 材料的引用行位置 = 第 4 张幻灯片（不进「行」分支）',
+      slideRowBindings.rowLocation?.('blk_slide', 4) === '第 4 张幻灯片',
+      String(slideRowBindings.rowLocation?.('blk_slide', 4)),
+    )
+  }
 } finally {
   await server.close()
 }
