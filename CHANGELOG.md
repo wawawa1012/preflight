@@ -1,5 +1,18 @@
 # Progress log
 
+## 2026-09-19 — Agent Specialization Hardening（独立 worktree，未合并）
+
+基线 `2d52124`；仅 backend/tests/docs。完整角色合同、源码审计和能力缺口见
+[agent-specialization.md](docs/architecture/agent-specialization.md)。
+
+- Evidence：候选合并前限制 block ID 在产生它的窗口内；越界丢弃并保留 raw response；既有 storage quote 验证/人工 accept 不变。prompt v2.5。
+- Repair：客户端只选择 Finding，服务端从当前 Block 重新生成并采用自己的解释；新增数字、部分直接选真值表达拒绝；suggestion 200/action 40 字上限。不自动改材料。
+- Grill：内部模型响应改为 `prompt/source_id`，服务端验证来源池并回填 quote/block/span；无来源零调用，限制源权限、去重及有限泛问拦截。公开 request/response JSON Schema 与基线一致。
+- 新增28项离线benchmark（18角色场景、4差异场景、6边界项）；包含明确通过断言暴露的语义缺口，不等于模型语义质量全通过。Repair仍不支持缺条件/缺引用/首创三类独立Finding；4个差异案例仅数值冲突案例完整跑三角色。
+- 未新增端点、持久化对象、表、依赖；未修改frontend；未调用真实API。Consistency/Statement Inspector继续是普通程序。
+
+验证：定向110项、完整backend247项、契约检查通过；Grill公开模型schema逐项与 `2d52124` 比较相同；`git diff --check`通过。frontend build未运行。
+
 ## 2026-09-18 — I8：同材料数值一致性「待核对问题」（已合入 main）
 
 提交：`0c8d581` feat: surface within-material numeric inconsistencies（`backend/app/consistency.py` 纯函数 + GET `/api/v1/materials/{id}/consistency-findings` + `ConsistencyFinding`/`ConsistencyCitation` 进 contracts 并 export；报告页「待核对问题」栏目点回现有 Drawer；`backend/tests/test_consistency.py` 15 项，TDD 先红后绿；check-preflight-report 37 → 45 项）

@@ -14,6 +14,11 @@
 
 每阶段结束：检查 → 更新 CHANGELOG → Git commit。未验收不记完成。
 
+## Agent specialization hardening（2026-09-19，独立 worktree）
+
+后端角色边界加固与离线benchmark实现；未合并、未做live模型质量验收。Evidence限制当窗来源，Repair复验/重建数值Finding，Grill改为选择服务端来源ID；公开契约与DB schema不变。
+详见 [角色合同与能力缺口](architecture/agent-specialization.md)。Repair非数值Finding、语义相关性/中立性评估仍未完成，不据此把产品全部标为已验收。
+
 ## 进度备注（2026-09-16）
 
 - Phase 0、Iteration 1（report mock）、Iteration 2A（Markdown 预览）已完成并提交；2A 竞态修复已收口（8e42335）。

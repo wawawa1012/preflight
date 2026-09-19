@@ -171,7 +171,7 @@ class RepairSuggestionPureTest(unittest.TestCase):
         )
 
         with self.assertRaises(llm.PromptTooLarge):
-            repair_suggest.suggest_repair(finding, blocks)
+            repair_suggest.build_messages(finding, repair_suggest.verify_citations(finding, blocks))
         self.assertEqual(self.complete.calls, [])
 
 

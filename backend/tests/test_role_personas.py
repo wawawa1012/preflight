@@ -1,12 +1,12 @@
 """角色人设契约：依据审计员 / 修复顾问 / 质询官三条 LLM 角色的 prompt 边界（无真实 LLM 调用）。
 
 三个角色共用一个 LLM 客户端，但纪律各不相同：
-- 依据审计员（llm.SYSTEM_PROMPT，PROMPT_VERSION v2.4）：只认直接依据，没有就空数组，禁止常识脑补/弱相关；
+- 依据审计员（llm.SYSTEM_PROMPT，PROMPT_VERSION v2.5）：只认直接依据，没有就空数组，禁止常识脑补/弱相关；
 - 修复顾问（repair_suggest.SYSTEM_PROMPT）：只谈文本怎么改，不创造新事实、不替用户在冲突数字中选边；
 - 质询官（grill.SYSTEM_PROMPT）：只出题不打分，引用对不上就丢题，全丢返回空列表是合法结果。
 
-中立性/抗脑补这类语义约束 parser 无法判定（例如 {"suggestion":"选88%"} 结构完全合法），
-只能由 SYSTEM_PROMPT 文本承载：人设断言直接读 prompt；行为层用 StubComplete 替换 llm.complete，
+中立性/抗脑补不能由 parser 完整判定；生产路径另有有限的数值词法验证门。
+人设断言只读 prompt；行为层用 StubComplete 替换 llm.complete，
 复用 test_grill / test_repair_suggest 的 fixture helper。
 """
 import json
@@ -14,7 +14,7 @@ import unittest
 
 from app import grill, llm, repair_suggest
 from app.claim_inspector import inspect_statements
-from tests.test_grill import material_of, question_of, reply_of
+from tests.test_grill import material_of, question_of, reply_of, sources_of
 from tests.test_repair_suggest import StubComplete, blocks_of, finding_of
 
 TEXT = "本文系统准确率达到 95%。\n\n复现实验的准确率达到 90%。\n"
@@ -55,8 +55,8 @@ class EvidenceAuditorPersonaTest(unittest.TestCase):
     def test_no_contest_wording(self) -> None:
         self.assertNotIn("参赛", llm.SYSTEM_PROMPT)
 
-    def test_prompt_version_is_v24(self) -> None:
-        self.assertTrue(llm.PROMPT_VERSION.endswith("v2.4"), llm.PROMPT_VERSION)
+    def test_prompt_version_is_v25(self) -> None:
+        self.assertTrue(llm.PROMPT_VERSION.endswith("v2.5"), llm.PROMPT_VERSION)
 
 
 class RepairAdvisorPersonaTest(unittest.TestCase):
@@ -76,25 +76,24 @@ class RepairAdvisorPersonaTest(unittest.TestCase):
 
 
 class RepairAdvisorBehaviorTest(StubLlmMixin, unittest.TestCase):
-    """两条数值冲突路径：结构合法即通过（parser 无法 NLP 判定），非法 JSON 一律拒绝。"""
+    """数值冲突路径：结构解析后另过词法门；不宣称能做完整语义判定。"""
 
-    def test_side_picking_payload_still_parses_structurally(self) -> None:
-        # parser 只校验结构；「选88%」这种越权建议在结构上合法，越权与否只能靠 prompt 约束。
+    def test_side_picking_payload_parses_but_fails_production_gate(self) -> None:
+        # Parser alone accepts this; the production gate must reject it.
         blocks = blocks_of(TEXT)
         finding = finding_of(blocks)  # 95% vs 90% 数值对照
         self.complete._replies = [json.dumps({"suggestion": "选88%", "action": "选值"}, ensure_ascii=False)]
 
-        result = repair_suggest.suggest_repair(finding, blocks)
-
-        self.assertEqual(result.action, "选值")
-        self.assertEqual(result.suggestion, "选88%")
+        self.assertEqual(repair_suggest.parse_suggestion(self.complete._replies[0]).action, "选值")
+        with self.assertRaises(llm.LlmInvalidResponse):
+            repair_suggest.suggest_repair(finding, blocks)
         _system, user = self.complete.calls[0]
         self.assertIn("95%", user["content"])
         self.assertIn("90%", user["content"])
         self.assertTrue(
             "不替用户选择" in repair_suggest.SYSTEM_PROMPT
             or "不假定任何一方正确" in repair_suggest.SYSTEM_PROMPT,
-            "越权建议在 parser 层无法拦截，约束必须落在 prompt",
+            "语义约束仍需 prompt；有限词法门不等于语义判定",
         )
 
     def test_conflicting_numbers_still_require_strict_json(self) -> None:
@@ -159,7 +158,7 @@ class ChallengeExaminerBehaviorTest(StubLlmMixin, unittest.TestCase):
         material = material_of(TEXT)
         first, _second = self.statements_of(material)
         bad = question_of(first, "「95.5%」是怎么回事？")
-        bad["quote"] = "95.5%"  # 原文没有这个片段
+        bad["source_id"] = "s_missing"  # 本次允许来源中没有
         self.complete._replies = [reply_of(bad)]
 
         questions = grill.generate_grill(material)
@@ -168,13 +167,13 @@ class ChallengeExaminerBehaviorTest(StubLlmMixin, unittest.TestCase):
         self.assertEqual(len(self.complete.calls), 1, "复验失败是丢弃而不是重调 LLM")
         # 直接复用 verify_questions：坏引用整条丢弃（不修、不猜）。
         raw = grill.parse_questions(reply_of(bad))
-        self.assertEqual(grill.verify_questions(raw, material.blocks), [])
+        self.assertEqual(grill.verify_questions(raw, sources_of(material), material.blocks), [])
 
     def test_mixed_batch_keeps_only_verified(self) -> None:
         material = material_of(TEXT)
         first, second = self.statements_of(material)
         bad = question_of(second, "「90.5%」来源？")
-        bad["quote"] = "90.5%"
+        bad["source_id"] = "s_missing"
         self.complete._replies = [reply_of(question_of(first, "保留的问题"), bad)]
 
         questions = grill.generate_grill(material)

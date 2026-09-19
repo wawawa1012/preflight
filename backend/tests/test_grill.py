@@ -6,6 +6,7 @@
 """
 import json
 import unittest
+from dataclasses import replace
 
 from app import grill, llm
 from app.claim_inspector import inspect_statements
@@ -35,15 +36,14 @@ def reply_of(*questions: dict) -> str:
     return json.dumps({"questions": list(questions)}, ensure_ascii=False)
 
 
+def sources_of(material):
+    statements = inspect_statements(material.blocks)
+    return grill.prepare_sources(find_numeric_findings(statements, material.blocks), statements, material.blocks)
+
+
 def question_of(statement: DetectedStatement, prompt: str) -> dict:
-    """按关键陈述的真实 span 造一条合法追问，避免手抄数字出错。"""
-    return {
-        "prompt": prompt,
-        "quote": statement.quote,
-        "block_id": statement.block_id,
-        "start": statement.start,
-        "end": statement.end,
-    }
+    """This two-block fixture has one source per block, in block order."""
+    return {"prompt": prompt, "source_id": f"s{int(statement.block_id.split('_')[-1]) + 1}"}
 
 
 class StubComplete:
@@ -110,11 +110,11 @@ class GrillPureTest(unittest.TestCase):
         self.assertIn("JSON", system["content"])
         self.assertIn("最多 5 条", system["content"])
 
-    def test_quote_mismatch_is_dropped_not_fixed(self) -> None:
+    def test_unknown_source_is_dropped_not_fixed(self) -> None:
         material = material_of(TEXT)
         first, second = self.statements_of(material)
         broken = question_of(first, "「95.5%」是怎么回事？")
-        broken["quote"] = "95.5%"  # 与 block 原文对不上
+        broken["source_id"] = "s_missing"
 
         self.complete._replies = [reply_of(broken, question_of(second, "请说明复现实验口径。"))]
         questions = grill.generate_grill(material)
@@ -127,9 +127,9 @@ class GrillPureTest(unittest.TestCase):
         material = material_of(TEXT)
         first, second = self.statements_of(material)
         first_bad = question_of(first, "问题一")
-        first_bad["start"] = first.start + 1  # span 对不上
+        first_bad["source_id"] = "s_missing1"
         second_bad = question_of(second, "问题二")
-        second_bad["block_id"] = "blk_missing"
+        second_bad["source_id"] = "s_missing2"
 
         self.complete._replies = [reply_of(first_bad, second_bad)]
         questions = grill.generate_grill(material)
@@ -141,10 +141,10 @@ class GrillPureTest(unittest.TestCase):
         material = material_of(TEXT)
         first, second = self.statements_of(material)
         out_of_range = question_of(second, "问题")
-        out_of_range["end"] = len(material.blocks[1].text) + 5
-
-        self.complete._replies = [reply_of(question_of(first, "保留的问题"), out_of_range)]
-        questions = grill.generate_grill(material)
+        sources = sources_of(material)
+        sources[1] = replace(sources[1], end=len(material.blocks[1].text) + 5)
+        raw = grill.parse_questions(reply_of(question_of(first, "保留的问题"), out_of_range))
+        questions = grill.verify_questions(raw, sources, material.blocks)
 
         self.assertEqual([item.quote for item in questions], ["95%"])
 
@@ -166,10 +166,11 @@ class GrillPureTest(unittest.TestCase):
             "questions_not_array": json.dumps({"questions": {}}, ensure_ascii=False),
             "item_not_object": json.dumps({"questions": ["问题"]}, ensure_ascii=False),
             "extra_field": json.dumps({"questions": [{**good, "line_number": 7}]}, ensure_ascii=False),
-            "missing_field": json.dumps({"questions": [{k: v for k, v in good.items() if k != "end"}]}, ensure_ascii=False),
+            "missing_field": json.dumps({"questions": [{k: v for k, v in good.items() if k != "source_id"}]}, ensure_ascii=False),
             "blank_prompt": json.dumps({"questions": [{**good, "prompt": "  "}]}, ensure_ascii=False),
             "overlong_prompt": json.dumps({"questions": [{**good, "prompt": "问" * 201}]}, ensure_ascii=False),
-            "start_not_int": json.dumps({"questions": [{**good, "start": "10"}]}, ensure_ascii=False),
+            "source_not_string": json.dumps({"questions": [{**good, "source_id": 10}]}, ensure_ascii=False),
+            "model_coordinates": reply_of({"prompt": "问题", "quote": first.quote, "block_id": first.block_id, "start": first.start, "end": first.end}),
             "too_many": json.dumps({"questions": [good] * (grill.MAX_QUESTIONS + 1)}, ensure_ascii=False),
         }
         for name, reply in cases.items():
@@ -189,7 +190,8 @@ class GrillPureTest(unittest.TestCase):
         ]
 
         with self.assertRaises(llm.PromptTooLarge):
-            grill.build_messages([], statements)
+            grill.build_messages([grill.Source(f"s{i}", s.block_id, s.quote, s.start, s.end, "test", "")
+                                  for i, s in enumerate(statements)])
         self.assertEqual(self.complete.calls, [])
 
     def test_statements_in_prompt_are_capped_at_eight(self) -> None:
@@ -199,19 +201,19 @@ class GrillPureTest(unittest.TestCase):
         grill.generate_grill(material)
 
         _system, user = self.complete.calls[0]
-        self.assertEqual(user["content"].count("（block_id="), grill.MAX_STATEMENTS_IN_PROMPT)
+        sources = sources_of(material)
+        self.assertEqual(len(sources), grill.MAX_STATEMENTS_IN_PROMPT)
+        self.assertNotIn('"source_id": "s9"', user["content"])
         self.assertEqual(find_numeric_findings(inspect_statements(material.blocks), material.blocks), [])
 
-    def test_empty_material_still_asks_llm_and_empty_reply_is_legal(self) -> None:
+    def test_empty_material_abstains_without_llm(self) -> None:
         material = material_of("没有数字的一句话。\n")
         self.complete._replies = [reply_of()]
 
         questions = grill.generate_grill(material)
 
         self.assertEqual(questions, [])
-        _system, user = self.complete.calls[0]
-        self.assertIn("尚未发现数值对照问题", user["content"])
-        self.assertIn("未扫描到关键陈述", user["content"])
+        self.assertEqual(self.complete.calls, [])
 
     def test_prompt_has_no_conclusion_or_contest_words(self) -> None:
         for forbidden in ("已满足", "已支撑", "分数", "参赛"):

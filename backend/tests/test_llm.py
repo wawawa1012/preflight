@@ -141,12 +141,12 @@ class CompletionCapTest(unittest.TestCase):
             else:
                 os.environ[key] = value
 
-    def test_prompt_v24_caps_rationale_and_candidate_count(self) -> None:
+    def test_prompt_v25_caps_rationale_and_candidate_count(self) -> None:
         messages = llm.build_messages(make_criterion(), [make_block()])
         joined = messages[0]["content"] + messages[1]["content"]
         self.assertIn("最多 3 条", joined)
         self.assertIn("40", joined)
-        self.assertEqual(llm.PROMPT_VERSION, "p5-criterion-preflight-v2.4")
+        self.assertEqual(llm.PROMPT_VERSION, "p5-criterion-preflight-v2.5")
 
     def test_create_does_not_send_max_tokens(self) -> None:
         captured: dict = {}
@@ -515,8 +515,9 @@ class WindowedProposalTest(unittest.TestCase):
     def test_safety_cap_limits_merged_unique_candidates_to_twelve(self) -> None:
         criterion = make_criterion()
         blocks = two_window_blocks()
-        first = [(f"blk_a{i}", f"第一窗引用{i}", "理由") for i in range(7)]
-        second = [(f"blk_b{i}", f"第二窗引用{i}", "理由") for i in range(7)]
+        windows = plan_windows(criterion, blocks)
+        first = [(windows[0][0].id, f"第一窗引用{i}", "理由") for i in range(7)]
+        second = [(windows[1][0].id, f"第二窗引用{i}", "理由") for i in range(7)]
         self.stub_complete([candidates_payload(first), candidates_payload(second)])
 
         with self.assertLogs("preflight.llm", level="WARNING") as captured:
