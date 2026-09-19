@@ -1,7 +1,7 @@
 """角色人设契约：依据审计员 / 修复顾问 / 质询官三条 LLM 角色的 prompt 边界（无真实 LLM 调用）。
 
 三个角色共用一个 LLM 客户端，但纪律各不相同：
-- 依据审计员（llm.SYSTEM_PROMPT，PROMPT_VERSION v2.5）：只认直接依据，没有就空数组，禁止常识脑补/弱相关；
+- 依据审计员（llm.SYSTEM_PROMPT，PROMPT_VERSION v2.6）：只认直接依据，没有就空数组，禁止常识脑补/弱相关；
 - 修复顾问（repair_suggest.SYSTEM_PROMPT）：只谈文本怎么改，不创造新事实、不替用户在冲突数字中选边；
 - 质询官（grill.SYSTEM_PROMPT）：只出题不打分，引用对不上就丢题，全丢返回空列表是合法结果。
 
@@ -55,8 +55,8 @@ class EvidenceAuditorPersonaTest(unittest.TestCase):
     def test_no_contest_wording(self) -> None:
         self.assertNotIn("参赛", llm.SYSTEM_PROMPT)
 
-    def test_prompt_version_is_v25(self) -> None:
-        self.assertTrue(llm.PROMPT_VERSION.endswith("v2.5"), llm.PROMPT_VERSION)
+    def test_prompt_version_is_v26(self) -> None:
+        self.assertTrue(llm.PROMPT_VERSION.endswith("v2.6"), llm.PROMPT_VERSION)
 
 
 class RepairAdvisorPersonaTest(unittest.TestCase):

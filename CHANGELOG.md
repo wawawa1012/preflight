@@ -1,5 +1,18 @@
 # Progress log
 
+## 2026-09-19 — Agent Red-Team & Evaluation Gate（独立 worktree，未合并）
+
+基线 `190158f`；实际复现三角色接受重复JSON字段、Evidence接受十万字符rationale的解析缺口。
+
+- 三角色共用严格JSON读取：拒绝重复key、非标准常量、超深解析和超过65,536字符的响应；各角色输出字段不变。长度门在响应接收后执行，不代表API费用上限。
+- Material / Criterion / Finding / quote明确为不可信数据；JSON编码和转义标签包裹数据区；Evidence prompt v2.6。标签不能证明真实模型不服从注入。
+- Grill池ID冲突时整批拒绝，避免内部歧义查找；生产准备路径仍生成唯一ID。
+- 新增33项测试：22个角色攻击、5个metamorphic/differential、5个prompt/schema补充攻击、1个manifest完整性校验。新增32-case [evaluation manifest](benchmark/agent-evaluation-manifest.json) 和离线单case runner；已知语义缺口显式输出known_gap，不包装成安全PASS。
+- 确认仍可通过的恶意输出：中文数字造假、非数字认证虚构、合法source ID下的密码追问、泛问改写、虚构10万样本前提；不增加NLP幻觉检测器。Optional live runner仅设计/TODO，本轮无API调用。
+
+验证：新增33/33、已有role benchmark28/28、完整backend280/280；离线manifest runner32例断言通过，semantic_safety_verdict仍为not_established；契约检查、Grill公开schema与基线对比、git diff --check均PASS。
+frontend、公开契约/端点、DB schema和依赖未变；未读取密钥文件，未切回主仓，未merge/push。
+
 ## 2026-09-19 — Agent Specialization Hardening（独立 worktree，未合并）
 
 基线 `2d52124`；仅 backend/tests/docs。完整角色合同、源码审计和能力缺口见
