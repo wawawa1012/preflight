@@ -2,7 +2,8 @@
 // /compare 检查两份材料说法是否一致：打开页面只 GET 材料列表、零 POST（不自动扫描材料库）；
 // 同一份材料不发送且就地报错；两个不同 id 才 POST /api/v1/comparisons（body 只含两个选中 id）；
 // 检查成功后按需 GET 两份材料的 blocks（左右分栏靠 document_id 判侧，引用点开 Drawer，位置按 locatorLabel）；
-// 空 findings 是合法结果。合成数据只存在于本脚本（test-only）。
+// 页面头与空态消费共享 review/PageHeader、review/EmptyState，页面宽度 max-w-6xl；空 findings 是合法结果，走共享空态。
+// 合成数据只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-compare.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp } from 'vue'
@@ -265,16 +266,44 @@ try {
     'CompareView 只 POST /api/v1/comparisons',
     viewSource.includes("method: 'POST'") && viewSource.includes("'/api/v1/comparisons'") && !viewSource.includes('repair-suggestions'),
   )
+  const bannedWords = ['已满足', '分数', '笛卡尔积', '参赛', '提交前', '材料 A', '材料 B', 'COMPARE']
   check(
     'CompareView 源码不含禁用词',
-    ['已满足', '分数', '笛卡尔积'].every((word) => !viewSource.includes(word)),
-    ['已满足', '分数', '笛卡尔积'].filter((word) => viewSource.includes(word)).join('、'),
+    bannedWords.every((word) => !viewSource.includes(word)),
+    bannedWords.filter((word) => viewSource.includes(word)).join('、'),
   )
   check(
     'hero 不再出现 COMPARE 眉题，标题副标题用大白话',
     !viewSource.includes('COMPARE') &&
       viewSource.includes('检查两份材料有没有说法不一致') &&
       viewSource.includes('看它们是否对同一指标说了不同的数字'),
+  )
+  check(
+    '页头消费共享 PageHeader（标题/副标题走 props，右侧出口走插槽）',
+    viewSource.includes("import PageHeader from '../components/review/PageHeader.vue'") &&
+      templateSource.includes('<PageHeader') &&
+      templateSource.includes('title="检查两份材料有没有说法不一致"') &&
+      templateSource.includes('subtitle="看它们是否对同一指标说了不同的数字"') &&
+      !templateSource.includes('<h1'),
+  )
+  check(
+    '空结果走共享 EmptyState（review/EmptyState）',
+    viewSource.includes("import EmptyState from '../components/review/EmptyState.vue'") &&
+      templateSource.includes('v-if="emptyResult"') &&
+      templateSource.includes('<EmptyState'),
+  )
+  check(
+    '页面宽度 max-w-6xl，返回 审查 到 /',
+    viewSource.includes('mx-auto max-w-6xl') &&
+      !viewSource.includes('max-w-4xl') &&
+      templateSource.includes('to="/"') &&
+      templateSource.includes('审查'),
+  )
+  check(
+    '分栏保留：左右两栏各放一份材料的引用',
+    (templateSource.match(/sm:grid-cols-2/g) || []).length >= 2 &&
+      templateSource.includes('主材料 · ') &&
+      templateSource.includes('对照材料 · '),
   )
   check('结果头部说 发现 N 处需要核对', viewSource.includes('处需要核对') && !viewSource.includes('条 · 引用横跨两份材料'))
   check('不扫描材料库只留在注释里，不进页面文案', viewSource.includes('自动扫描材料库') && !templateSource.includes('自动扫描材料库'))

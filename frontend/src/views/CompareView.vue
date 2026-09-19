@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import type { Block, ConsistencyFinding, CrossCompareRequest, CrossCompareResponse, MaterialSummary } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
+import PageHeader from '../components/review/PageHeader.vue'
+import EmptyState from '../components/review/EmptyState.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 
 // 检查两份材料的说法是否一致：只检查两个下拉里由人显式选中的两份材料（主材料 / 对照材料）。
@@ -178,17 +180,11 @@ loadMaterials()
 </script>
 
 <template>
-  <main class="mx-auto max-w-4xl px-6 py-10">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-semibold tracking-tight">检查两份材料有没有说法不一致</h1>
-        <p class="mt-2 text-sm text-slate-400">看它们是否对同一指标说了不同的数字。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
-      </div>
-    </div>
+  <main class="mx-auto max-w-6xl px-6 py-10">
+    <PageHeader title="检查两份材料有没有说法不一致" subtitle="看它们是否对同一指标说了不同的数字">
+      <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
+      <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
+    </PageHeader>
 
     <UCard class="mt-6">
       <p v-if="loading" class="text-sm text-slate-400">正在读取材料列表…</p>
@@ -236,22 +232,25 @@ loadMaterials()
       </div>
     </UCard>
 
-    <!-- 检查结果：一条待核对问题一行，细条放指标与类型，左右两栏各放一份材料的引用；空结果合法。 -->
-    <section v-if="result" class="mt-6 rounded-lg border border-slate-800 p-4">
+    <!-- 检查结果：一条待核对问题一行，细条放指标与类型，左右两栏各放一份材料的引用；空结果合法，走共享空态。 -->
+    <section v-if="result" class="mt-6">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
         <h2 class="text-sm font-medium text-slate-200">发现 {{ result.findings.length }} 处需要核对</h2>
         <span class="text-xs text-slate-500">{{ result.filename_a }} · {{ result.filename_b }}</span>
       </div>
-      <p v-if="emptyResult" class="mt-3 text-sm text-slate-400">
-        当前范围尚未发现同指标不同数字；中英译文通常对不上，需要两份材料对同一个指标各自给出数字。
-      </p>
-      <ul v-else class="mt-3 space-y-3">
+      <EmptyState
+        v-if="emptyResult"
+        class="mt-2"
+        title="当前范围尚未发现同指标不同数字"
+        hint="中英译文通常对不上，需要两份材料对同一个指标各自给出数字。"
+      />
+      <ul v-else class="mt-3 divide-y divide-slate-800">
         <li
           v-for="finding in result.findings"
           :key="`${finding.kind}:${finding.measure}:${finding.citations[0].block_id}:${finding.citations[0].start}`"
-          class="rounded-md border border-slate-800 p-3"
+          class="py-4 first:pt-1"
         >
-          <div class="flex flex-wrap items-center justify-center gap-2 border-b border-slate-800 pb-2">
+          <div class="flex flex-wrap items-center justify-center gap-2">
             <UBadge
               :color="finding.kind === 'numeric_inconsistency' ? 'warning' : 'neutral'"
               variant="subtle"
@@ -260,10 +259,10 @@ loadMaterials()
               {{ findingLabel(finding.kind) }}
             </UBadge>
             <span v-if="finding.measure" class="text-xs text-slate-300">指标：{{ finding.measure }}</span>
-            <span class="font-mono text-xs text-slate-400">{{ finding.values.join(' / ') }}</span>
+            <span class="font-mono text-xs text-amber-300/90">{{ finding.values.join(' / ') }}</span>
           </div>
-          <div class="mt-2 grid gap-2 sm:grid-cols-2">
-            <div class="rounded-md bg-slate-900/40 p-2">
+          <div class="mt-3 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-md bg-slate-900/40 p-3">
               <p class="text-[11px] text-slate-500">主材料 · {{ result.filename_a }}</p>
               <ul class="mt-1 space-y-1">
                 <li v-for="citation in sideCitations(finding, 'a')" :key="`a:${citation.block_id}:${citation.start}`">
@@ -278,7 +277,7 @@ loadMaterials()
               </ul>
               <p v-if="sideCitations(finding, 'a').length === 0" class="mt-1 text-xs text-slate-600">—</p>
             </div>
-            <div class="rounded-md bg-slate-900/40 p-2">
+            <div class="rounded-md bg-slate-900/40 p-3">
               <p class="text-[11px] text-slate-500">对照材料 · {{ result.filename_b }}</p>
               <ul class="mt-1 space-y-1">
                 <li v-for="citation in sideCitations(finding, 'b')" :key="`b:${citation.block_id}:${citation.start}`">
@@ -294,7 +293,7 @@ loadMaterials()
               <p v-if="sideCitations(finding, 'b').length === 0" class="mt-1 text-xs text-slate-600">—</p>
             </div>
           </div>
-          <ul v-if="unsidedCitations(finding).length > 0" class="mt-2 space-y-1">
+          <ul v-if="unsidedCitations(finding).length > 0" class="mt-3 space-y-1">
             <li v-for="citation in unsidedCitations(finding)" :key="`u:${citation.block_id}:${citation.start}`">
               <button
                 type="button"
@@ -305,7 +304,7 @@ loadMaterials()
               </button>
             </li>
           </ul>
-          <p class="mt-2 text-xs text-slate-500">{{ finding.explanation }}</p>
+          <p class="mt-3 text-xs text-slate-500">{{ finding.explanation }}</p>
         </li>
       </ul>
       <p v-if="blocksUnavailable" class="mt-3 text-xs text-amber-300">原文暂不可用</p>
