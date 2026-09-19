@@ -108,7 +108,7 @@ const reportSource = readFileSync(new URL('../src/views/MaterialReportView.vue',
 const drawerSource = readFileSync(new URL('../src/components/EvidenceDrawer.vue', import.meta.url), 'utf8')
 const routerSource = readFileSync(new URL('../src/router/index.ts', import.meta.url), 'utf8')
 
-const FORBIDDEN = ['已满足', '已支撑', '覆盖率', 'Trust Layer', '准备答辩', '矛盾', '分数']
+const FORBIDDEN = ['已满足', '已支撑', '覆盖率', 'Trust Layer', '准备答辩', '矛盾', '分数', '打分']
 check(
   '报告页源码不含禁用措辞',
   FORBIDDEN.every((word) => !reportSource.includes(word)),
@@ -224,6 +224,21 @@ check(
   '待核对空态为单一块（两句话同段、findings.length === 0 仅一次）',
   reportSource.includes(emptyFindingsCopy) && (reportSource.match(/findings\.length === 0/g) ?? []).length === 1,
   `空态 v-else-if 数=${(reportSource.match(/findings\.length === 0/g) ?? []).length}`,
+)
+// Phase 4：cockpit 文案去术语 —— 候选入口说人话、未绑定卡片不提 Block、rubric/范围行改「段原文」。
+check(
+  '候选入口文案为「去确认这些依据」且仍指回材料页',
+  reportSource.includes('>去确认这些依据</RouterLink>') &&
+    reportSource.includes('<RouterLink :to="`/materials/${materialId}`"') &&
+    !reportSource.includes('去材料页审核候选'),
+)
+check(
+  '未绑定卡片：待处理问题来自材料原文，不需要先懂标注',
+  reportSource.includes('上面的待处理问题来自材料原文，不需要先懂标注。绑定评分标准后才能按条核验。'),
+)
+check(
+  '报告页对用户不再说「个 Block」（rubric/范围行均为「段原文」）',
+  reportSource.includes('段原文') && !reportSource.includes('个 Block'),
 )
 
 const block = {

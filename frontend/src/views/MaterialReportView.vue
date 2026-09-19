@@ -281,7 +281,7 @@ loadProposals()
         <p class="mt-1 text-xs text-slate-500">按每条审查要求在原文里找依据</p>
         <p class="mt-2 text-sm text-slate-300">预检概览 · {{ overviewCounts }}</p>
         <p class="mt-2 text-sm text-slate-400">
-          <span v-if="report">{{ report.rubric_title }} · rev{{ report.rubric_revision }} · {{ report.block_count }} 个 Block</span>
+          <span v-if="report">{{ report.rubric_title }} · rev{{ report.rubric_revision }} · {{ report.block_count }} 段原文</span>
           <span v-else>材料级信号不需要绑定；绑定后才有可逐条核验的评分要求</span>
         </p>
       </div>
@@ -376,7 +376,7 @@ loadProposals()
     <UCard v-else-if="unbound" class="mt-4">
       <h2 class="text-lg font-medium">尚未绑定评分标准</h2>
       <p class="mt-2 text-sm text-slate-400">
-        上面的关键陈述与待核对问题来自材料本身，不需要绑定；绑定后才有可逐条核验的评分要求。
+        上面的待处理问题来自材料原文，不需要先懂标注。绑定评分标准后才能按条核验。
       </p>
       <div class="mt-6 flex flex-wrap gap-3">
         <UButton :to="`/materials/${materialId}`" icon="i-lucide-link">去绑定评分标准</UButton>
@@ -426,10 +426,10 @@ loadProposals()
           {{ rowError[row.criterion_id] }}
         </p>
         <p v-if="emptyPreflight(row.criterion_id)" class="mt-2 text-xs text-slate-500">
-          范围：{{ report.filename }} · {{ report.block_count }} 个 Block
+          范围：{{ report.filename }} · {{ report.block_count }} 段原文
         </p>
         <p v-if="pendingFor(row.criterion_id) > 0" class="mt-2 text-xs text-slate-500">
-          <RouterLink :to="`/materials/${materialId}`" class="text-violet-300 hover:underline">去材料页审核候选</RouterLink>
+          <RouterLink :to="`/materials/${materialId}`" class="text-violet-300 hover:underline">去确认这些依据</RouterLink>
         </p>
 
         <details v-if="row.citations.length > 0">
