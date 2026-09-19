@@ -1587,6 +1587,29 @@
       "title": "Repair",
       "type": "object"
     },
+    "RepairSuggestion": {
+      "additionalProperties": false,
+      "description": "待核对问题的改稿建议：只给文本修改方向，不落库、不改材料、不含结论判词。",
+      "properties": {
+        "suggestion": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Suggestion",
+          "type": "string"
+        },
+        "action": {
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "suggestion",
+        "action"
+      ],
+      "title": "RepairSuggestion",
+      "type": "object"
+    },
     "ReviewQuestion": {
       "additionalProperties": false,
       "properties": {
@@ -2169,6 +2192,9 @@
     "consistency_finding": {
       "$ref": "#/$defs/ConsistencyFinding"
     },
+    "repair_suggestion": {
+      "$ref": "#/$defs/RepairSuggestion"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -2199,6 +2225,7 @@
     "detected_statement",
     "consistency_citation",
     "consistency_finding",
+    "repair_suggestion",
     "error"
   ],
   "title": "ContractBundle",

@@ -249,6 +249,8 @@ export type Explanation2 = string;
  * @minItems 2
  */
 export type Citations1 = [ConsistencyCitation, ConsistencyCitation, ...ConsistencyCitation[]];
+export type Suggestion = string;
+export type Action = string;
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -279,6 +281,7 @@ export interface ContractBundle {
   detected_statement: DetectedStatement;
   consistency_citation: ConsistencyCitation;
   consistency_finding: ConsistencyFinding;
+  repair_suggestion: RepairSuggestion;
   error: ApiError;
 }
 export interface RunReport {
@@ -622,6 +625,13 @@ export interface ConsistencyFinding {
   searched_statement_count: SearchedStatementCount;
   explanation: Explanation2;
   citations: Citations1;
+}
+/**
+ * 待核对问题的改稿建议：只给文本修改方向，不落库、不改材料、不含结论判词。
+ */
+export interface RepairSuggestion {
+  suggestion: Suggestion;
+  action: Action;
 }
 export interface ApiError {
   code: Code;

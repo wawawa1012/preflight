@@ -412,6 +412,13 @@ class ConsistencyFinding(Contract):
     citations: list[ConsistencyCitation] = Field(min_length=2)
 
 
+class RepairSuggestion(Contract):
+    """待核对问题的改稿建议：只给文本修改方向，不落库、不改材料、不含结论判词。"""
+
+    suggestion: str = Field(min_length=1, max_length=200)
+    action: str = Field(min_length=1)
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -444,4 +451,5 @@ class ContractBundle(Contract):
     detected_statement: DetectedStatement
     consistency_citation: ConsistencyCitation
     consistency_finding: ConsistencyFinding
+    repair_suggestion: RepairSuggestion
     error: ApiError

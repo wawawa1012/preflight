@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 
-from . import llm, rubric_store, storage
+from . import llm, repair_suggest, rubric_store, storage
 from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
@@ -25,6 +25,7 @@ from .contracts import (
     ProposalAcceptance,
     ProposalCandidate,
     ProposalCandidateReject,
+    RepairSuggestion,
     Rubric,
     RubricBinding,
     RubricBindingCreate,
@@ -158,6 +159,16 @@ def material_consistency_findings(material_id: str) -> list[ConsistencyFinding]:
     if material is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
     return find_numeric_findings(inspect_statements(material.blocks), material.blocks)
+
+
+# 修复建议：一条「待核对问题」交给 LLM 给改稿方向；不落库、不改材料。
+# 引用先在 repair_suggest 内逐条复验（quote == text[start:end]），对不上不调用 LLM。
+@app.post("/api/v1/materials/{material_id}/repair-suggestions", response_model=RepairSuggestion)
+def create_repair_suggestion(material_id: str, payload: ConsistencyFinding) -> RepairSuggestion:
+    material = storage.get_material(material_id)
+    if material is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return repair_suggest.suggest_repair(payload, material.blocks)
 
 
 # 证据标注：quote 服务端校验必须来自 Block 原文；material_id/proposed_by 由服务端设定。
@@ -381,6 +392,12 @@ async def preview_rejected(request: Request, exc: PreviewRejected) -> JSONRespon
 @app.exception_handler(QuoteNotFound)
 async def quote_not_found(request: Request, exc: QuoteNotFound) -> JSONResponse:
     error = ApiError(code="quote_not_found", message=exc.message, details=[])
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(repair_suggest.CitationMismatch)
+async def citation_mismatch(request: Request, exc: repair_suggest.CitationMismatch) -> JSONResponse:
+    error = ApiError(code="citation_mismatch", message=exc.message, details=exc.details)
     return JSONResponse(status_code=400, content=error.model_dump())
 
 

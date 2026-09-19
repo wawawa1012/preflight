@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
+import RepairSuggestionPanel from '../components/RepairSuggestionPanel.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCount } from '../utils/preflightFacts'
 
@@ -20,6 +21,9 @@ const error = ref('')
 // I8 待核对问题：同材料内的数值对照结论由后端纯函数给出，前端只渲染。
 const findings = ref<ConsistencyFinding[]>([])
 const findingsUnavailable = ref(false)
+
+// 修复建议：每条待核对问题一个入口；点开才由面板调用 LLM，材料原文不动。
+const repairFinding = ref<ConsistencyFinding | null>(null)
 
 // I7 材料级信号：同样与绑定无关，一到手就画。
 const signals = ref<DetectedStatement[]>([])
@@ -165,6 +169,10 @@ async function openHighlight(target: { block_id: string; line_number: number; st
 
 function openCitation(citation: MaterialPreflightCitation) {
   openHighlight(citation)
+}
+
+function openRepair(finding: ConsistencyFinding) {
+  repairFinding.value = finding
 }
 
 function signalLabel(signal: DetectedStatement['signal']) {
@@ -314,9 +322,23 @@ loadProposals()
                 </button>
               </li>
             </ul>
+            <div class="mt-2 flex justify-end">
+              <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-wand-sparkles" @click="openRepair(finding)">
+                生成修复建议
+              </UButton>
+            </div>
           </li>
         </ul>
       </section>
+
+      <!-- 修复建议：LLM 只给改稿方向；引用仍点回同一 Drawer，材料原文不动。 -->
+      <RepairSuggestionPanel
+        v-if="repairFinding"
+        :material-id="materialId"
+        :finding="repairFinding"
+        @open-citation="openHighlight"
+        @close="repairFinding = null"
+      />
 
       <!-- 关键陈述：确定性扫描结果，只标出值得核对的句子，不判真假。 -->
       <section v-if="signalsUnavailable || signals.length > 0" class="rounded-lg border border-slate-800 p-4">
