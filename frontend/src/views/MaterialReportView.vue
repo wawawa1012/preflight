@@ -308,8 +308,8 @@ loadProposals()
           </div>
         </div>
         <p v-if="findingsUnavailable" class="mt-2 text-xs text-amber-300">待核对问题不可用</p>
-        <p v-else-if="findings.length === 0" class="mt-2 text-xs text-slate-400">当前范围尚未发现待核对问题（同一材料内同一度量词的不同数字）</p>
-        <p v-else-if="findings.length === 0" class="mt-1 text-xs text-slate-500">跨材料的数字对照在「与另一份材料对照」。</p>
+        <!-- 空态只有一块：两句话同段（原先两个连续 v-else-if 让第二句永不渲染）。 -->
+        <p v-else-if="findings.length === 0" class="mt-2 text-xs text-slate-400">当前范围尚未发现待核对问题（同一材料内同一度量词的不同数字）。跨材料的数字对照在「与另一份材料对照」。</p>
         <ul v-else class="mt-3 space-y-3">
           <li
             v-for="finding in findings"
@@ -394,6 +394,8 @@ loadProposals()
     </UCard>
 
     <div v-else-if="report" class="mt-4 space-y-4">
+      <!-- Phase 3：审查要求进度 —— 每条要求一行；行内显示本条核验状态，失败只落在该行。 -->
+      <h2 class="text-sm font-medium text-slate-200">审查要求进度</h2>
       <p v-if="proposalsUnavailable" class="text-xs text-amber-300">预检记录不可用</p>
 
       <div v-for="row in report.criteria" :key="row.criterion_id" class="rounded-lg border border-slate-800 p-4">
@@ -413,6 +415,8 @@ loadProposals()
             <UBadge v-if="row.verified_citation_count > 0" color="success" variant="subtle">
               已确认关联 {{ row.verified_citation_count }} 条
             </UBadge>
+            <!-- 行内核验态：只在这一行的徽章旁显示，不做整卡 spinner，也不门控上方区块。 -->
+            <span v-if="verifyingIds.includes(row.criterion_id)" class="text-xs text-slate-500">本条核验中…</span>
           </div>
         </div>
         <p v-if="failedWithoutCompleted(row.criterion_id)" class="mt-2 text-xs text-red-400">

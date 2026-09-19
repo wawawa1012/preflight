@@ -202,6 +202,29 @@ check(
     !reportSource.includes('<UCard v-if="loading"'),
 )
 check('核验失败只落在该行（行级 rowError）', reportSource.includes('rowError'))
+// Phase 3：逐条核验的行内状态 + 报告分支小标题；待处理问题区块仍不随核验/装载卸下。
+check(
+  '每条评分要求行显示本条核验状态（verifyingIds.includes → 本条核验中…）',
+  reportSource.includes('verifyingIds.includes(row.criterion_id)') && reportSource.includes('本条核验中…'),
+)
+check(
+  '报告分支含「审查要求进度」小标题且排在 criteria 矩阵之上',
+  reportSource.includes('>审查要求进度</h2>') &&
+    reportSource.indexOf('>审查要求进度</h2>') < reportSource.indexOf('v-for="row in report.criteria"'),
+  `进度h2@${reportSource.indexOf('>审查要求进度</h2>')} criteria@${reportSource.indexOf('v-for="row in report.criteria"')}`,
+)
+check(
+  '待处理问题区块不随核验/装载卸下（区块内无 verifying 门控）',
+  findingsBlock.length > 0 && !findingsBlock.includes('verifying'),
+)
+// P1：待核对空态是单一文案块 —— 两句话同段，findings.length === 0 只出现一次。
+const emptyFindingsCopy =
+  '当前范围尚未发现待核对问题（同一材料内同一度量词的不同数字）。跨材料的数字对照在「与另一份材料对照」。'
+check(
+  '待核对空态为单一块（两句话同段、findings.length === 0 仅一次）',
+  reportSource.includes(emptyFindingsCopy) && (reportSource.match(/findings\.length === 0/g) ?? []).length === 1,
+  `空态 v-else-if 数=${(reportSource.match(/findings\.length === 0/g) ?? []).length}`,
+)
 
 const block = {
   id: 'blk_1',
@@ -608,6 +631,11 @@ try {
         bindings.signals.value.length === 1 &&
         bindings.findings.value.length === 1 &&
         bindings.report.value !== null,
+    )
+    check(
+      '核验进行中：每条在跑的 criterion 都在 verifyingIds（行内「本条核验中…」有据可依）',
+      bindings.verifyingIds.value.includes('c_syn_1') && bindings.verifyingIds.value.includes('c_syn_2'),
+      bindings.verifyingIds.value.join(','),
     )
     state.defer = false
     state.releases.splice(0).forEach((release) => release())
