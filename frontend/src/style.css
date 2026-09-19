@@ -1,4 +1,9 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+/*
+ * 冻结设计令牌（全站统一用 Tailwind class 表达，不新增调色板文件）：
+ * surface = bg-slate-950/40 · finding = amber · verified = emerald · ai = violet · evidence = slate
+ * page width = max-w-6xl · less border：优先 divide / gap 分隔，不逐块加边框
+ */
 body { margin: 0; background: #0f172a; color: #e2e8f0; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; }

@@ -2,6 +2,8 @@
 import { ref } from 'vue'
 import type { MaterialPreflightSummary } from '../types/contracts'
 import { formatSavedAt } from '../utils/format'
+import PageHeader from '../components/review/PageHeader.vue'
+import EmptyState from '../components/review/EmptyState.vue'
 
 // 首页：只读装配的审查摘要 + 固定入口；只陈述已实现能力。
 const summaries = ref<MaterialPreflightSummary[]>([])
@@ -39,9 +41,8 @@ loadSummaries()
 </script>
 
 <template>
-  <main class="mx-auto max-w-4xl px-6 py-12">
-    <h1 class="text-2xl font-semibold tracking-tight">让重要结论有据可查</h1>
-    <p class="mt-3 text-slate-400">按你的审查标准检查材料中的依据、关键陈述、一致性与风险。</p>
+  <main class="mx-auto max-w-6xl px-6 py-10">
+    <PageHeader title="让重要结论有据可查" subtitle="按你的审查标准检查材料中的依据、关键陈述、一致性与风险。" />
 
     <!-- 主入口：一张大卡承担唯一 CTA，不铺一排小按钮。 -->
     <UCard class="mt-8">
@@ -76,10 +77,14 @@ loadSummaries()
         <p class="text-sm text-red-400" role="alert">无法加载审查摘要：{{ error }}</p>
         <UButton class="mt-4" size="sm" icon="i-lucide-refresh-cw" @click="loadSummaries">重试</UButton>
       </UCard>
-      <UCard v-else-if="summaries.length === 0" class="mt-4">
-        <p class="text-sm text-slate-400">还没有材料</p>
-        <UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">开始审查</UButton>
-      </UCard>
+      <EmptyState
+        v-else-if="summaries.length === 0"
+        class="mt-4"
+        title="还没有材料"
+        hint="上传后这里会列出每份材料的审查摘要。"
+      >
+        <UButton to="/materials/new" icon="i-lucide-upload">开始审查</UButton>
+      </EmptyState>
 
       <div v-else class="mt-4 divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">
         <RouterLink

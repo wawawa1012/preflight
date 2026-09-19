@@ -24,7 +24,7 @@ function isActive(to: string) {
 
 <template>
   <div class="min-h-screen">
-    <header class="border-b border-slate-800">
+    <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
       <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-3">
         <RouterLink to="/" class="text-sm font-semibold tracking-tight text-slate-100">Preflight</RouterLink>
         <nav class="flex flex-wrap items-center gap-1" aria-label="主导航">
