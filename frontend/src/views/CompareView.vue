@@ -221,7 +221,7 @@ loadMaterials()
         <span class="text-xs text-slate-500">{{ result.findings.length }} 条 · 引用横跨两份材料</span>
       </div>
       <p v-if="emptyResult" class="mt-3 text-sm text-slate-400">
-        本次对照未发现跨两份材料的数值差异；空结果合法，只说明这两份材料间没有可对照的同度量词数值。
+        当前范围尚未发现跨材料同度量词数值差异；中英试卷译文不会命中，需要两份材料里同一度量词的不同数字。空结果合法，只说明这两份材料间没有可对照的同度量词数值。
       </p>
       <ul v-else class="mt-3 space-y-3">
         <li

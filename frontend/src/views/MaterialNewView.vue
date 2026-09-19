@@ -6,7 +6,7 @@ import BlockList from '../components/BlockList.vue'
 import MaterialHeader from '../components/MaterialHeader.vue'
 
 // /materials/new 是添加材料工作台：选择文件 → 校验并预览 → 保存；
-// 保存成功后 router.replace 到稳定的 /materials/:id，本页不保留持久身份。
+// 保存成功后 router.replace 到稳定的 /materials/:id/report，本页不保留持久身份。
 const router = useRouter()
 
 const selectedFile = ref<File | null>(null)
@@ -135,8 +135,8 @@ async function saveMaterial() {
       throw new Error(body && body.message ? body.message : `HTTP ${response.status}`)
     }
     const saved = body as { id: string }
-    // 保存成功：离开临时工作台，进入稳定 Material 页面。
-    router.replace(`/materials/${saved.id}`)
+    // 保存成功：离开临时工作台，进入该材料的报告页（/materials/:id/report）。
+    router.replace(`/materials/${saved.id}/report`)
   } catch (cause) {
     // 保存失败：保持未保存状态，不能显示“已保存”。
     error.value = cause instanceof Error ? cause.message : '未知错误'

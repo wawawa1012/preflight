@@ -129,7 +129,7 @@ try {
   // 主按钮「开始预检」：按摘要决定目标（有已绑定材料就进报告页，否则去添加材料）。
   // 锚点用按钮自身的 icon 属性，避免命中 <script> 里的同名注释。
   const heroButtonBlock = (() => {
-    const at = workbenchSource.indexOf('i-lucide-upload">开始预检')
+    const at = workbenchSource.indexOf('i-lucide-upload">开始核验')
     return at < 0 ? '' : workbenchSource.slice(Math.max(0, at - 200), at)
   })()
   check(

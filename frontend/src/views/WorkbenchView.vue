@@ -52,7 +52,7 @@ function criteriaColor(item: MaterialPreflightSummary): 'neutral' | 'success' {
   return item.criteria_total === null || item.criteria_total === undefined ? 'neutral' : 'success'
 }
 
-// 主按钮「开始预检」：有已绑定材料就直接进第一份的报告页；没有则先去添加材料。
+// 主按钮「开始核验」：有已绑定材料就直接进第一份的报告页；没有则先去添加材料。
 const startTarget = computed(() => {
   const bound = summaries.value.find((item) => item.bound)
   return bound ? `/materials/${bound.material_id}/report` : '/materials/new'
@@ -65,10 +65,10 @@ loadSummaries()
   <main class="mx-auto max-w-4xl px-6 py-20">
     <p class="mb-4 text-sm font-medium text-violet-400">WORKBENCH</p>
     <h1 class="text-4xl font-semibold tracking-tight">让关键结论回到原文</h1>
-    <p class="mt-5 text-slate-400">按评审标准预审材料。每条要求显示已确认关联数；没有引用时说明查过哪里。</p>
+    <p class="mt-5 text-slate-400">核验是按每条审查要求在原文找依据，不是打分。</p>
 
     <div class="mt-8 flex flex-wrap gap-3">
-      <UButton :to="startTarget" icon="i-lucide-upload">开始预检</UButton>
+      <UButton :to="startTarget" icon="i-lucide-upload">开始核验</UButton>
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
       <UButton to="/compare" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare">两材料对照</UButton>
     </div>
@@ -88,7 +88,7 @@ loadSummaries()
       </UCard>
       <UCard v-else-if="summaries.length === 0" class="mt-4">
         <p class="text-sm text-slate-400">还没有材料。先上传一份 Markdown 并绑定评分标准。</p>
-        <UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">开始预检</UButton>
+        <UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">开始核验</UButton>
       </UCard>
 
       <div v-else class="mt-4 divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">

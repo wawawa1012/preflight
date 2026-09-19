@@ -92,7 +92,7 @@ try {
   check('preview 完成后 busy=false（控件恢复）', bindings.busy.value === false)
   check('preview 结果与当时选择一致（A.md）', bindings.preview.value?.filename === 'A.md')
 
-  // 场景二：保存进行中 —— 不能 upload / 换文件；成功后 router.replace 到 /materials/:id。
+  // 场景二：保存进行中 —— 不能 upload / 换文件；成功后 router.replace 到 /materials/:id/report。
   bindings.onFileChange({ target: { files: [fileB] } })
   globalThis.fetch = async () => jsonResponse(makePreview('B.md'))
   await bindings.upload()
@@ -127,7 +127,7 @@ try {
   releaseSave()
   await pendingSave
   await flush()
-  check('保存成功后跳转到 /materials/mat_saved_1', router.currentRoute.value.path === '/materials/mat_saved_1', router.currentRoute.value.path)
+  check('保存成功后跳转到 /materials/mat_saved_1/report', router.currentRoute.value.path === '/materials/mat_saved_1/report', router.currentRoute.value.path)
   check('saving 完成后 busy=false', bindings.busy.value === false)
 
   // 场景三：失败恢复；保存失败不跳转（先回到 /materials/new 模拟再次上传）。
