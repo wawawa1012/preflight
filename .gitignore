@@ -19,3 +19,4 @@ frontend/components.d.ts
 .hermes/
 *.log
 benchmark/results/
+.worktrees/
