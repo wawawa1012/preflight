@@ -125,6 +125,7 @@ check('报告页含关键陈述栏目', reportSource.includes('关键陈述'))
 check('报告页请求 statement-signals', reportSource.includes('statement-signals'))
 check('报告页请求 consistency-findings', reportSource.includes('consistency-findings'))
 check('报告页含待核对问题栏目', reportSource.includes('待核对问题'))
+check('首屏主区标题为可见的「待处理问题」', reportSource.includes('>待处理问题</h2>'))
 check(
   '待核对问题只给事实标签（数值不一致 / 待人工判断）',
   reportSource.includes('数值不一致') && reportSource.includes('待人工判断'),
@@ -147,7 +148,7 @@ check(
 // 顶栏入口文案现为「开始核验」；旧检索词「核验评分要求」保留在视图注释里，供其他检查沿用。
 check('顶栏提供「开始核验」入口', reportSource.includes('开始核验'))
 check(
-  '顶栏提供「与另一份材料对照」出口（to="/compare"）',
+  '报告页提供「与另一份材料对照」出口（to="/compare"，已从顶栏移入待处理问题区块）',
   reportSource.includes('与另一份材料对照') && reportSource.includes('to="/compare"'),
 )
 check(
@@ -162,9 +163,33 @@ check(
   `待核对@${reportSource.indexOf('待核对问题')} 关键陈述@${reportSource.indexOf('关键陈述')}`,
 )
 check(
-  '材料级区块各自装各自画（v-if 只看自己的数据，不挂 loading）',
-  reportSource.includes('v-if="findingsUnavailable || findings.length > 0"') &&
-    reportSource.includes('v-if="signalsUnavailable || signals.length > 0"'),
+  '评分要求矩阵排在关键陈述之上（v-for="row in report.criteria" 先于关键陈述 h2）',
+  reportSource.indexOf('v-for="row in report.criteria"') > -1 &&
+    reportSource.indexOf('v-for="row in report.criteria"') < reportSource.indexOf('>关键陈述</h2>'),
+  `criteria@${reportSource.indexOf('v-for="row in report.criteria"')} 关键陈述h2@${reportSource.indexOf('>关键陈述</h2>')}`,
+)
+// 首屏 IA（finding-first）：待处理问题区块恒显（不再按条数门控），关键陈述保留自身 v-if；二者都不挂 loading。
+const findingsBlock = reportSource.slice(
+  reportSource.indexOf('<!-- I8 待核对问题'),
+  reportSource.indexOf('<!-- 修复建议'),
+)
+const signalsBlock = reportSource.slice(
+  reportSource.indexOf('<!-- 关键陈述'),
+  reportSource.indexOf('</section>', reportSource.indexOf('<!-- 关键陈述')),
+)
+check(
+  '材料级区块不再按条数门控（findings 恒显、signals 只看自己，二者都不挂 loading）',
+  findingsBlock.length > 0 &&
+    !findingsBlock.includes('findings.length > 0') &&
+    !findingsBlock.includes('v-if="loading"') &&
+    signalsBlock.includes('v-if="signalsUnavailable || signals.length > 0"') &&
+    !signalsBlock.includes('v-if="loading"'),
+)
+check(
+  '装配中只留一行状态（v-if="loading" 不再是整卡 UCard，材料级区块先画）',
+  reportSource.includes('v-if="loading"') &&
+    reportSource.includes('正在读取审查要求…') &&
+    !reportSource.includes('<UCard v-if="loading"'),
 )
 check('核验失败只落在该行（行级 rowError）', reportSource.includes('rowError'))
 

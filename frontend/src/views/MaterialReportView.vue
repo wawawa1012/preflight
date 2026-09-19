@@ -290,22 +290,25 @@ loadProposals()
         <UButton v-if="report" icon="i-lucide-sparkles" :loading="verifying" @click="verifyCriteria">
           {{ verifying ? '核验中…' : '开始核验' }}
         </UButton>
-        <!-- 与另一份材料对照：常显（未绑定/装配中也可用），不带 query，不触任何写接口。 -->
-        <UButton to="/compare" color="neutral" variant="subtle" icon="i-lucide-git-compare">与另一份材料对照</UButton>
-        <UButton :to="`/materials/${materialId}`" color="neutral" variant="subtle" icon="i-lucide-file-text">返回材料</UButton>
+        <UButton :to="`/materials/${materialId}`" color="neutral" variant="ghost" size="xs" icon="i-lucide-file-text">返回材料</UButton>
         <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
       </div>
     </div>
 
     <!-- 材料级区块：不依赖绑定，各自装、各自画（待核对问题在关键陈述之上）。 -->
     <div v-if="!notFound" class="mt-6 space-y-4">
-      <!-- I8 待核对问题：同一材料内同一度量词的数值对照；每条都能点回原文 Drawer。 -->
-      <section v-if="findingsUnavailable || findings.length > 0" class="rounded-lg border border-slate-800 p-4">
+      <!-- I8 待核对问题（首屏主区：待处理问题）：同一材料内同一度量词的数值对照；每条都能点回原文 Drawer。 -->
+      <section class="rounded-lg border border-amber-900/50 bg-amber-950/10 p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-medium text-slate-200">待核对问题</h2>
-          <span class="text-xs text-slate-500">{{ findings.length }} 条 · 同一材料内数值对照</span>
+          <h2 class="text-lg font-semibold text-slate-100">待处理问题</h2>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-slate-500">{{ findings.length }} 条 · 同一材料内数值对照</span>
+            <!-- 与另一份材料对照：常显（未绑定/装配中也可用），不带 query，不触任何写接口。 -->
+            <UButton to="/compare" color="neutral" variant="subtle" size="xs" icon="i-lucide-git-compare">与另一份材料对照</UButton>
+          </div>
         </div>
         <p v-if="findingsUnavailable" class="mt-2 text-xs text-amber-300">待核对问题不可用</p>
+        <p v-else-if="findings.length === 0" class="mt-2 text-xs text-slate-400">当前范围尚未发现待核对问题（同一材料内同一度量词的不同数字）</p>
         <ul v-else class="mt-3 space-y-3">
           <li
             v-for="finding in findings"
@@ -353,32 +356,10 @@ loadProposals()
         @close="repairFinding = null"
       />
 
-      <!-- 关键陈述：确定性扫描结果，只标出值得核对的句子，不判真假。 -->
-      <section v-if="signalsUnavailable || signals.length > 0" class="rounded-lg border border-slate-800 p-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-medium text-slate-200">关键陈述</h2>
-          <span class="text-xs text-slate-500">{{ signals.length }} 条 · 数字 / 比例 / 比较 / 绝对化</span>
-        </div>
-        <p v-if="signalsUnavailable" class="mt-2 text-xs text-amber-300">关键陈述不可用</p>
-        <ul v-else class="mt-3 space-y-2">
-          <li v-for="signal in signals" :key="`${signal.block_id}:${signal.start}`">
-            <button
-              type="button"
-              class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
-              @click="openHighlight(signal)"
-            >
-              <UBadge color="neutral" variant="subtle" size="sm">{{ signalLabel(signal.signal) }}</UBadge>
-              <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}” · {{ rowLocation(signal.block_id, signal.line_number) }}</span>
-            </button>
-          </li>
-        </ul>
-      </section>
     </div>
 
     <!-- 报告主体：需要绑定；装配中/未绑定/找不到/失败各自给出路，不挡上面的材料级区块。 -->
-    <UCard v-if="loading" class="mt-4">
-      <p class="text-sm text-slate-400">正在装配预审报告…</p>
-    </UCard>
+    <p v-if="loading" class="mt-4 text-xs text-slate-500">正在读取审查要求…</p>
 
     <UCard v-else-if="notFound" class="mt-4">
       <h2 class="text-lg font-medium">找不到该材料</h2>
@@ -446,29 +427,53 @@ loadProposals()
           <RouterLink :to="`/materials/${materialId}`" class="text-violet-300 hover:underline">去材料页审核候选</RouterLink>
         </p>
 
-        <ul v-if="row.citations.length > 0" class="mt-3 space-y-2">
-          <li v-for="citation in row.citations" :key="citation.link_id">
-            <button
-              type="button"
-              class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
-              @click="openCitation(citation)"
-            >
-              <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · {{ rowLocation(citation.block_id, citation.line_number) }}</span>
-              <span class="ml-2 text-xs text-emerald-400">原文已校验</span>
-              <span class="ml-2 inline-flex">
-                <UBadge :color="citation.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
-                  {{ citation.proposed_by }}
-                </UBadge>
-              </span>
-              <span class="mt-1 block text-xs text-slate-500">用途：{{ citation.rationale }}</span>
-            </button>
-          </li>
-        </ul>
+        <details v-if="row.citations.length > 0">
+          <summary class="mt-3 text-xs text-slate-400">查看已确认原文</summary>
+          <ul class="mt-3 space-y-2">
+            <li v-for="citation in row.citations" :key="citation.link_id">
+              <button
+                type="button"
+                class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
+                @click="openCitation(citation)"
+              >
+                <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · {{ rowLocation(citation.block_id, citation.line_number) }}</span>
+                <span class="ml-2 text-xs text-emerald-400">原文已校验</span>
+                <span class="ml-2 inline-flex">
+                  <UBadge :color="citation.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
+                    {{ citation.proposed_by }}
+                  </UBadge>
+                </span>
+                <span class="mt-1 block text-xs text-slate-500">用途：{{ citation.rationale }}</span>
+              </button>
+            </li>
+          </ul>
+        </details>
         <p v-else-if="emptyPreflight(row.criterion_id) && row.missing" class="mt-3 text-xs text-slate-500">
           {{ row.missing.explanation }}
         </p>
       </div>
     </div>
+
+    <!-- 关键陈述：确定性扫描结果，只标出值得核对的句子，不判真假；排在评分要求矩阵之后。 -->
+    <section v-if="signalsUnavailable || signals.length > 0" class="mt-4 rounded-lg border border-slate-800 p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-sm font-medium text-slate-200">关键陈述</h2>
+        <span class="text-xs text-slate-500">{{ signals.length }} 条 · 数字 / 比例 / 比较 / 绝对化</span>
+      </div>
+      <p v-if="signalsUnavailable" class="mt-2 text-xs text-amber-300">关键陈述不可用</p>
+      <ul v-else class="mt-3 space-y-2">
+        <li v-for="signal in signals" :key="`${signal.block_id}:${signal.start}`">
+          <button
+            type="button"
+            class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
+            @click="openHighlight(signal)"
+          >
+            <UBadge color="neutral" variant="subtle" size="sm">{{ signalLabel(signal.signal) }}</UBadge>
+            <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}” · {{ rowLocation(signal.block_id, signal.line_number) }}</span>
+          </button>
+        </li>
+      </ul>
+    </section>
 
     <EvidenceDrawer
       :open="drawerOpen"
