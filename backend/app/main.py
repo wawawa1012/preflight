@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 
-from . import llm, repair_suggest, rubric_store, storage
+from . import cross_compare, llm, repair_suggest, rubric_store, storage
 from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
@@ -15,6 +15,8 @@ from .contracts import (
     ConsistencyFinding,
     CriterionEvidenceLink,
     CriterionEvidenceLinkCreate,
+    CrossCompareRequest,
+    CrossCompareResponse,
     DetectedStatement,
     EvidenceAnnotation,
     EvidenceAnnotationCreate,
@@ -159,6 +161,20 @@ def material_consistency_findings(material_id: str) -> list[ConsistencyFinding]:
     if material is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
     return find_numeric_findings(inspect_statements(material.blocks), material.blocks)
+
+
+# 两材料数值对照：只比较用户显式选中的两个 id；同 id 请求级拒绝（400），缺一 404。
+@app.post("/api/v1/comparisons", response_model=CrossCompareResponse)
+def create_comparison(payload: CrossCompareRequest) -> CrossCompareResponse:
+    if payload.material_id_a == payload.material_id_b:
+        raise cross_compare.SameMaterialCompare(payload.material_id_a)
+    material_a = storage.get_material(payload.material_id_a)
+    if material_a is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id_a}"])
+    material_b = storage.get_material(payload.material_id_b)
+    if material_b is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id_b}"])
+    return cross_compare.compare_materials(material_a, material_b)
 
 
 # 修复建议：一条「待核对问题」交给 LLM 给改稿方向；不落库、不改材料。
@@ -398,6 +414,12 @@ async def quote_not_found(request: Request, exc: QuoteNotFound) -> JSONResponse:
 @app.exception_handler(repair_suggest.CitationMismatch)
 async def citation_mismatch(request: Request, exc: repair_suggest.CitationMismatch) -> JSONResponse:
     error = ApiError(code="citation_mismatch", message=exc.message, details=exc.details)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(cross_compare.SameMaterialCompare)
+async def same_material_compare(request: Request, exc: cross_compare.SameMaterialCompare) -> JSONResponse:
+    error = ApiError(code=exc.code, message=exc.message, details=exc.details)
     return JSONResponse(status_code=400, content=error.model_dump())
 
 

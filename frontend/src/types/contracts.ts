@@ -251,6 +251,13 @@ export type Explanation2 = string;
 export type Citations1 = [ConsistencyCitation, ConsistencyCitation, ...ConsistencyCitation[]];
 export type Suggestion = string;
 export type Action = string;
+export type MaterialIdA = string;
+export type MaterialIdB = string;
+export type MaterialIdA1 = string;
+export type MaterialIdB1 = string;
+export type FilenameA = string;
+export type FilenameB = string;
+export type Findings1 = ConsistencyFinding[];
 export type Code = string;
 export type Message = string;
 export type Details = string[];
@@ -282,6 +289,8 @@ export interface ContractBundle {
   consistency_citation: ConsistencyCitation;
   consistency_finding: ConsistencyFinding;
   repair_suggestion: RepairSuggestion;
+  cross_compare_request: CrossCompareRequest;
+  cross_compare_response: CrossCompareResponse;
   error: ApiError;
 }
 export interface RunReport {
@@ -632,6 +641,23 @@ export interface ConsistencyFinding {
 export interface RepairSuggestion {
   suggestion: Suggestion;
   action: Action;
+}
+/**
+ * 两材料数值对照请求：只接受用户显式选中的两个材料 id。
+ */
+export interface CrossCompareRequest {
+  material_id_a: MaterialIdA;
+  material_id_b: MaterialIdB;
+}
+/**
+ * 两材料数值对照结果：findings 只保留引用横跨两份材料的数值对照；不落库、不给分。
+ */
+export interface CrossCompareResponse {
+  material_id_a: MaterialIdA1;
+  material_id_b: MaterialIdB1;
+  filename_a: FilenameA;
+  filename_b: FilenameB;
+  findings: Findings1;
 }
 export interface ApiError {
   code: Code;

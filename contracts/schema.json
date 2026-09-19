@@ -477,6 +477,68 @@
       "title": "CriterionEvidenceLinkCreate",
       "type": "object"
     },
+    "CrossCompareRequest": {
+      "additionalProperties": false,
+      "description": "两材料数值对照请求：只接受用户显式选中的两个材料 id。",
+      "properties": {
+        "material_id_a": {
+          "minLength": 1,
+          "title": "Material Id A",
+          "type": "string"
+        },
+        "material_id_b": {
+          "minLength": 1,
+          "title": "Material Id B",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id_a",
+        "material_id_b"
+      ],
+      "title": "CrossCompareRequest",
+      "type": "object"
+    },
+    "CrossCompareResponse": {
+      "additionalProperties": false,
+      "description": "两材料数值对照结果：findings 只保留引用横跨两份材料的数值对照；不落库、不给分。",
+      "properties": {
+        "material_id_a": {
+          "title": "Material Id A",
+          "type": "string"
+        },
+        "material_id_b": {
+          "title": "Material Id B",
+          "type": "string"
+        },
+        "filename_a": {
+          "minLength": 1,
+          "title": "Filename A",
+          "type": "string"
+        },
+        "filename_b": {
+          "minLength": 1,
+          "title": "Filename B",
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/ConsistencyFinding"
+          },
+          "title": "Findings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "material_id_a",
+        "material_id_b",
+        "filename_a",
+        "filename_b",
+        "findings"
+      ],
+      "title": "CrossCompareResponse",
+      "type": "object"
+    },
     "DetectedStatement": {
       "additionalProperties": false,
       "description": "I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。",
@@ -2195,6 +2257,12 @@
     "repair_suggestion": {
       "$ref": "#/$defs/RepairSuggestion"
     },
+    "cross_compare_request": {
+      "$ref": "#/$defs/CrossCompareRequest"
+    },
+    "cross_compare_response": {
+      "$ref": "#/$defs/CrossCompareResponse"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -2226,6 +2294,8 @@
     "consistency_citation",
     "consistency_finding",
     "repair_suggestion",
+    "cross_compare_request",
+    "cross_compare_response",
     "error"
   ],
   "title": "ContractBundle",

@@ -419,6 +419,23 @@ class RepairSuggestion(Contract):
     action: str = Field(min_length=1)
 
 
+class CrossCompareRequest(Contract):
+    """两材料数值对照请求：只接受用户显式选中的两个材料 id。"""
+
+    material_id_a: str = Field(min_length=1)
+    material_id_b: str = Field(min_length=1)
+
+
+class CrossCompareResponse(Contract):
+    """两材料数值对照结果：findings 只保留引用横跨两份材料的数值对照；不落库、不给分。"""
+
+    material_id_a: str
+    material_id_b: str
+    filename_a: str = Field(min_length=1)
+    filename_b: str = Field(min_length=1)
+    findings: list[ConsistencyFinding]
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -452,4 +469,6 @@ class ContractBundle(Contract):
     consistency_citation: ConsistencyCitation
     consistency_finding: ConsistencyFinding
     repair_suggestion: RepairSuggestion
+    cross_compare_request: CrossCompareRequest
+    cross_compare_response: CrossCompareResponse
     error: ApiError

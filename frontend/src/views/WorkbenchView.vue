@@ -70,6 +70,7 @@ loadSummaries()
     <div class="mt-8 flex flex-wrap gap-3">
       <UButton :to="startTarget" icon="i-lucide-upload">开始预检</UButton>
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
+      <UButton to="/compare" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare">两材料对照</UButton>
     </div>
 
     <section class="mt-12">
