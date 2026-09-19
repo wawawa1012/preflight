@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
+import { locatorLabel } from '../utils/locatorLabel'
 import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCount } from '../utils/preflightFacts'
 
 // 材料级预审报告：装配结果（需要绑定）与材料级信号（不需要绑定）各自装、各自画。
@@ -43,6 +44,13 @@ const highlight = ref<{ line_number: number; start: number; end: number } | null
 const drawerBlockId = ref('')
 
 const allBlocks = computed(() => report.value?.blocks ?? materialBlocks.value)
+
+// 引用/信号行只说位置：kind 由该 Block 的 Locator 决定（md 显示行号，slide/page/paragraph 各自成句）。
+// Block 未到手（未绑定、blocks 未取）时退回 line_number —— 它就是 locator.index，本季只有 md 入库，不发明第二套编号。
+function rowLocation(blockId: string, lineNumber: number): string {
+  const locator = allBlocks.value.find((item) => item.id === blockId)?.locator
+  return locator ? locatorLabel(locator) : locatorLabel({ kind: 'line', index: lineNumber })
+}
 
 async function loadReport() {
   loading.value = true
@@ -302,7 +310,7 @@ loadProposals()
                   class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
                   @click="openHighlight(citation)"
                 >
-                  <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · line {{ citation.line_number }}</span>
+                  <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · {{ rowLocation(citation.block_id, citation.line_number) }}</span>
                 </button>
               </li>
             </ul>
@@ -325,7 +333,7 @@ loadProposals()
               @click="openHighlight(signal)"
             >
               <UBadge color="neutral" variant="subtle" size="sm">{{ signalLabel(signal.signal) }}</UBadge>
-              <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}” · line {{ signal.line_number }}</span>
+              <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}” · {{ rowLocation(signal.block_id, signal.line_number) }}</span>
             </button>
           </li>
         </ul>
@@ -410,7 +418,7 @@ loadProposals()
               class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
               @click="openCitation(citation)"
             >
-              <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · line {{ citation.line_number }}</span>
+              <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · {{ rowLocation(citation.block_id, citation.line_number) }}</span>
               <span class="ml-2 text-xs text-emerald-400">原文已校验</span>
               <span class="ml-2 inline-flex">
                 <UBadge :color="citation.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
