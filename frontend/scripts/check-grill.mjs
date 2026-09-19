@@ -1,8 +1,8 @@
 // Leaf C 检查（SSR 载入 + setup 行为级，不引入测试框架）：
-// /grill 答辩追问：打开页面只 GET 材料列表、零 POST（绝不自动生成追问）；
+// /grill 质询：打开页面只 GET 材料列表、零 POST（绝不自动生成追问）；
 // 选中一份材料后点「生成追问」才 POST /api/v1/grill（body 只含该 material_id）；
-// 空追问是合法结果；追问引用点开 Drawer（按需 GET 该材料 blocks，位置按 locatorLabel）；
-// 失败可见 + 重试；措辞纪律（不是打分、无禁用词）。
+// 空追问是合法结果；结果是编号追问卡片（01 起），依据 = 引用原文 + 位置，点开 Drawer
+// （按需 GET 该材料 blocks，位置按 locatorLabel）；失败可见 + 重试；措辞纪律（不是打分只在小字、无禁用词）。
 // 合成数据只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-grill.mjs
 import { readFileSync } from 'node:fs'
@@ -103,10 +103,19 @@ try {
   const initialHtml = await renderToString(initial.app)
   check(
     'SSR 画出 /grill 页面骨架与两个出口',
-    initialHtml.includes('答辩追问') &&
-      initialHtml.includes('根据当前材料里已发现的问题生成答辩追问，不是打分') &&
+    initialHtml.includes('质询') &&
+      initialHtml.includes('根据材料里已经发现的问题，列出评审可能追问的点') &&
       initialHtml.includes('href="/materials"') &&
       initialHtml.includes('href="/"'),
+  )
+  // 英雄区纪律：H1 就是「质询」，打分/参赛/提交前/不是打分都不许进标题。
+  const h1Match = viewSource.match(/<h1[^>]*>([^<]*)<\/h1>/)
+  check(
+    'H1 是「质询」且英雄区不含禁用词（打分/参赛/提交前/不是打分）',
+    Boolean(h1Match) &&
+      h1Match[1].trim() === '质询' &&
+      ['打分', '参赛', '提交前', '不是打分'].every((word) => !h1Match[1].includes(word)),
+    h1Match ? h1Match[1].trim() : '没有 H1',
   )
   check(
     '打开页面零 POST（不自动生成追问）',
@@ -195,7 +204,10 @@ try {
     emptyBindings.error.value === '' && emptyBindings.questions.value.length === 0 && emptyBindings.generated.value === true,
     `error=${emptyBindings.error.value}`,
   )
-  check('空结果走空态文案', emptyBindings.emptyResult.value === true && viewSource.includes('空结果合法'))
+  check(
+    '空结果走空态文案',
+    emptyBindings.emptyResult.value === true && viewSource.includes('当前范围没有可引用的追问（空结果合法）'),
+  )
 
   // E. 失败可见 + 重试：502 上游不可用 → 显示错误且不伪造追问；重试成功 → 展示追问并清错。
   resetState()
@@ -258,11 +270,28 @@ try {
       !viewSource.includes('comparisons'),
   )
   check('GrillView 明说不扫描整个材料库', viewSource.includes('不会自动扫描材料库'))
-  check('GrillView 说明不是打分', viewSource.includes('根据当前材料里已发现的问题生成答辩追问，不是打分'))
+  // 措辞纪律：不是打分只做小字说明，不进标题；禁用词一个都不许出现（含全大写的 WORKBENCH 与 ChatGPT）。
   check(
-    'GrillView 源码不含禁用词',
-    ['已满足', '已支撑', '覆盖率', '分数'].every((word) => !viewSource.includes(word)),
-    ['已满足', '已支撑', '覆盖率', '分数'].filter((word) => viewSource.includes(word)).join('、'),
+    '「不是打分」只在小字说明里，不进 H1',
+    viewSource.includes('不是打分') && Boolean(h1Match) && !h1Match[1].includes('打分'),
+  )
+  const forbiddenWords = ['已满足', '已支撑', '覆盖率', '分数', '参赛', '提交前', 'ChatGPT']
+  const forbiddenHits = forbiddenWords.filter((word) => viewSource.includes(word))
+  check(
+    'GrillView 源码不含禁用词（含 WORKBENCH/ChatGPT）',
+    forbiddenHits.length === 0 && !viewSource.toLowerCase().includes('workbench'),
+    forbiddenHits.join('、'),
+  )
+  check(
+    '追问是编号卡片（01 起）：编号 + 追问点 + 依据',
+    viewSource.includes("String(index + 1).padStart(2, '0')") &&
+      viewSource.includes('依据') &&
+      viewSource.includes('追问清单'),
+  )
+  check('引用纪律写在卡片说明里', viewSource.includes('引用必须能在原文里对上，对不上的已丢弃。'))
+  check(
+    '空态文案：当前范围没有可引用的追问（空结果合法）',
+    viewSource.includes('当前范围没有可引用的追问（空结果合法）'),
   )
   check('失败可见 + 重试按钮在源码中', viewSource.includes('生成失败：') && viewSource.includes('重试'))
   check('追问引用行可点开 Drawer', viewSource.includes('v-for="(question, index) in questions"') && viewSource.includes('@click="openQuestion(question)"'))

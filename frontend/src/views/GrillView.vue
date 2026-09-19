@@ -4,7 +4,7 @@ import type { Block, MaterialSummary } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 
-// 答辩 Grill v1：从当前材料里已发现的问题生成带原文引用的追问；只读材料，不打分。
+// 质询（Grill）：把当前材料里已发现的问题摊成一副编号追问卡片；只读材料，不打分。
 // 打开页面只 GET 材料列表；POST /api/v1/grill 只由「生成追问」按钮触发，绝不自动生成。
 // 追问里的 quote/start/end 已由后端逐条复验（quote == block.text[start:end]），前端只渲染。
 interface GrillQuestion {
@@ -136,7 +136,7 @@ async function ensureBlocks() {
   }
 }
 
-// 点引用：按需取原文 blocks；高亮只落在已复验的 [start, end) 上，位置来自 Block 的 Locator。
+// 点依据：按需取原文 blocks；高亮只落在已复验的 [start, end) 上，位置来自 Block 的 Locator。
 async function openQuestion(question: GrillQuestion) {
   drawerBlockId.value = question.block_id
   drawerOpen.value = true
@@ -157,13 +157,14 @@ loadMaterials()
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <p class="text-sm font-medium text-violet-400">GRILL</p>
-        <h1 class="mt-2 text-3xl font-semibold tracking-tight">答辩追问</h1>
-        <p class="mt-2 text-sm text-slate-400">根据当前材料里已发现的问题生成答辩追问，不是打分。</p>
-        <p class="mt-1 text-xs text-slate-500">每条追问都引用材料原文；打开页面不会生成追问。</p>
+        <h1 class="mt-2 text-3xl font-semibold tracking-tight">质询</h1>
+        <p class="mt-2 text-sm text-slate-400">根据材料里已经发现的问题，列出评审可能追问的点。</p>
+        <p class="mt-1 text-xs text-slate-500">只列可能被追问的点，不是打分。</p>
+        <p class="mt-1 text-xs text-slate-500">引用必须能在原文里对上，对不上的已丢弃。</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
       </div>
     </div>
 
@@ -189,7 +190,7 @@ loadMaterials()
             <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
           </select>
         </label>
-        <p class="mt-3 text-xs text-slate-500">范围：只追问选中的这一份材料，不会自动扫描材料库。</p>
+        <p class="mt-3 text-xs text-slate-500">打开页面不会自动生成追问；范围：只追问选中的这一份材料，不会自动扫描材料库。</p>
         <div class="mt-4 flex flex-wrap items-center gap-3">
           <UButton icon="i-lucide-help-circle" :loading="generating" :disabled="materialId === ''" @click="generate">
             {{ generating ? '生成中…' : '生成追问' }}
@@ -202,31 +203,36 @@ loadMaterials()
       </div>
     </UCard>
 
-    <!-- 追问清单：每条都引用材料原文；空追问合法（引用站不住的一律丢弃）。 -->
-    <section v-if="generated" class="mt-6 rounded-lg border border-slate-800 p-4">
-      <div class="flex flex-wrap items-center justify-between gap-2">
+    <!-- 追问卡片：编号 + 追问点 + 依据（引用原文，点开回看）；空追问合法（引用站不住的一律丢弃）。 -->
+    <section v-if="generated" class="mt-8">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
         <h2 class="text-sm font-medium text-slate-200">追问清单</h2>
-        <span class="text-xs text-slate-500">{{ questions.length }} 条 · 每条引用材料原文</span>
+        <span class="text-xs text-slate-500">{{ questions.length }} 条 · 每条都引用材料原文</span>
       </div>
-      <p v-if="emptyResult" class="mt-3 text-sm text-slate-400">
-        本次没有生成可引用的追问（追问必须逐条引用材料原文；空结果合法）。
-      </p>
-      <ul v-else class="mt-3 space-y-3">
+      <p v-if="emptyResult" class="mt-3 text-sm text-slate-400">当前范围没有可引用的追问（空结果合法）。</p>
+      <ol v-else class="mt-4 space-y-3">
         <li
           v-for="(question, index) in questions"
           :key="`${question.block_id}:${question.start}:${index}`"
-          class="rounded-md border border-slate-800 p-3"
+          class="rounded-lg border border-slate-800 bg-slate-900/40 p-4"
         >
-          <p class="text-sm text-slate-200">{{ question.prompt }}</p>
-          <button
-            type="button"
-            class="mt-2 w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
-            @click="openQuestion(question)"
-          >
-            <span class="font-mono text-xs text-slate-300">“{{ question.quote }}” · {{ rowLocation(question.block_id) }}</span>
-          </button>
+          <div class="flex gap-4">
+            <span class="select-none font-mono text-2xl leading-none text-violet-400/80">{{ String(index + 1).padStart(2, '0') }}</span>
+            <div class="min-w-0 flex-1">
+              <p class="text-base leading-relaxed text-slate-100">{{ question.prompt }}</p>
+              <p class="mt-3 text-xs text-slate-500">依据</p>
+              <button
+                type="button"
+                class="mt-1 w-full rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-left transition hover:border-violet-500/40 hover:bg-slate-800/60"
+                @click="openQuestion(question)"
+              >
+                <span class="font-mono text-xs text-slate-300">“{{ question.quote }}”</span>
+                <span class="ml-2 text-xs text-slate-500">{{ rowLocation(question.block_id) }}</span>
+              </button>
+            </div>
+          </div>
         </li>
-      </ul>
+      </ol>
       <p v-if="blocksUnavailable" class="mt-3 text-xs text-amber-300">原文暂不可用</p>
     </section>
 
