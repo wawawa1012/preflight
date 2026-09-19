@@ -309,6 +309,7 @@ loadProposals()
         </div>
         <p v-if="findingsUnavailable" class="mt-2 text-xs text-amber-300">待核对问题不可用</p>
         <p v-else-if="findings.length === 0" class="mt-2 text-xs text-slate-400">当前范围尚未发现待核对问题（同一材料内同一度量词的不同数字）</p>
+        <p v-else-if="findings.length === 0" class="mt-1 text-xs text-slate-500">跨材料的数字对照在「与另一份材料对照」。</p>
         <ul v-else class="mt-3 space-y-3">
           <li
             v-for="finding in findings"
@@ -343,18 +344,18 @@ loadProposals()
                 生成修复建议
               </UButton>
             </div>
+
+            <!-- 修复建议：LLM 只给改稿方向；引用仍点回同一 Drawer，材料原文不动。面板只挂在被选中的这条问题卡片内。 -->
+            <RepairSuggestionPanel
+              v-if="repairFinding === finding"
+              :material-id="materialId"
+              :finding="repairFinding"
+              @open-citation="openHighlight"
+              @close="repairFinding = null"
+            />
           </li>
         </ul>
       </section>
-
-      <!-- 修复建议：LLM 只给改稿方向；引用仍点回同一 Drawer，材料原文不动。 -->
-      <RepairSuggestionPanel
-        v-if="repairFinding"
-        :material-id="materialId"
-        :finding="repairFinding"
-        @open-citation="openHighlight"
-        @close="repairFinding = null"
-      />
 
     </div>
 
@@ -455,7 +456,7 @@ loadProposals()
     </div>
 
     <!-- 关键陈述：确定性扫描结果，只标出值得核对的句子，不判真假；排在评分要求矩阵之后。 -->
-    <section v-if="signalsUnavailable || signals.length > 0" class="mt-4 rounded-lg border border-slate-800 p-4">
+    <section v-if="(signalsUnavailable || signals.length > 0) && !notFound" class="mt-4 rounded-lg border border-slate-800 p-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 class="text-sm font-medium text-slate-200">关键陈述</h2>
         <span class="text-xs text-slate-500">{{ signals.length }} 条 · 数字 / 比例 / 比较 / 绝对化</span>

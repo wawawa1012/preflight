@@ -182,8 +182,18 @@ check(
   findingsBlock.length > 0 &&
     !findingsBlock.includes('findings.length > 0') &&
     !findingsBlock.includes('v-if="loading"') &&
-    signalsBlock.includes('v-if="signalsUnavailable || signals.length > 0"') &&
+    signalsBlock.includes('v-if="(signalsUnavailable || signals.length > 0) && !notFound"') &&
     !signalsBlock.includes('v-if="loading"'),
+)
+// Phase 2：修复建议面板不再悬在列表下方，而是挂在被选中的那条问题卡片内部。
+// 注：'RepairSuggestionPanel' 首次出现是顶部 import，故断言用模板标签 '<RepairSuggestionPanel'；
+// 上界取关键陈述 h2 —— 源码里「关键陈述」字样在更早的区块注释中也出现过。
+check(
+  '修复建议面板嵌在待核对条目内部（v-for 之后、关键陈述区块之前）',
+  reportSource.indexOf('v-for="finding in findings"') > -1 &&
+    reportSource.indexOf('<RepairSuggestionPanel') > reportSource.indexOf('v-for="finding in findings"') &&
+    reportSource.indexOf('<RepairSuggestionPanel') < reportSource.indexOf('>关键陈述</h2>'),
+  `v-for@${reportSource.indexOf('v-for="finding in findings"')} 面板@${reportSource.indexOf('<RepairSuggestionPanel')} 关键陈述@${reportSource.indexOf('>关键陈述</h2>')}`,
 )
 check(
   '装配中只留一行状态（v-if="loading" 不再是整卡 UCard，材料级区块先画）',
