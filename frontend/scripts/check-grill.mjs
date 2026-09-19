@@ -222,7 +222,7 @@ try {
   )
   check(
     '空结果走空态文案',
-    emptyBindings.emptyResult.value === true && viewSource.includes('当前范围没有可引用的追问（空结果合法）'),
+    emptyBindings.emptyResult.value === true && viewSource.includes('当前范围没有可引用的追问'),
   )
 
   // E. 失败可见 + 重试：502 上游不可用 → 显示错误且不伪造追问；重试成功 → 展示追问并清错。
@@ -335,8 +335,8 @@ try {
   )
   check('引用纪律写在卡片说明里', viewSource.includes('引用必须能在原文里对上，对不上的已丢弃。'))
   check(
-    '空态文案：当前范围没有可引用的追问（空结果合法）',
-    viewSource.includes('当前范围没有可引用的追问（空结果合法）'),
+    '空态文案：当前范围没有可引用的追问',
+    viewSource.includes('当前范围没有可引用的追问') && !viewSource.includes('空结果合法'),
   )
   check('失败可见 + 重试按钮在源码中', viewSource.includes('生成失败：') && viewSource.includes('重试'))
   check('追问引用行可点开 Drawer', viewSource.includes('v-for="(question, index) in questions"') && viewSource.includes('@click="openQuestion(question)"'))

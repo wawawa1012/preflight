@@ -294,7 +294,7 @@ loadMaterials()
           <p class="ml-auto text-xs text-slate-500">{{ result.filename_before }} → {{ result.filename_after }}</p>
         </div>
         <p v-if="emptyResult" class="mt-3 text-sm text-slate-400">
-          空结果合法，只说明这两份版本之间没有可对照的数值一致性差异。
+          这两份版本之间没有可对照的数值差异。
         </p>
       </div>
 
@@ -320,7 +320,7 @@ loadMaterials()
                 <span class="text-xs text-slate-500">条</span>
                 <span class="ml-auto text-xs text-slate-500">{{ group.hint }}</span>
               </div>
-              <p v-if="group.findings.length === 0" class="mt-2 text-xs text-slate-500">本组为空，这是合法结果。</p>
+              <p v-if="group.findings.length === 0" class="mt-2 text-xs text-slate-500">这一组目前没有条目。</p>
               <ul v-else class="mt-3 divide-y divide-slate-800/70">
                 <li
                   v-for="finding in group.findings"

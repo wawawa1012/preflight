@@ -247,8 +247,8 @@ try {
     '空结果走空态文案且空组也渲染',
     emptyBindings.emptyResult.value === true &&
       emptyBindings.groups.value.length === 3 &&
-      viewSource.includes('空结果合法') &&
-      viewSource.includes('本组为空'),
+      viewSource.includes('没有可对照的数值差异') &&
+      viewSource.includes('这一组目前没有条目'),
   )
 
   // D. 引用点开 Drawer：按需 GET 两份材料 blocks，位置用 locatorLabel。

@@ -207,7 +207,7 @@ loadMaterials()
       <EmptyState
         v-if="emptyResult"
         class="mt-4"
-        title="当前范围没有可引用的追问（空结果合法）"
+        title="当前范围没有可引用的追问"
         hint="引用对不上原文的追问已丢弃。"
       />
       <ol v-else class="mt-4 space-y-3">
