@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 import RepairSuggestionPanel from '../components/RepairSuggestionPanel.vue'
+import PageHeader from '../components/review/PageHeader.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCount } from '../utils/preflightFacts'
 
@@ -50,16 +51,16 @@ const drawerBlockId = ref('')
 
 const allBlocks = computed(() => report.value?.blocks ?? materialBlocks.value)
 
-// 已确认依据 = 各条审查要求 verified_citation_count 之和；概览与「审查团队」条共用这一份事实。
-const confirmedCitationCount = computed(() =>
-  report.value ? report.value.criteria.reduce((sum, row) => sum + row.verified_citation_count, 0) : 0,
+// 已确认依据 k / n 项：有引用的审查要求数 / 审查要求总数。与首页 summaries 同一口径，不是引用条数。
+const confirmedCriterionCount = computed(() =>
+  report.value ? report.value.criteria.filter((row) => row.verified_citation_count > 0).length : 0,
 )
 
 // 预检概览（C1）：材料级计数不依赖报告；已确认依据只在报告到手后给 k / n，否则给 —。
 const overviewCounts = computed(() => {
   const base = `待核对 ${findings.value.length} · 关键陈述 ${signals.value.length}`
   if (!report.value) return `${base} · 已确认依据 —`
-  return `${base} · 已确认依据 ${confirmedCitationCount.value} / ${report.value.criteria.length} 项`
+  return `${base} · 已确认依据 ${confirmedCriterionCount.value} / ${report.value.criteria.length} 项`
 })
 
 // 引用/信号行只说位置：kind 由该 Block 的 Locator 决定（md 显示行号，slide/page/paragraph 各自成句）。
@@ -283,36 +284,28 @@ loadProposals()
 
 <template>
   <main class="mx-auto max-w-6xl px-6 py-10">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <p class="text-sm font-medium text-violet-400">本次核验</p>
-        <h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ report ? report.filename : '预审报告' }}</h1>
-        <p class="mt-1 text-xs text-slate-500">按每条审查要求在原文里找依据</p>
-        <p class="mt-2 text-sm text-slate-300">预检概览 · {{ overviewCounts }}</p>
-        <p class="mt-2 text-sm text-slate-400">
-          <span v-if="report">{{ report.rubric_title }} · rev{{ report.rubric_revision }} · {{ report.block_count }} 段原文</span>
-          <span v-else>绑定评分标准后才能按条核验。</span>
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <!-- 顶栏唯一核验入口：旧的「核验评分要求」入口 -->
-        <UButton v-if="report" icon="i-lucide-sparkles" :loading="verifying" @click="verifyCriteria">
-          {{ verifying ? '核验中…' : '核验审查要求' }}
-        </UButton>
-        <UButton :to="`/materials/${materialId}`" color="neutral" variant="ghost" size="xs" icon="i-lucide-file-text">返回材料</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
-      </div>
-    </div>
+    <PageHeader :title="report ? report.filename : '预审报告'" subtitle="按每条审查要求在原文里找依据">
+      <UButton v-if="report" icon="i-lucide-sparkles" :loading="verifying" @click="verifyCriteria">
+        {{ verifying ? '核验中…' : '核验审查要求' }}
+      </UButton>
+      <UButton :to="`/materials/${materialId}`" color="neutral" variant="ghost" size="xs" icon="i-lucide-file-text">返回材料</UButton>
+      <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
+    </PageHeader>
+    <p class="mt-2 text-sm text-slate-300">预检概览 · {{ overviewCounts }}</p>
+    <p class="mt-2 text-sm text-slate-400">
+      <span v-if="report">{{ report.rubric_title }} · 标准版本 {{ report.rubric_revision }} · {{ report.block_count }} 段原文</span>
+      <span v-else>绑定评分标准后才能按条核验。</span>
+    </p>
 
     <!-- 材料级区块：不依赖绑定，各自装、各自画（待核对问题在关键陈述之上）。 -->
     <div v-if="!notFound" class="mt-6 space-y-4">
-      <!-- 审查团队：职责卡。一致性与关键陈述是程序扫描，依据核验才调用模型；修复/质询按需。 -->
+      <!-- 审查团队：三张主卡（一模型两程序）。修复/质询按需，不排成并列「五个 Agent」。 -->
       <section class="rounded-lg bg-slate-950/40 p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h2 class="text-sm font-medium text-slate-200">审查团队</h2>
-          <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描，依据核验才调用模型</span>
+          <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描。依据核验、修复建议、质询才会调用模型。</span>
         </div>
-        <ul class="mt-3 grid gap-2 sm:grid-cols-5">
+        <ul class="mt-3 grid gap-2 sm:grid-cols-3">
           <li>
             <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="scrollToSection('review-criteria')">
               <p class="text-xs text-slate-200">依据审计员</p>
@@ -320,7 +313,7 @@ loadProposals()
               <p class="mt-1 text-xs text-slate-400">按审查要求寻找可直接引用的原文</p>
               <p class="mt-2 text-sm text-slate-200">
                 <span v-if="verifying">正在按审查标准查找依据</span>
-                <span v-else-if="report">已确认依据 {{ confirmedCitationCount }} / {{ report.criteria.length }} 项</span>
+                <span v-else-if="report">已确认依据 {{ confirmedCriterionCount }} / {{ report.criteria.length }} 项</span>
                 <span v-else-if="unbound">未绑定审查标准</span>
                 <span v-else-if="loading">正在读取审查要求</span>
                 <span v-else>尚未读取审查要求</span>
@@ -349,26 +342,15 @@ loadProposals()
               </p>
             </button>
           </li>
-          <li>
-            <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="scrollToSection('pending-findings')">
-              <p class="text-xs text-slate-200">修复顾问</p>
-              <p class="mt-0.5 text-[10px] text-violet-300">按需 · 模型</p>
-              <p class="mt-1 text-xs text-slate-400">针对已发现的数值冲突给改稿方向</p>
-              <p class="mt-2 text-sm text-slate-200">
-                <span v-if="repairFinding">已生成 1 条建议</span>
-                <span v-else>点待处理问题后才运行</span>
-              </p>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="h-full w-full rounded-md bg-slate-900/40 p-3 text-left" @click="router.push('/grill')">
-              <p class="text-xs text-slate-200">质询官</p>
-              <p class="mt-0.5 text-[10px] text-violet-300">按需 · 模型</p>
-              <p class="mt-1 text-xs text-slate-400">根据已发现问题列出需要解释的点</p>
-              <p class="mt-2 text-sm text-slate-200">需要时在质询页生成追问</p>
-            </button>
-          </li>
         </ul>
+        <p class="mt-3 text-xs text-slate-500">
+          <button type="button" class="text-slate-300 hover:underline" @click="scrollToSection('pending-findings')">修复顾问</button>
+          <span v-if="repairFinding"> · 已生成 1 条建议</span>
+          <span v-else> · 点待处理问题后才运行</span>
+          <span class="mx-2 text-slate-700">·</span>
+          <button type="button" class="text-slate-300 hover:underline" @click="router.push('/grill')">质询官</button>
+          · 需要时在质询页生成追问
+        </p>
       </section>
 
       <!-- I8 待核对问题（首屏主区：待处理问题）：同一材料内同一度量词的数值对照；每条都能点回原文 Drawer。 -->

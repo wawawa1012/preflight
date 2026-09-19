@@ -150,7 +150,7 @@ check('顶栏提供「核验审查要求」入口', reportSource.includes("{{ ve
 // 审查团队条：头部之下、待处理问题之上；三个角色各报各自的事实来源（两条程序扫描、一条调用模型）。
 // 核验中的依据核验行改口「正在按审查标准查找依据」，不与已确认计数同时出现。
 check(
-  '审查团队：五个职责卡排在待处理问题之上（依据审计员 / 一致性检查 / 关键陈述检查 / 修复顾问 / 质询官）',
+  '审查团队：三张主卡 + 按需修复/质询，排在待处理问题之上',
   reportSource.includes('审查团队') &&
     reportSource.includes('依据审计员') &&
     reportSource.includes('一致性检查') &&
@@ -162,9 +162,24 @@ check(
     reportSource.includes('正在按审查标准查找依据') &&
     reportSource.includes('点待处理问题后才运行') &&
     reportSource.includes('需要时在质询页生成追问') &&
-    reportSource.indexOf('>审查团队</h2>') > reportSource.indexOf('>本次核验</p>') &&
+    reportSource.includes('才会调用模型') &&
+    reportSource.includes('sm:grid-cols-3') &&
+    !reportSource.includes('sm:grid-cols-5') &&
+    reportSource.indexOf('>审查团队</h2>') > reportSource.indexOf('预检概览') &&
     reportSource.indexOf('>审查团队</h2>') < reportSource.indexOf('>待处理问题</h2>'),
   `团队@${reportSource.indexOf('>审查团队</h2>')} 待处理@${reportSource.indexOf('>待处理问题</h2>')}`,
+)
+check(
+  '已确认依据 k/n 按「有引用的审查要求数」计，不是引用条数之和',
+  reportSource.includes('confirmedCriterionCount') &&
+    reportSource.includes('verified_citation_count > 0') &&
+    !reportSource.includes('confirmedCitationCount'),
+)
+check(
+  '报告页消费共享 PageHeader（无本次核验眉题）',
+  reportSource.includes("from '../components/review/PageHeader.vue'") &&
+    reportSource.includes('<PageHeader') &&
+    !reportSource.includes('本次核验'),
 )
 check(
   '报告页提供「与另一份材料对照」出口（to="/compare"，已从顶栏移入待处理问题区块）',
