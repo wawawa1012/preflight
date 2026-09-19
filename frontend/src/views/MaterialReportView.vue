@@ -290,6 +290,8 @@ loadProposals()
         <UButton v-if="report" icon="i-lucide-sparkles" :loading="verifying" @click="verifyCriteria">
           {{ verifying ? '核验中…' : '开始核验' }}
         </UButton>
+        <!-- 与另一份材料对照：常显（未绑定/装配中也可用），不带 query，不触任何写接口。 -->
+        <UButton to="/compare" color="neutral" variant="subtle" icon="i-lucide-git-compare">与另一份材料对照</UButton>
         <UButton :to="`/materials/${materialId}`" color="neutral" variant="subtle" icon="i-lucide-file-text">返回材料</UButton>
         <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
       </div>
