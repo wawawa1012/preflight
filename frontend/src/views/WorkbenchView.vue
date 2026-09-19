@@ -72,6 +72,7 @@ loadSummaries()
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
       <UButton to="/compare" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare">两材料对照</UButton>
     </div>
+    <p class="mt-3 text-xs text-slate-500">上传后直接进入核验页</p>
 
     <section class="mt-12">
       <div class="flex items-center justify-between">
