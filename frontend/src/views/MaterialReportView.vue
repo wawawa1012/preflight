@@ -276,13 +276,13 @@ loadProposals()
   <main class="mx-auto max-w-6xl px-6 py-10">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p class="text-sm font-medium text-violet-400">PREFLIGHT REPORT</p>
+        <p class="text-sm font-medium text-violet-400">本次核验</p>
         <h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ report ? report.filename : '预审报告' }}</h1>
         <p class="mt-1 text-xs text-slate-500">按每条审查要求在原文里找依据</p>
         <p class="mt-2 text-sm text-slate-300">预检概览 · {{ overviewCounts }}</p>
         <p class="mt-2 text-sm text-slate-400">
           <span v-if="report">{{ report.rubric_title }} · rev{{ report.rubric_revision }} · {{ report.block_count }} 段原文</span>
-          <span v-else>材料级信号不需要绑定；绑定后才有可逐条核验的评分要求</span>
+          <span v-else>绑定评分标准后才能按条核验。</span>
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
@@ -445,7 +445,7 @@ loadProposals()
                 <span class="ml-2 text-xs text-emerald-400">原文已校验</span>
                 <span class="ml-2 inline-flex">
                   <UBadge :color="citation.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
-                    {{ citation.proposed_by }}
+                    {{ citation.proposed_by === 'human' ? '人工' : '程序' }}
                   </UBadge>
                 </span>
                 <span class="mt-1 block text-xs text-slate-500">用途：{{ citation.rationale }}</span>
