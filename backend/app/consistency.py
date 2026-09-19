@@ -192,7 +192,7 @@ def _build_finding(
         for statement, item in ordered
     ]
     joined = "、".join(values)
-    scope = f"已扫描 {block_count} 个 Block 的 {statement_count} 条关键陈述"
+    scope = f"已扫描 {block_count} 段原文的 {statement_count} 条关键陈述"
     if kind == "numeric_inconsistency":
         explanation = (
             f"同一度量词「{measure}」在本材料 {len(citations)} 处给出不同数值：{joined}；"

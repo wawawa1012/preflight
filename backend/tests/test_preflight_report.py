@@ -59,7 +59,7 @@ class AssemblePreflightReportTest(unittest.TestCase):
             self.assertEqual(row.missing.searched_filename, "ev.md")
             self.assertIn("当前范围尚未发现引用", row.missing.explanation)
             self.assertIn("ev.md", row.missing.explanation)
-            self.assertIn("1 个 Block", row.missing.explanation)
+            self.assertIn("1 段原文", row.missing.explanation)
 
     def test_link_counts_per_criterion(self) -> None:
         storage.bind_material_rubric(self.material.id, "rubric_syn", 1, self.db)

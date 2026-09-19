@@ -155,7 +155,7 @@ async function saveMaterial() {
           <p class="text-sm font-medium text-violet-400">MATERIALS / ADD</p>
           <h1 class="mt-2 text-3xl font-semibold tracking-tight">添加材料</h1>
           <p class="mt-2 text-sm text-slate-400">
-            把一份 Markdown 变成可追溯的 evidence source：程序生成 Block 与原文件行号，保存后获得稳定 Material ID。
+            把一份 Markdown 保存后按原文件行号切开，进入核验页。
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
@@ -180,7 +180,7 @@ async function saveMaterial() {
           {{ step }}
         </li>
       </ol>
-      <p class="mt-3 text-xs text-slate-500">Block 与行号由确定性程序生成，不由模型编造。</p>
+      <p class="mt-3 text-xs text-slate-500">行号由程序生成，不由模型编造。</p>
 
       <div
         class="mt-6 cursor-pointer rounded-lg border-2 border-dashed px-6 py-10 text-center transition"

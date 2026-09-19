@@ -261,7 +261,7 @@ const citation = {
   end: 14,
 }
 const missingExplanation =
-  '当前范围尚未发现引用：已核对材料「ev.md」的 1 个 Block 上全部已确认关联，本评分要求已关联 0 条。这不是证明材料外不存在证据。'
+  '当前范围尚未发现引用：已核对材料「ev.md」的 1 段原文上全部已确认关联，本评分要求已关联 0 条。这不是证明材料外不存在证据。'
 const report = {
   material_id: 'mat_x',
   filename: 'ev.md',
@@ -325,7 +325,7 @@ try {
       byId.c_syn_1.status === 'has_verified_citations' && byId.c_syn_2.status === 'no_verified_citations_in_scope',
     )
     check('有引用行计数为 1 且 quote/line 正确', byId.c_syn_1.verified_citation_count === 1 && byId.c_syn_1.citations[0].line_number === 7 && byId.c_syn_1.citations[0].quote === '准确率达到 95%')
-    check('零引用行 missing 说明含文件名与 Block 数', byId.c_syn_2.missing.explanation.includes('ev.md') && byId.c_syn_2.missing.explanation.includes('1 个 Block'))
+    check('零引用行 missing 说明含文件名与段原文数', byId.c_syn_2.missing.explanation.includes('ev.md') && byId.c_syn_2.missing.explanation.includes('1 段原文'))
     check(
       '零引用行源码用正交预检文案而非灰徽章独占',
       reportSource.includes('预检完成 · 当前材料尚未发现候选引用') && reportSource.includes('emptyPreflight'),
@@ -408,7 +408,7 @@ try {
       searched_block_count: 1,
       searched_statement_count: 2,
       explanation:
-        '同一度量词「准确率」在本材料 2 处给出不同数值：95%、90%；已扫描 1 个 Block 的 2 条关键陈述，请核对后决定以哪一处为准。',
+        '同一度量词「准确率」在本材料 2 处给出不同数值：95%、90%；已扫描 1 段原文的 2 条关键陈述，请核对后决定以哪一处为准。',
       citations: [
         { block_id: 'blk_1', line_number: 7, quote: '95%', start: 5, end: 8, value: '95', unit: '%' },
         { block_id: 'blk_1', line_number: 7, quote: '90%', start: 12, end: 15, value: '90', unit: '%' },
@@ -565,7 +565,7 @@ try {
     searched_block_count: 1,
     searched_statement_count: 2,
     explanation:
-      '同一度量词「准确率」在本材料 2 处给出不同数值：95%、90%；已扫描 1 个 Block 的 2 条关键陈述，请核对后决定以哪一处为准。',
+      '同一度量词「准确率」在本材料 2 处给出不同数值：95%、90%；已扫描 1 段原文的 2 条关键陈述，请核对后决定以哪一处为准。',
     citations: [
       { block_id: 'blk_1', line_number: 7, quote: '95%', start: 5, end: 8, value: '95', unit: '%' },
       { block_id: 'blk_1', line_number: 7, quote: '90%', start: 12, end: 15, value: '90', unit: '%' },
