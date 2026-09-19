@@ -1,8 +1,8 @@
 // Leaf B 检查（SSR 载入 + setup 行为级，不引入测试框架）：
-// /compare 两材料对照：打开页面只 GET 材料列表、零 POST（绝不自动扫描材料库）；
+// /compare 检查两份材料说法是否一致：打开页面只 GET 材料列表、零 POST（不自动扫描材料库）；
 // 同一份材料不发送且就地报错；两个不同 id 才 POST /api/v1/comparisons（body 只含两个选中 id）；
-// 空 findings 是合法结果；引用点开 Drawer（按需 GET 两份材料 blocks，位置按 locatorLabel）。
-// 合成数据只存在于本脚本（test-only）。
+// 检查成功后按需 GET 两份材料的 blocks（左右分栏靠 document_id 判侧，引用点开 Drawer，位置按 locatorLabel）；
+// 空 findings 是合法结果。合成数据只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-compare.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp } from 'vue'
@@ -18,6 +18,7 @@ const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
 const viewSource = readFileSync(new URL('../src/views/CompareView.vue', import.meta.url), 'utf8')
+const templateSource = viewSource.slice(viewSource.indexOf('<template>'))
 const routerSource = readFileSync(new URL('../src/router/index.ts', import.meta.url), 'utf8')
 const workbenchSource = readFileSync(new URL('../src/views/WorkbenchView.vue', import.meta.url), 'utf8')
 
@@ -40,7 +41,7 @@ const finding = {
   values: ['90%', '85%'],
   searched_block_count: 2,
   searched_statement_count: 2,
-  explanation: '两份材料在同一度量词下给出不同数值。',
+  explanation: '两份材料在同一指标下给出不同数字。',
   citations: [citationA, citationB],
 }
 const compareBody = {
@@ -86,6 +87,7 @@ function stubFetch() {
     return jsonResponse([], 200)
   }
 }
+const detailCalls = () => state.calls.filter((call) => /\/api\/v1\/materials\/mat_[ab]$/.test(call.url))
 
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
 
@@ -107,18 +109,25 @@ try {
   }
   const locatorModule = await server.ssrLoadModule('/src/utils/locatorLabel.ts')
 
-  // A. 打开页面：SSR 只画页面骨架（数据来自 setup 里的 GET）；零 POST、零 comparisons 请求。
+  // A. 打开页面：SSR 只画页面骨架（数据来自 setup 里的 GET）；零 POST、零 comparisons 请求、零原文 GET。
   resetState()
   globalThis.fetch = stubFetch()
   const initial = await context()
   const initialHtml = await renderToString(initial.app)
-  check('SSR 画出 /compare 页面骨架与两个出口', initialHtml.includes('两材料对照') && initialHtml.includes('href="/materials"') && initialHtml.includes('href="/"'))
   check(
-    '打开页面零 POST（不自动对照）',
+    'SSR 画出 /compare 大白话标题与两个出口',
+    initialHtml.includes('检查两份材料有没有说法不一致') &&
+      initialHtml.includes('看它们是否对同一指标说了不同的数字') &&
+      initialHtml.includes('href="/materials"') &&
+      initialHtml.includes('href="/"'),
+  )
+  check(
+    '打开页面零 POST（不自动检查）',
     state.posts.length === 0 && state.calls.every((call) => call.method === 'GET'),
     state.calls.map((call) => `${call.method} ${call.url}`).join(' | '),
   )
   check('打开页面从不请求 /api/v1/comparisons', state.calls.every((call) => !call.url.includes('/api/v1/comparisons')))
+  check('打开页面不取任何材料原文', detailCalls().length === 0, detailCalls().map((call) => call.url).join(' | '))
   check(
     '两个材料下拉绑定两个 id ref，选项来自材料列表',
     (viewSource.match(/<select/g) || []).length === 2 &&
@@ -126,6 +135,14 @@ try {
       viewSource.includes('v-model="materialIdB"') &&
       viewSource.includes('<option v-for="item in materials"'),
   )
+  check(
+    '下拉标签与 aria-label 用 主材料 / 对照材料',
+    viewSource.includes('aria-label="主材料"') &&
+      viewSource.includes('aria-label="对照材料"') &&
+      !viewSource.includes('材料 A') &&
+      !viewSource.includes('材料 B'),
+  )
+  check('按钮文案 检查是否一致（加载中 检查中…）', viewSource.includes('检查是否一致') && viewSource.includes('检查中…'))
 
   // B. setup 行为：装载材料列表；同一份材料不发；两份不同才 POST 一次，body 只含两个选中 id。
   resetState()
@@ -149,6 +166,7 @@ try {
   check('同一份材料不发送 POST', state.posts.length === 0, `posts=${state.posts.length}`)
   check('同一份材料就地报错', bindings.compareError.value.includes('不能对照同一份材料'), bindings.compareError.value)
   check('同一份材料不产生结果', bindings.result.value === null)
+  check('同一份材料也不取原文', detailCalls().length === 0, detailCalls().map((call) => call.url).join(' | '))
 
   bindings.materialIdB.value = 'mat_b'
   await bindings.compare()
@@ -172,8 +190,28 @@ try {
   )
   check('对照全程只有这一个写请求（材料只读）', state.calls.filter((call) => call.method !== 'GET').length === 1)
   check(
+    '检查成功后取两份材料原文，只取这两份（分栏判侧所需）',
+    detailCalls().length === 2 &&
+      detailCalls().some((call) => call.url.endsWith('/mat_a')) &&
+      detailCalls().some((call) => call.url.endsWith('/mat_b')) &&
+      detailCalls().every((call) => call.method === 'GET'),
+    detailCalls().map((call) => `${call.method} ${call.url}`).join(' | '),
+  )
+  const postIndex = state.calls.findIndex((call) => call.method === 'POST')
+  const firstDetailIndex = state.calls.findIndex((call) => /\/api\/v1\/materials\/mat_[ab]$/.test(call.url))
+  check('先 POST 检查、后取原文', postIndex >= 0 && firstDetailIndex > postIndex)
+  check(
     'finding 措辞只有数值不一致 / 待人工判断',
     bindings.findingLabel('numeric_inconsistency') === '数值不一致' && bindings.findingLabel('needs_review') === '待人工判断',
+  )
+  check(
+    '分栏按 Block.document_id 判侧：左 = 主材料、右 = 对照材料',
+    bindings.sideCitations(finding, 'a').length === 1 &&
+      bindings.sideCitations(finding, 'a')[0].block_id === 'blk_a1' &&
+      bindings.sideCitations(finding, 'b').length === 1 &&
+      bindings.sideCitations(finding, 'b')[0].block_id === 'blk_b1' &&
+      bindings.unsidedCitations(finding).length === 0,
+    JSON.stringify(bindings.sideCitations(finding, 'a').map((citation) => citation.block_id)),
   )
 
   // C. 空 findings 是合法结果：不报错、给出空态说明。
@@ -191,9 +229,14 @@ try {
     emptyBindings.compareError.value === '' && emptyBindings.result.value !== null && emptyBindings.result.value.findings.length === 0,
     emptyBindings.compareError.value,
   )
-  check('空结果走空态文案', emptyBindings.emptyResult.value === true && viewSource.includes('空结果合法'))
+  check(
+    '空结果走空态文案',
+    emptyBindings.emptyResult.value === true &&
+      viewSource.includes('当前范围尚未发现同指标不同数字') &&
+      viewSource.includes('中英译文通常对不上'),
+  )
 
-  // D. 引用点开 Drawer：按需 GET 两份材料 blocks，位置用 locatorLabel。
+  // D. 引用点开 Drawer：检查成功后原文已到手，点引用不重复取；位置用 locatorLabel。
   resetState()
   globalThis.fetch = stubFetch()
   const drawerView = await context()
@@ -202,14 +245,9 @@ try {
   drawerBindings.materialIdA.value = 'mat_a'
   drawerBindings.materialIdB.value = 'mat_b'
   await drawerBindings.compare()
-  const detailCalls = () => state.calls.filter((call) => /\/api\/v1\/materials\/mat_[ab]$/.test(call.url))
-  check('对照本身不取原文 blocks', detailCalls().length === 0, detailCalls().map((call) => call.url).join(' | '))
+  check('检查成功后已取两份材料原文（分栏判侧）', detailCalls().length === 2, detailCalls().map((call) => call.url).join(' | '))
   await drawerBindings.openCitation(citationB)
-  check(
-    '点引用后按需 GET 两份材料的 blocks',
-    detailCalls().some((call) => call.url.endsWith('/mat_a')) && detailCalls().some((call) => call.url.endsWith('/mat_b')),
-    detailCalls().map((call) => call.url).join(' | '),
-  )
+  check('点引用不重复取原文（已缓存）', detailCalls().length === 2, detailCalls().map((call) => call.url).join(' | '))
   check(
     'Drawer 打开并定位到该引用',
     drawerBindings.drawerOpen.value === true &&
@@ -229,10 +267,17 @@ try {
   )
   check(
     'CompareView 源码不含禁用词',
-    ['已满足', '分数'].every((word) => !viewSource.includes(word)),
-    ['已满足', '分数'].filter((word) => viewSource.includes(word)).join('、'),
+    ['已满足', '分数', '笛卡尔积'].every((word) => !viewSource.includes(word)),
+    ['已满足', '分数', '笛卡尔积'].filter((word) => viewSource.includes(word)).join('、'),
   )
-  check('CompareView 明说不扫描整个材料库', viewSource.includes('不会自动扫描材料库'))
+  check(
+    'hero 不再出现 COMPARE 眉题，标题副标题用大白话',
+    !viewSource.includes('COMPARE') &&
+      viewSource.includes('检查两份材料有没有说法不一致') &&
+      viewSource.includes('看它们是否对同一指标说了不同的数字'),
+  )
+  check('结果头部说 发现 N 处需要核对', viewSource.includes('处需要核对') && !viewSource.includes('条 · 引用横跨两份材料'))
+  check('不扫描材料库只留在注释里，不进页面文案', viewSource.includes('自动扫描材料库') && !templateSource.includes('自动扫描材料库'))
   check('路由新增一条 /compare', routerSource.includes("path: '/compare'") && routerSource.includes('CompareView'))
   check('Workbench 有指向 /compare 的低权重入口', workbenchSource.includes('to="/compare"'))
 } finally {
