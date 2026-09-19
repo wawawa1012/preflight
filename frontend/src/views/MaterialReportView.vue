@@ -288,7 +288,7 @@ loadProposals()
       <div class="flex flex-wrap gap-2">
         <!-- 顶栏唯一核验入口：旧的「核验评分要求」入口 -->
         <UButton v-if="report" icon="i-lucide-sparkles" :loading="verifying" @click="verifyCriteria">
-          {{ verifying ? '核验中…' : '开始核验' }}
+          {{ verifying ? '核验中…' : '核验审查要求' }}
         </UButton>
         <UButton :to="`/materials/${materialId}`" color="neutral" variant="ghost" size="xs" icon="i-lucide-file-text">返回材料</UButton>
         <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>

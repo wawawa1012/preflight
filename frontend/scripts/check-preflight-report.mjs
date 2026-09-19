@@ -1,7 +1,7 @@
 // Iteration 6 检查（SSR 载入 + setup 行为级，不引入测试框架）：
 // 报告页矩阵、缺失范围句、citation → Drawer 原文、409/404 导航不变量、措辞纪律。
 // R0 增量：I7/I8 不依赖绑定（各自装、各自画，409 也显示）；待核对区块排在关键陈述之上；
-// 顶栏「核验评分要求」才是唯一 POST 入口（进行中 I7/I8 不卸；material_too_large 只写在该行）；
+// 顶栏「核验审查要求」才是唯一 POST 入口（进行中 I7/I8 不卸；material_too_large 只写在该行）；
 // Drawer 标题统一走 locatorLabel（md 仍是「第 N 行」）。
 // 运行：cd frontend && node scripts/check-preflight-report.mjs
 import { readFileSync } from 'node:fs'
@@ -145,8 +145,8 @@ check(
   (reportSource.match(/to="\/"/g) ?? []).length >= 3,
   `to="/" 出现 ${(reportSource.match(/to="\/"/g) ?? []).length} 次`,
 )
-// 顶栏入口文案现为「开始核验」；旧检索词「核验评分要求」保留在视图注释里，供其他检查沿用。
-check('顶栏提供「开始核验」入口', reportSource.includes('开始核验'))
+// 顶栏入口文案现为「核验审查要求」（旧「开始核验」退役；旧检索词「核验评分要求」仅存于视图注释）。
+check('顶栏提供「核验审查要求」入口', reportSource.includes("{{ verifying ? '核验中…' : '核验审查要求' }}"))
 check(
   '报告页提供「与另一份材料对照」出口（to="/compare"，已从顶栏移入待处理问题区块）',
   reportSource.includes('与另一份材料对照') && reportSource.includes('to="/compare"'),
@@ -629,7 +629,7 @@ try {
     )
   }
 
-  // 顶栏「核验评分要求」= 唯一 POST 入口；进行中 I7/I8 不卸。
+  // 顶栏「核验审查要求」= 唯一 POST 入口；进行中 I7/I8 不卸。
   {
     resetState()
     const { app } = await mount(stubFetch({ report, signals: [r0Signal], findings: [r0Finding] }))

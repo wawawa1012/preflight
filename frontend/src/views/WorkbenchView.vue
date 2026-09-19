@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import type { MaterialPreflightSummary } from '../types/contracts'
 import { formatSavedAt } from '../utils/format'
 
@@ -7,9 +7,6 @@ import { formatSavedAt } from '../utils/format'
 const summaries = ref<MaterialPreflightSummary[]>([])
 const loading = ref(true)
 const error = ref('')
-
-const status = ref('尚未检查')
-const checking = ref(false)
 
 async function loadSummaries() {
   loading.value = true
@@ -28,20 +25,6 @@ async function loadSummaries() {
   }
 }
 
-async function checkBackend() {
-  checking.value = true
-  try {
-    const response = await fetch('/api/v1/health')
-    if (!response.ok) throw new Error('Health check failed')
-    const result = await response.json()
-    status.value = result.status === 'ok' ? '后端连接正常' : '后端状态异常'
-  } catch {
-    status.value = '无法连接，请按 README 启动后端'
-  } finally {
-    checking.value = false
-  }
-}
-
 // 行状态只用已实现能力：已确认依据 k / n 项（来自只读装配摘要）；标准版本不可用时按未评估展示。
 function criteriaLabel(item: MaterialPreflightSummary) {
   if (item.criteria_total === null || item.criteria_total === undefined) return '未评估'
@@ -51,12 +34,6 @@ function criteriaLabel(item: MaterialPreflightSummary) {
 function criteriaColor(item: MaterialPreflightSummary): 'neutral' | 'success' {
   return item.criteria_total === null || item.criteria_total === undefined ? 'neutral' : 'success'
 }
-
-// 主按钮「开始核验」：有已绑定材料就直接进第一份的报告页；没有则先去添加材料。
-const startTarget = computed(() => {
-  const bound = summaries.value.find((item) => item.bound)
-  return bound ? `/materials/${bound.material_id}/report` : '/materials/new'
-})
 
 loadSummaries()
 </script>
@@ -68,7 +45,7 @@ loadSummaries()
     <p class="mt-5 text-slate-400">核验是按每条审查要求在原文找依据，不是打分。</p>
 
     <div class="mt-8 flex flex-wrap gap-3">
-      <UButton :to="startTarget" icon="i-lucide-upload">开始核验</UButton>
+      <UButton to="/materials/new" icon="i-lucide-upload">添加材料</UButton>
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
       <UButton to="/compare" color="neutral" variant="ghost" size="sm" icon="i-lucide-git-compare">两材料对照</UButton>
     </div>
@@ -89,7 +66,7 @@ loadSummaries()
       </UCard>
       <UCard v-else-if="summaries.length === 0" class="mt-4">
         <p class="text-sm text-slate-400">还没有材料。先上传一份 Markdown 并绑定评分标准。</p>
-        <UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">开始核验</UButton>
+        <UButton class="mt-4" to="/materials/new" icon="i-lucide-upload">添加材料</UButton>
       </UCard>
 
       <div v-else class="mt-4 divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">
@@ -118,15 +95,5 @@ loadSummaries()
         </RouterLink>
       </div>
     </section>
-
-    <div class="mt-12 flex flex-wrap items-center gap-3 border-t border-slate-800 pt-4 text-xs text-slate-500">
-      <RouterLink to="/report" class="hover:text-slate-300">结构演示（Mock）</RouterLink>
-      <span>·</span>
-      <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-plug" :loading="checking" @click="checkBackend">
-        检查后端连接
-      </UButton>
-      <span>开发诊断，不是产品功能</span>
-      <span role="status">{{ status }}</span>
-    </div>
   </main>
 </template>
