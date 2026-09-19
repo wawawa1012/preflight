@@ -1,7 +1,10 @@
-"""LLM 适配层：环境配置、单 criterion 预检 prompt、严格 JSON 解析与错误分类。
+"""LLM 适配层：环境配置、单 criterion 预检 prompt、窗口化调用、严格 JSON 解析与错误分类。
 
-只做一次 chat completion 调用，不引入编排框架；绝不静默截断 prompt。
-配置缺失/上游失败/超时/响应不合 schema 分别抛不同异常，由 API 层映射为 503/502/504/502。
+R2B：prompt 超限时用 prompt_planner 的窗口顺序逐个调用（同步顺序执行，不并发、不引入编排框架）；
+单窗响应不合法用同一 prompt 重试一次，仍失败则整条 criterion 报 LlmInvalidResponse，绝不返回部分候选；
+跨窗候选按 (block_id, quote) 去重合并（首个出现胜出，12 条为安全上限而非质量排序）；
+raw_content 保留每个窗口的原始载荷。配置缺失/上游失败/超时/响应不合 schema 分别抛不同异常，由 API 层映射为 503/502/504/502。
+绝不静默截断 prompt。
 """
 import json
 import logging
@@ -15,9 +18,11 @@ from openai import APIConnectionError, APITimeoutError, OpenAI, OpenAIError
 
 from .contracts import Block, Criterion
 
-PROMPT_VERSION = "p5-criterion-preflight-v2.2"
+PROMPT_VERSION = "p5-criterion-preflight-v2.3"
 MAX_PROMPT_CHARS = 24000
 DEFAULT_TIMEOUT_S = 60.0
+WINDOW_ATTEMPTS = 2  # 每窗最多尝试次数：首次 + 一次重试
+MAX_MERGED_CANDIDATES = 12  # 跨窗合并后的唯一候选安全上限（按扫描顺序截取，不是质量排序）
 # OpenCode Go 网关按会话路由，要求稳定的 x-opencode-session，且 UA 不能是通用 SDK 名。
 _SESSION_ID = f"preflight-{uuid.uuid4().hex}"
 _CLIENT_HEADERS = {"User-Agent": "preflight/0.1", "x-opencode-session": _SESSION_ID}
@@ -226,25 +231,110 @@ def complete(settings: LlmSettings, messages: list[dict[str, str]]) -> str:
     return content
 
 
+def _propose_window(settings: LlmSettings, messages: list[dict[str, str]]) -> tuple[list[RawCandidate], str, int]:
+    """单个窗口：调用 → 严格解析；响应不合法（含空响应）用同一 prompt 重试一次。
+
+    返回 (candidates, content, retry_count)；两次都不合法时抛 LlmInvalidResponse（raw_response 为最后一次载荷）。
+    """
+    last_error: LlmInvalidResponse | None = None
+    last_content: str | None = None
+    for attempt in range(1, WINDOW_ATTEMPTS + 1):
+        content: str | None = None
+        try:
+            content = complete(settings, messages)
+            candidates = parse_candidates(content)
+        except LlmInvalidResponse as exc:
+            last_error = exc
+            last_content = content
+            continue
+        return candidates, content, attempt - 1
+    assert last_error is not None  # 循环至少跑一次且未 return 时必有异常
+    raise LlmInvalidResponse(last_error.message, raw_response=last_content)
+
+
 def propose_candidates(criterion: Criterion, blocks: list[Block]) -> tuple[list[RawCandidate], str, str, str]:
-    """配置检查 → 构建 prompt → 单次调用 → 严格解析；返回 (candidates, raw_content, provider, model)。"""
+    """配置检查 → 窗口规划 → 逐窗调用（坏响应重试一次）→ 跨窗去重合并。
+
+    返回 (candidates, raw_content, provider, model)。任一窗口重试后仍不合法则整条 criterion 失败，
+    不返回部分候选；raw_content 按 ``--- window i/n ---`` 保留每个窗口的成功载荷。
+    """
     settings = load_settings()
     if not settings.configured:
         raise LlmNotConfigured()
-    messages = build_messages(criterion, blocks)
-    prompt_chars = sum(len(message["content"]) for message in messages)
-    content = complete(settings, messages)
-    try:
-        candidates = parse_candidates(content)
-    except LlmInvalidResponse as exc:
-        exc.raw_response = content
-        raise
+    # 延迟导入：prompt_planner 顶层 import 本模块的 build_messages/PromptTooLarge，顶层互相 import 会成环。
+    from .prompt_planner import plan_windows
+
+    windows = plan_windows(criterion, blocks)  # 单块超限在此抛 PromptTooLarge：不截断、不丢块
+    window_count = len(windows)
+    merged: list[RawCandidate] = []
+    seen: set[tuple[str, str]] = set()
+    raw_parts: list[str] = []
+    prompt_chars_total = 0
+    for window_index, window in enumerate(windows, start=1):
+        messages = build_messages(criterion, window)
+        prompt_chars = sum(len(message["content"]) for message in messages)
+        prompt_chars_total += prompt_chars
+        started = time.perf_counter()
+        try:
+            window_candidates, content, retry_count = _propose_window(settings, messages)
+        except LlmInvalidResponse as exc:
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            logger.warning(
+                "llm proposal window invalid model=%s prompt_version=%s window_index=%d window_count=%d "
+                "block_count=%d prompt_chars=%d elapsed_ms=%.1f retry_count=%d error=%s",
+                settings.model,
+                PROMPT_VERSION,
+                window_index,
+                window_count,
+                len(window),
+                prompt_chars,
+                elapsed_ms,
+                WINDOW_ATTEMPTS - 1,
+                exc.message,
+            )
+            raise LlmInvalidResponse(
+                f"window {window_index}/{window_count} 响应不合法（已重试 {WINDOW_ATTEMPTS - 1} 次）：{exc.message}；"
+                "扫描未完成，本次不返回任何候选（包括此前窗口已解析出的）",
+                raw_response=exc.raw_response,
+            ) from exc
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        raw_parts.append(f"--- window {window_index}/{window_count} ---\n{content}")
+        logger.info(
+            "llm proposal window model=%s prompt_version=%s window_index=%d window_count=%d "
+            "block_count=%d prompt_chars=%d elapsed_ms=%.1f retry_count=%d candidate_count=%d",
+            settings.model,
+            PROMPT_VERSION,
+            window_index,
+            window_count,
+            len(window),
+            prompt_chars,
+            elapsed_ms,
+            retry_count,
+            len(window_candidates),
+        )
+        for candidate in window_candidates:
+            key = (candidate.block_id, candidate.quote)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(candidate)
+    if len(merged) > MAX_MERGED_CANDIDATES:
+        logger.warning(
+            "candidate safety cap applied model=%s prompt_version=%s merged_unique=%d cap=%d",
+            settings.model,
+            PROMPT_VERSION,
+            len(merged),
+            MAX_MERGED_CANDIDATES,
+        )
+        merged = merged[:MAX_MERGED_CANDIDATES]
+    raw_content = "\n".join(raw_parts)
     logger.info(
-        "llm proposal model=%s prompt_version=%s block_count=%d prompt_chars=%d candidate_count=%d",
+        "llm proposal done model=%s prompt_version=%s window_count=%d block_count=%d prompt_chars=%d candidate_count=%d",
         settings.model,
         PROMPT_VERSION,
+        window_count,
         len(blocks),
-        prompt_chars,
-        len(candidates),
+        prompt_chars_total,
+        len(merged),
     )
-    return candidates, content, settings.base_url or "", settings.model or ""
+    return merged, raw_content, settings.base_url or "", settings.model or ""
