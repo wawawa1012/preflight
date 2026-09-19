@@ -49,12 +49,16 @@ const drawerBlockId = ref('')
 
 const allBlocks = computed(() => report.value?.blocks ?? materialBlocks.value)
 
+// 已确认依据 = 各条审查要求 verified_citation_count 之和；概览与「审查团队」条共用这一份事实。
+const confirmedCitationCount = computed(() =>
+  report.value ? report.value.criteria.reduce((sum, row) => sum + row.verified_citation_count, 0) : 0,
+)
+
 // 预检概览（C1）：材料级计数不依赖报告；已确认依据只在报告到手后给 k / n，否则给 —。
 const overviewCounts = computed(() => {
   const base = `待核对 ${findings.value.length} · 关键陈述 ${signals.value.length}`
   if (!report.value) return `${base} · 已确认依据 —`
-  const confirmed = report.value.criteria.reduce((sum, row) => sum + row.verified_citation_count, 0)
-  return `${base} · 已确认依据 ${confirmed} / ${report.value.criteria.length} 项`
+  return `${base} · 已确认依据 ${confirmedCitationCount.value} / ${report.value.criteria.length} 项`
 })
 
 // 引用/信号行只说位置：kind 由该 Block 的 Locator 决定（md 显示行号，slide/page/paragraph 各自成句）。
@@ -291,12 +295,46 @@ loadProposals()
           {{ verifying ? '核验中…' : '核验审查要求' }}
         </UButton>
         <UButton :to="`/materials/${materialId}`" color="neutral" variant="ghost" size="xs" icon="i-lucide-file-text">返回材料</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
       </div>
     </div>
 
     <!-- 材料级区块：不依赖绑定，各自装、各自画（待核对问题在关键陈述之上）。 -->
     <div v-if="!notFound" class="mt-6 space-y-4">
+      <!-- 审查团队条：三个角色各报各自的事实来源；一致性与关键陈述都是程序扫描，依据核验才调用模型。 -->
+      <section class="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 class="text-sm font-medium text-slate-200">审查团队</h2>
+          <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描，依据核验才调用模型</span>
+        </div>
+        <ul class="mt-3 grid gap-2 sm:grid-cols-3">
+          <li class="rounded-md border border-slate-800 bg-slate-950/40 p-3">
+            <p class="text-xs text-slate-400">依据核验</p>
+            <p class="mt-1 text-sm text-slate-200">
+              <span v-if="verifying">正在按审查标准查找依据</span>
+              <span v-else-if="report">已确认依据 {{ confirmedCitationCount }} / {{ report.criteria.length }} 项</span>
+              <span v-else-if="unbound">未绑定审查标准</span>
+              <span v-else-if="loading">正在装配报告…</span>
+              <span v-else>报告未装配</span>
+            </p>
+          </li>
+          <li class="rounded-md border border-slate-800 bg-slate-950/40 p-3">
+            <p class="text-xs text-slate-400">一致性审查</p>
+            <p class="mt-1 text-sm text-slate-200">
+              <span v-if="findingsUnavailable">扫描不可用</span>
+              <span v-else>待核对 {{ findings.length }} 条</span>
+            </p>
+          </li>
+          <li class="rounded-md border border-slate-800 bg-slate-950/40 p-3">
+            <p class="text-xs text-slate-400">关键陈述审查</p>
+            <p class="mt-1 text-sm text-slate-200">
+              <span v-if="signalsUnavailable">扫描不可用</span>
+              <span v-else>标记 {{ signals.length }} 条</span>
+            </p>
+          </li>
+        </ul>
+      </section>
+
       <!-- I8 待核对问题（首屏主区：待处理问题）：同一材料内同一度量词的数值对照；每条都能点回原文 Drawer。 -->
       <section class="rounded-lg border border-amber-900/50 bg-amber-950/10 p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -380,7 +418,7 @@ loadProposals()
       </p>
       <div class="mt-6 flex flex-wrap gap-3">
         <UButton :to="`/materials/${materialId}`" icon="i-lucide-link">去绑定评分标准</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
       </div>
     </UCard>
 
@@ -389,7 +427,7 @@ loadProposals()
       <p class="mt-2 text-sm text-slate-400">请求失败：{{ error }}</p>
       <div class="mt-6 flex flex-wrap gap-3">
         <UButton icon="i-lucide-refresh-cw" @click="loadReport">重试</UButton>
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
       </div>
     </UCard>
 

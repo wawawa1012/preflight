@@ -141,12 +141,25 @@ check(
   reportSource.includes('返回材料') && reportSource.includes('`/materials/${materialId}`') && !reportSource.includes('history.back'),
 )
 check(
-  '未绑定/失败卡片各有独立 Workbench 出口',
-  (reportSource.match(/to="\/"/g) ?? []).length >= 3,
+  '未绑定/失败卡片各有独立回审查首页出口（to="/"，按钮文案「审查」）',
+  (reportSource.match(/to="\/"/g) ?? []).length >= 3 && reportSource.includes('>审查</UButton>'),
   `to="/" 出现 ${(reportSource.match(/to="\/"/g) ?? []).length} 次`,
 )
 // 顶栏入口文案现为「核验审查要求」（旧「开始核验」退役；旧检索词「核验评分要求」仅存于视图注释）。
 check('顶栏提供「核验审查要求」入口', reportSource.includes("{{ verifying ? '核验中…' : '核验审查要求' }}"))
+// 审查团队条：头部之下、待处理问题之上；三个角色各报各自的事实来源（两条程序扫描、一条调用模型）。
+// 核验中的依据核验行改口「正在按审查标准查找依据」，不与已确认计数同时出现。
+check(
+  '审查团队条：三个角色齐备且排在待处理问题之上（依据核验 / 一致性审查 / 关键陈述审查）',
+  reportSource.includes('审查团队') &&
+    reportSource.includes('依据核验') &&
+    reportSource.includes('一致性审查') &&
+    reportSource.includes('关键陈述审查') &&
+    reportSource.includes('正在按审查标准查找依据') &&
+    reportSource.indexOf('>审查团队</h2>') > reportSource.indexOf('>本次核验</p>') &&
+    reportSource.indexOf('>审查团队</h2>') < reportSource.indexOf('>待处理问题</h2>'),
+  `团队@${reportSource.indexOf('>审查团队</h2>')} 待处理@${reportSource.indexOf('>待处理问题</h2>')}`,
+)
 check(
   '报告页提供「与另一份材料对照」出口（to="/compare"，已从顶栏移入待处理问题区块）',
   reportSource.includes('与另一份材料对照') && reportSource.includes('to="/compare"'),
@@ -155,12 +168,13 @@ check(
   '报告页不做 accept（无候选物化端点）',
   !reportSource.includes('proposal-candidates') && !reportSource.includes('/accept'),
 )
+// 注：审查团队条含「关键陈述审查」字样，锚点用关键陈述 h2，避免被条上文案抢先命中。
 check(
   '待核对区块排在关键陈述之上',
   reportSource.includes('待核对问题') &&
-    reportSource.includes('关键陈述') &&
-    reportSource.indexOf('待核对问题') < reportSource.indexOf('关键陈述'),
-  `待核对@${reportSource.indexOf('待核对问题')} 关键陈述@${reportSource.indexOf('关键陈述')}`,
+    reportSource.includes('>关键陈述</h2>') &&
+    reportSource.indexOf('待核对问题') < reportSource.indexOf('>关键陈述</h2>'),
+  `待核对@${reportSource.indexOf('待核对问题')} 关键陈述h2@${reportSource.indexOf('>关键陈述</h2>')}`,
 )
 check(
   '评分要求矩阵排在关键陈述之上（v-for="row in report.criteria" 先于关键陈述 h2）',
@@ -316,7 +330,11 @@ try {
   {
     const { app } = await mount(reportFetch(report))
     const html = await renderToString(app)
-    check('正常态 SSR 含 Workbench 出口', html.includes('href="/"') && html.includes('Workbench'))
+    check(
+      '正常态 SSR 含回审查首页出口（按钮文案「审查」）',
+      html.includes('href="/"') && html.includes('审查</'),
+      html.slice(Math.max(0, html.indexOf('href="/"') - 40), html.indexOf('href="/"') + 60),
+    )
     const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
     await flush()
     const byId = Object.fromEntries(bindings.report.value.criteria.map((row) => [row.criterion_id, row]))
@@ -523,7 +541,7 @@ try {
     )
   }
 
-  // 409 未绑定：不画矩阵，仍有 Workbench 出口。
+  // 409 未绑定：不画矩阵，仍有回审查首页的出口。
   {
     const { app } = await mount(async () =>
       jsonResponse({ code: 'rubric_not_bound', message: '该材料尚未绑定评分标准', details: [] }, 409),
@@ -532,11 +550,11 @@ try {
     const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
     await flush()
     check('409 进入未绑定态且不渲染矩阵', bindings.unbound.value === true && bindings.report.value === null)
-    check('409 SSR 仍有 Workbench 出口', html.includes('href="/"') && html.includes('Workbench'))
+    check('409 SSR 仍有回审查首页出口（按钮文案「审查」）', html.includes('href="/"') && html.includes('审查</'))
     check('409 提供去材料详情绑定的入口', reportSource.includes('尚未绑定评分标准') && reportSource.includes('`/materials/${materialId}`'))
   }
 
-  // 404：与详情页一致的 notFound，保留 Workbench 出口。
+  // 404：与详情页一致的 notFound，保留回审查首页的出口。
   {
     const { app } = await mount(async () =>
       jsonResponse({ code: 'material_not_found', message: '找不到该材料', details: [] }, 404),
@@ -545,7 +563,7 @@ try {
     const bindings = app.runWithContext(() => module.default.setup({}, { expose() {} }))
     await flush()
     check('404 进入 notFound 且不渲染矩阵', bindings.notFound.value === true && bindings.report.value === null)
-    check('404 SSR 仍有 Workbench 出口', html.includes('href="/"') && html.includes('Workbench'))
+    check('404 SSR 仍有回审查首页出口（按钮文案「审查」）', html.includes('href="/"') && html.includes('审查</'))
   }
   // ——— R0：材料级 GET 不依赖绑定 ———
   // 共用数据：一条关键陈述、一条待核对问题、材料本体（供绑定前补取 blocks）。
