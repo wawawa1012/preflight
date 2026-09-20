@@ -28,6 +28,12 @@ from .contracts import (
     ProposalCandidate,
     ProposalCandidateReject,
     RepairSuggestion,
+    Review,
+    ReviewCreate,
+    ReviewDetail,
+    ReviewMaterialEntry,
+    ReviewMaterialUpsert,
+    ReviewUpdate,
     Rubric,
     RubricBinding,
     RubricBindingCreate,
@@ -420,6 +426,69 @@ def reject_proposal_candidate(
     if candidate is None:
         raise LookupFailed("candidate_not_found", "找不到该候选", [f"id={candidate_id}"])
     return candidate
+
+
+# —— P1 Review：一次评审绑定一个评分标准版本，成员引用已保存材料（不做 Finding/报告聚合）——
+
+
+@app.post("/api/v1/reviews", response_model=Review, status_code=201)
+def create_review(payload: ReviewCreate) -> Review:
+    # rubric 是文件仓：先校验版本存在，再落库；不存在 404 rubric_not_found。
+    if rubric_store.get_rubric(payload.rubric_id, payload.rubric_revision) is None:
+        raise LookupFailed(
+            "rubric_not_found", "找不到该评分标准版本", [f"{payload.rubric_id} rev{payload.rubric_revision}"]
+        )
+    return storage.create_review(payload.title, payload.rubric_id, payload.rubric_revision)
+
+
+@app.get("/api/v1/reviews", response_model=list[Review])
+def reviews() -> list[Review]:
+    return storage.list_reviews()
+
+
+@app.get("/api/v1/reviews/{review_id}", response_model=ReviewDetail)
+def review_by_id(review_id: str) -> ReviewDetail:
+    detail = storage.get_review_detail(review_id)
+    if detail is None:
+        raise LookupFailed("review_not_found", "找不到该 Review", [f"id={review_id}"])
+    return detail
+
+
+@app.patch("/api/v1/reviews/{review_id}", response_model=Review)
+def update_review(review_id: str, payload: ReviewUpdate) -> Review:
+    # ReviewUpdate extra="forbid"：带 rubric_id/rubric_revision 的 PATCH 会在校验层被 400 拒绝。
+    review = storage.rename_review(review_id, payload.title)
+    if review is None:
+        raise LookupFailed("review_not_found", "找不到该 Review", [f"id={review_id}"])
+    return review
+
+
+@app.put("/api/v1/reviews/{review_id}/materials/{material_id}", response_model=ReviewMaterialEntry)
+def upsert_review_material(
+    review_id: str, material_id: str, payload: ReviewMaterialUpsert, response: Response
+) -> ReviewMaterialEntry:
+    # 区分 404：review 先于 material；绑定冲突由 StorageConflict 处理器返回 409。
+    if storage.get_review_detail(review_id) is None:
+        raise LookupFailed("review_not_found", "找不到该 Review", [f"id={review_id}"])
+    if not storage.material_exists(material_id):
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    result = storage.upsert_review_material(review_id, material_id, payload.label, payload.position)
+    if result is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    entry, created = result
+    response.status_code = 201 if created else 200
+    return entry
+
+
+@app.delete("/api/v1/reviews/{review_id}/materials/{material_id}", status_code=204)
+def remove_review_material(review_id: str, material_id: str) -> Response:
+    if storage.get_review_detail(review_id) is None:
+        raise LookupFailed("review_not_found", "找不到该 Review", [f"id={review_id}"])
+    if not storage.remove_review_material(review_id, material_id):
+        raise LookupFailed(
+            "membership_not_found", "该材料不在该 Review 中", [f"review_id={review_id}", f"material_id={material_id}"]
+        )
+    return Response(status_code=204)
 
 
 @app.exception_handler(PreviewRejected)

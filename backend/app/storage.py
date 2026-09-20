@@ -8,6 +8,7 @@
 - material_rubric_bindings：材料 ↔ 只读评分标准绑定，每份材料最多一条。
 - criterion_evidence_links：人工判断“引用与某项评分要求相关”（adjudication 层）；双外键 CASCADE。
 - agent_proposals / proposal_candidates：单 criterion AI 预检及其候选；候选须过验证门，accept 原子物化。
+- reviews / review_materials：一次评审绑定一个评分标准版本，成员引用已保存材料（不复制内容）。
 """
 import sqlite3
 import uuid
@@ -26,6 +27,9 @@ from .contracts import (
     MaterialSummary,
     ProposalAcceptance,
     ProposalCandidate,
+    Review,
+    ReviewDetail,
+    ReviewMaterialEntry,
     RubricBinding,
     SavedMaterial,
     Span,
@@ -172,6 +176,22 @@ CREATE TABLE IF NOT EXISTS proposal_candidates (
     UNIQUE (proposal_id, ordinal)
 );
 CREATE INDEX IF NOT EXISTS idx_proposal_candidates_material ON proposal_candidates(material_id);
+CREATE TABLE IF NOT EXISTS reviews (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    rubric_id TEXT NOT NULL,
+    rubric_revision INTEGER NOT NULL CHECK (rubric_revision >= 1),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS review_materials (
+    review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    PRIMARY KEY (review_id, material_id)
+);
+CREATE INDEX IF NOT EXISTS idx_review_materials_material ON review_materials(material_id);
 """
 
 
@@ -299,6 +319,13 @@ def delete_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
     材料不存在返回 False（调用方转 404）。
     """
     with closing(connect(db_path)) as connection, connection:
+        # 先记下该材料参与的 Review；删材料后由 FK CASCADE 清成员，再刷新受影响 Review 的 updated_at。
+        affected_reviews = [
+            row["review_id"]
+            for row in connection.execute(
+                "SELECT review_id FROM review_materials WHERE material_id = ?", (material_id,)
+            ).fetchall()
+        ]
         cleared = connection.execute(
             "DELETE FROM recent_material WHERE singleton = 1 AND material_id = ?",
             (material_id,),
@@ -306,6 +333,13 @@ def delete_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
         deleted = connection.execute("DELETE FROM materials WHERE id = ?", (material_id,))
         if deleted.rowcount == 0:
             return False
+        if affected_reviews:
+            # updated_at 必须可观测地变化，故保留微秒。
+            now = datetime.now(timezone.utc).isoformat()
+            connection.executemany(
+                "UPDATE reviews SET updated_at = ? WHERE id = ?",
+                [(now, review_id) for review_id in affected_reviews],
+            )
         if cleared:
             successor = connection.execute(
                 "SELECT id FROM materials ORDER BY created_at DESC, rowid DESC LIMIT 1"
@@ -407,7 +441,11 @@ def get_binding(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> RubricBind
 def bind_material_rubric(
     material_id: str, rubric_id: str, rubric_revision: int, db_path: Path = DEFAULT_DB_PATH
 ) -> tuple[RubricBinding, bool] | None:
-    """返回 (binding, created)；同版本重复绑定幂等返回已有，换绑抛 BindingConflict；材料不存在返回 None。"""
+    """返回 (binding, created)；同版本重复绑定幂等返回已有，换绑抛 BindingConflict；材料不存在返回 None。
+
+    首次绑定前反向检查该材料所属全部 Review：任一 Review 标准与本次绑定不同即抛
+    BindingConflict（保持未绑定，不动 membership）。检查与写入在同一连接事务内完成。
+    """
     with closing(connect(db_path)) as connection, connection:
         material = connection.execute("SELECT 1 FROM materials WHERE id = ?", (material_id,)).fetchone()
         if material is None:
@@ -421,6 +459,17 @@ def bind_material_rubric(
             raise BindingConflict(
                 "该材料已绑定其他评分标准版本",
                 [f"已绑定 {existing['rubric_id']} rev{existing['rubric_revision']}"],
+            )
+        conflicts = connection.execute(
+            "SELECT r.id AS review_id, r.rubric_id, r.rubric_revision FROM review_materials rm"
+            " JOIN reviews r ON r.id = rm.review_id WHERE rm.material_id = ?"
+            " AND (r.rubric_id != ? OR r.rubric_revision != ?)",
+            (material_id, rubric_id, rubric_revision),
+        ).fetchall()
+        if conflicts:
+            raise BindingConflict(
+                "该材料已加入使用其他评分标准版本的 Review，须先移除不兼容的 Review membership 后再绑定",
+                [f"review_id={row['review_id']} 使用 {row['rubric_id']} rev{row['rubric_revision']}" for row in conflicts],
             )
         created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         connection.execute(
@@ -760,3 +809,161 @@ def reject_candidate(
             "SELECT * FROM proposal_candidates WHERE id = ?", (candidate_id,)
         ).fetchone()
     return _candidate_from_row(updated)
+
+
+def _review_from_row(row: sqlite3.Row) -> Review:
+    return Review(
+        id=row["id"],
+        title=row["title"],
+        rubric_id=row["rubric_id"],
+        rubric_revision=row["rubric_revision"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _review_material_from_row(row: sqlite3.Row) -> ReviewMaterialEntry:
+    return ReviewMaterialEntry(material_id=row["material_id"], label=row["label"], position=row["position"])
+
+
+def create_review(
+    title: str, rubric_id: str, rubric_revision: int, db_path: Path = DEFAULT_DB_PATH
+) -> Review:
+    """新建 Review；rubric 存在性由 API 层用 rubric_store 校验。"""
+    review_id = f"rev_{uuid.uuid4().hex}"
+    # updated_at 必须可观测地变化，故保留微秒。
+    now = datetime.now(timezone.utc).isoformat()
+    with closing(connect(db_path)) as connection, connection:
+        connection.execute(
+            "INSERT INTO reviews (id, title, rubric_id, rubric_revision, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (review_id, title, rubric_id, rubric_revision, now, now),
+        )
+    return Review(
+        id=review_id,
+        title=title,
+        rubric_id=rubric_id,
+        rubric_revision=rubric_revision,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def list_reviews(db_path: Path = DEFAULT_DB_PATH) -> list[Review]:
+    with closing(connect(db_path)) as connection:
+        rows = connection.execute("SELECT * FROM reviews ORDER BY created_at DESC, rowid DESC").fetchall()
+    return [_review_from_row(row) for row in rows]
+
+
+def get_review_detail(review_id: str, db_path: Path = DEFAULT_DB_PATH) -> ReviewDetail | None:
+    with closing(connect(db_path)) as connection:
+        review = connection.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
+        if review is None:
+            return None
+        materials = connection.execute(
+            "SELECT * FROM review_materials WHERE review_id = ? ORDER BY position ASC, material_id ASC",
+            (review_id,),
+        ).fetchall()
+    return ReviewDetail(
+        **_review_from_row(review).model_dump(),
+        materials=[_review_material_from_row(row) for row in materials],
+    )
+
+
+def rename_review(review_id: str, title: str, db_path: Path = DEFAULT_DB_PATH) -> Review | None:
+    """只改 title；不存在返回 None。rubric 绑定不可通过本函数变更。"""
+    # updated_at 必须可观测地变化，故保留微秒。
+    now = datetime.now(timezone.utc).isoformat()
+    with closing(connect(db_path)) as connection, connection:
+        updated = connection.execute(
+            "UPDATE reviews SET title = ?, updated_at = ? WHERE id = ?", (title, now, review_id)
+        )
+        if updated.rowcount == 0:
+            return None
+        row = connection.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
+    return _review_from_row(row)
+
+
+def delete_review(review_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
+    """删除 Review 本体；review_materials 由 FK CASCADE 清理，绝不动 materials。"""
+    with closing(connect(db_path)) as connection, connection:
+        deleted = connection.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
+    return deleted.rowcount > 0
+
+
+def upsert_review_material(
+    review_id: str,
+    material_id: str,
+    label: str | None,
+    position: int | None,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> tuple[ReviewMaterialEntry, bool] | None:
+    """单事务 upsert 成员：返回 (entry, created)；review/material 不存在返回 None。
+
+    材料已绑定其他 rubric 版本时抛 BindingConflict（绝不自动改绑定）；
+    label 缺省取 filename，position 缺省追加到末尾；更新时缺省保持原值。
+    """
+    with closing(connect(db_path)) as connection, connection:
+        review = connection.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
+        if review is None:
+            return None
+        material = connection.execute(
+            "SELECT filename FROM materials WHERE id = ?", (material_id,)
+        ).fetchone()
+        if material is None:
+            return None
+        binding = connection.execute(
+            "SELECT rubric_id, rubric_revision FROM material_rubric_bindings WHERE material_id = ?",
+            (material_id,),
+        ).fetchone()
+        if binding is not None and (
+            binding["rubric_id"] != review["rubric_id"]
+            or binding["rubric_revision"] != review["rubric_revision"]
+        ):
+            raise BindingConflict(
+                "该材料已绑定其他评分标准版本，不允许在 Review 中暗中换绑",
+                [f"已绑定 {binding['rubric_id']} rev{binding['rubric_revision']}"],
+            )
+        existing = connection.execute(
+            "SELECT * FROM review_materials WHERE review_id = ? AND material_id = ?",
+            (review_id, material_id),
+        ).fetchone()
+        # updated_at 必须可观测地变化，故保留微秒。
+        now = datetime.now(timezone.utc).isoformat()
+        if existing is None:
+            final_label = label if label is not None else material["filename"]
+            if position is None:
+                position = connection.execute(
+                    "SELECT COALESCE(MAX(position) + 1, 0) FROM review_materials WHERE review_id = ?",
+                    (review_id,),
+                ).fetchone()[0]
+            connection.execute(
+                "INSERT INTO review_materials (review_id, material_id, label, position) VALUES (?, ?, ?, ?)",
+                (review_id, material_id, final_label, position),
+            )
+            final_position = position
+            created = True
+        else:
+            final_label = label if label is not None else existing["label"]
+            final_position = position if position is not None else existing["position"]
+            connection.execute(
+                "UPDATE review_materials SET label = ?, position = ? WHERE review_id = ? AND material_id = ?",
+                (final_label, final_position, review_id, material_id),
+            )
+            created = False
+        connection.execute("UPDATE reviews SET updated_at = ? WHERE id = ?", (now, review_id))
+    return ReviewMaterialEntry(material_id=material_id, label=final_label, position=final_position), created
+
+
+def remove_review_material(review_id: str, material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
+    """移除成员关系并刷新 Review.updated_at；不存在返回 False。绝不动 materials。"""
+    # updated_at 必须可观测地变化，故保留微秒。
+    now = datetime.now(timezone.utc).isoformat()
+    with closing(connect(db_path)) as connection, connection:
+        deleted = connection.execute(
+            "DELETE FROM review_materials WHERE review_id = ? AND material_id = ?", (review_id, material_id)
+        )
+        if deleted.rowcount == 0:
+            return False
+        connection.execute("UPDATE reviews SET updated_at = ? WHERE id = ?", (now, review_id))
+    return True

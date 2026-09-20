@@ -436,6 +436,49 @@ class CrossCompareResponse(Contract):
     findings: list[ConsistencyFinding]
 
 
+class Review(Contract):
+    # P1 Review 领域：一次评审绑定一个评分标准版本，成员材料引用已保存材料（不复制内容）。
+    # P1：暂不加入 ContractBundle，前端契约导出阶段再挂。
+    id: str
+    title: str = Field(min_length=1)
+    rubric_id: str
+    rubric_revision: int = Field(ge=1)
+    created_at: str
+    updated_at: str
+
+
+class ReviewCreate(Contract):
+    # P1：暂不加入 ContractBundle，前端契约导出阶段再挂。
+    title: str = Field(min_length=1)
+    rubric_id: str
+    rubric_revision: int = Field(ge=1)
+
+
+class ReviewUpdate(Contract):
+    # 本期只允许改 title；extra="forbid" 使带 rubric_id/rubric_revision 的 PATCH 被 400 拒绝。
+    # P1：暂不加入 ContractBundle，前端契约导出阶段再挂。
+    title: str = Field(min_length=1)
+
+
+class ReviewMaterialEntry(Contract):
+    # P1：暂不加入 ContractBundle，前端契约导出阶段再挂。
+    material_id: str
+    label: str = Field(min_length=1)
+    position: int = Field(ge=0)
+
+
+class ReviewMaterialUpsert(Contract):
+    # upsert 请求体：省略 label/position 时服务端分别取 filename / 追加到末尾。
+    # P1：暂不加入 ContractBundle，前端契约导出阶段再挂。
+    label: str | None = Field(default=None, min_length=1)
+    position: int | None = Field(default=None, ge=0)
+
+
+class ReviewDetail(Review):
+    # P1：暂不加入 ContractBundle，前端契约导出阶段再挂。
+    materials: list[ReviewMaterialEntry]
+
+
 class ApiError(Contract):
     code: str
     message: str
