@@ -694,6 +694,37 @@
       "title": "Document",
       "type": "object"
     },
+    "EditableSource": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "format": {
+          "const": "md",
+          "title": "Format",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "normalization": {
+          "const": "lf",
+          "title": "Normalization",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id",
+        "format",
+        "text",
+        "normalization"
+      ],
+      "title": "EditableSource",
+      "type": "object"
+    },
     "Evidence": {
       "additionalProperties": false,
       "properties": {
@@ -1312,6 +1343,92 @@
       "title": "MaterialPreflightSummary",
       "type": "object"
     },
+    "MaterialRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "child_material_id": {
+          "title": "Child Material Id",
+          "type": "string"
+        },
+        "parent_material_id": {
+          "title": "Parent Material Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "child_material_id",
+        "parent_material_id",
+        "created_at"
+      ],
+      "title": "MaterialRevision",
+      "type": "object"
+    },
+    "MaterialRevisionCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "review_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Id"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        }
+      },
+      "required": [
+        "text",
+        "filename"
+      ],
+      "title": "MaterialRevisionCreate",
+      "type": "object"
+    },
+    "MaterialRevisionCreated": {
+      "additionalProperties": false,
+      "properties": {
+        "material": {
+          "$ref": "#/$defs/SavedMaterial"
+        },
+        "revision": {
+          "$ref": "#/$defs/MaterialRevision"
+        }
+      },
+      "required": [
+        "material",
+        "revision"
+      ],
+      "title": "MaterialRevisionCreated",
+      "type": "object"
+    },
     "MaterialSummary": {
       "additionalProperties": false,
       "properties": {
@@ -1715,6 +1832,82 @@
         "evidence_ids"
       ],
       "title": "ReviewQuestion",
+      "type": "object"
+    },
+    "RevisionChild": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id",
+        "available",
+        "created_at"
+      ],
+      "title": "RevisionChild",
+      "type": "object"
+    },
+    "RevisionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionParent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "children": {
+          "items": {
+            "$ref": "#/$defs/RevisionChild"
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "material_id",
+        "children"
+      ],
+      "title": "RevisionContext",
+      "type": "object"
+    },
+    "RevisionParent": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "parent_available": {
+          "title": "Parent Available",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "material_id",
+        "parent_available"
+      ],
+      "title": "RevisionParent",
       "type": "object"
     },
     "Rubric": {
@@ -2263,6 +2456,27 @@
     "cross_compare_response": {
       "$ref": "#/$defs/CrossCompareResponse"
     },
+    "material_revision": {
+      "$ref": "#/$defs/MaterialRevision"
+    },
+    "material_revision_create": {
+      "$ref": "#/$defs/MaterialRevisionCreate"
+    },
+    "material_revision_created": {
+      "$ref": "#/$defs/MaterialRevisionCreated"
+    },
+    "revision_parent": {
+      "$ref": "#/$defs/RevisionParent"
+    },
+    "revision_child": {
+      "$ref": "#/$defs/RevisionChild"
+    },
+    "revision_context": {
+      "$ref": "#/$defs/RevisionContext"
+    },
+    "editable_source": {
+      "$ref": "#/$defs/EditableSource"
+    },
     "error": {
       "$ref": "#/$defs/ApiError"
     }
@@ -2296,6 +2510,13 @@
     "repair_suggestion",
     "cross_compare_request",
     "cross_compare_response",
+    "material_revision",
+    "material_revision_create",
+    "material_revision_created",
+    "revision_parent",
+    "revision_child",
+    "revision_context",
+    "editable_source",
     "error"
   ],
   "title": "ContractBundle",

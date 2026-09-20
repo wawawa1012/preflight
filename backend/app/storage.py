@@ -21,15 +21,20 @@ from .contracts import (
     AgentProposal,
     Block,
     CriterionEvidenceLink,
+    EditableSource,
     EvidenceAnnotation,
     Locator,
     MarkdownPreview,
+    MaterialRevision,
     MaterialSummary,
     ProposalAcceptance,
     ProposalCandidate,
     Review,
     ReviewDetail,
     ReviewMaterialEntry,
+    RevisionChild,
+    RevisionContext,
+    RevisionParent,
     RubricBinding,
     SavedMaterial,
     Span,
@@ -80,6 +85,24 @@ class InvalidCandidate(Exception):
 
 class CandidateAlreadyReviewed(StorageConflict):
     code = "candidate_already_reviewed"
+
+
+class ParentNotInReview(StorageConflict):
+    """Revision 带 review_id 时，父材料必须先在该 Review 中。"""
+
+    code = "parent_not_in_review"
+
+
+class RevisionReviewMissing(StorageConflict):
+    """事务内复查发现 Review 已不存在（极小竞态）。"""
+
+    code = "review_not_found"
+
+
+class RevisionParentConflict(StorageConflict):
+    """child 最多一个 parent；relation 创建后不可修改。"""
+
+    code = "revision_parent_conflict"
 
 
 @dataclass(frozen=True)
@@ -192,6 +215,11 @@ CREATE TABLE IF NOT EXISTS review_materials (
     PRIMARY KEY (review_id, material_id)
 );
 CREATE INDEX IF NOT EXISTS idx_review_materials_material ON review_materials(material_id);
+CREATE TABLE IF NOT EXISTS material_revisions (
+    child_material_id TEXT PRIMARY KEY REFERENCES materials(id) ON DELETE CASCADE,
+    parent_material_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -230,33 +258,88 @@ def _material_from_rows(material: sqlite3.Row, blocks: list[sqlite3.Row]) -> Sav
     )
 
 
-def save_material(preview: MarkdownPreview, db_path: Path = DEFAULT_DB_PATH) -> SavedMaterial:
-    """把一次重新解析过的预览原子保存为新材料；失败不留下任何行。"""
-    material_id = f"mat_{uuid.uuid4().hex}"
-    created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+def _insert_material_with_blocks(
+    connection: sqlite3.Connection, preview: MarkdownPreview, material_id: str, created_at: str
+) -> list[Block]:
+    """connection-aware：material + blocks + recent 指针；调用方负责事务与提交。"""
     block_ids = [f"{material_id}-blk-{block.ordinal}" for block in preview.blocks]
     saved_blocks = [
         Block(id=block_id, document_id=material_id, ordinal=block.ordinal, text=block.text, locator=block.locator)
         for block, block_id in zip(preview.blocks, block_ids)
     ]
+    connection.execute(
+        "INSERT INTO materials (id, filename, size_bytes, sha256, line_count, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (material_id, preview.filename, preview.size_bytes, preview.sha256, preview.line_count, created_at),
+    )
+    for block, block_id in zip(preview.blocks, block_ids):
+        connection.execute(
+            "INSERT INTO blocks (id, material_id, ordinal, line_number, text, block_index)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (block_id, material_id, block.ordinal, block.locator.index, block.text, block.locator.block_index),
+        )
+    updated = connection.execute(
+        "UPDATE recent_material SET material_id = ? WHERE singleton = 1", (material_id,)
+    )
+    if updated.rowcount == 0:
+        connection.execute("INSERT INTO recent_material (singleton, material_id) VALUES (1, ?)", (material_id,))
+    return saved_blocks
+
+
+def _set_binding(
+    connection: sqlite3.Connection, material_id: str, rubric_id: str, rubric_revision: int, created_at: str
+) -> None:
+    """connection-aware：单条绑定插入；冲突与兼容性检查由调用方负责。"""
+    connection.execute(
+        "INSERT INTO material_rubric_bindings (material_id, rubric_id, rubric_revision, created_at)"
+        " VALUES (?, ?, ?, ?)",
+        (material_id, rubric_id, rubric_revision, created_at),
+    )
+
+
+def _add_review_member(
+    connection: sqlite3.Connection, review_id: str, material_id: str, label: str
+) -> ReviewMaterialEntry:
+    """connection-aware：成员追加到末尾并刷新 Review.updated_at（保留微秒）。"""
+    position = connection.execute(
+        "SELECT COALESCE(MAX(position) + 1, 0) FROM review_materials WHERE review_id = ?", (review_id,)
+    ).fetchone()[0]
+    connection.execute(
+        "INSERT INTO review_materials (review_id, material_id, label, position) VALUES (?, ?, ?, ?)",
+        (review_id, material_id, label, position),
+    )
+    connection.execute("UPDATE reviews SET updated_at = ? WHERE id = ?", (datetime.now(timezone.utc).isoformat(), review_id))
+    return ReviewMaterialEntry(material_id=material_id, label=label, position=position)
+
+
+def _insert_revision_relation(
+    connection: sqlite3.Connection, child_material_id: str, parent_material_id: str, created_at: str
+) -> MaterialRevision:
+    """connection-aware：child 最多一个 parent；重复即冲突（relation 创建后不可修改）。"""
+    existing = connection.execute(
+        "SELECT parent_material_id FROM material_revisions WHERE child_material_id = ?", (child_material_id,)
+    ).fetchone()
+    if existing is not None:
+        raise RevisionParentConflict(
+            "该材料已有 parent，不能再建立第二个 parent",
+            [f"child={child_material_id}", f"existing_parent={existing['parent_material_id']}"],
+        )
+    connection.execute(
+        "INSERT INTO material_revisions (child_material_id, parent_material_id, created_at) VALUES (?, ?, ?)",
+        (child_material_id, parent_material_id, created_at),
+    )
+    return MaterialRevision(
+        child_material_id=child_material_id, parent_material_id=parent_material_id, created_at=created_at
+    )
+
+
+def save_material(preview: MarkdownPreview, db_path: Path = DEFAULT_DB_PATH) -> SavedMaterial:
+    """把一次重新解析过的预览原子保存为新材料；失败不留下任何行。"""
+    material_id = f"mat_{uuid.uuid4().hex}"
+    created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
     with closing(connect(db_path)) as connection, connection:
-        connection.execute(
-            "INSERT INTO materials (id, filename, size_bytes, sha256, line_count, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (material_id, preview.filename, preview.size_bytes, preview.sha256, preview.line_count, created_at),
-        )
-        for block, block_id in zip(preview.blocks, block_ids):
-            connection.execute(
-                "INSERT INTO blocks (id, material_id, ordinal, line_number, text, block_index)"
-                " VALUES (?, ?, ?, ?, ?, ?)",
-                (block_id, material_id, block.ordinal, block.locator.index, block.text, block.locator.block_index),
-            )
-        updated = connection.execute(
-            "UPDATE recent_material SET material_id = ? WHERE singleton = 1", (material_id,)
-        )
-        if updated.rowcount == 0:
-            connection.execute("INSERT INTO recent_material (singleton, material_id) VALUES (1, ?)", (material_id,))
+        saved_blocks = _insert_material_with_blocks(connection, preview, material_id, created_at)
 
     return SavedMaterial(
         id=material_id,
@@ -266,6 +349,66 @@ def save_material(preview: MarkdownPreview, db_path: Path = DEFAULT_DB_PATH) -> 
         line_count=preview.line_count,
         created_at=created_at,
         blocks=saved_blocks,
+    )
+
+
+def create_material_revision(
+    parent_material_id: str,
+    preview: MarkdownPreview,
+    review_id: str | None = None,
+    label: str | None = None,
+    inherit_binding: tuple[str, int] | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> tuple[SavedMaterial, MaterialRevision] | None:
+    """从已保存父材料派生一份全新 Material（旧材料不可变，不复制/重定向旧引用）。
+
+    单事务：校验 parent/Review 成员 → 新 material + blocks → revision relation →
+    可选 binding → 可选 Review membership + updated_at → recent 指针。
+    Review 路径的 binding 取事务内读到的 Review 精确 rubric；无 Review 时由 inherit_binding 传入父绑定。
+    父材料不存在返回 None；Review/成员校验失败抛 StorageConflict，整体 rollback。
+    """
+    material_id = f"mat_{uuid.uuid4().hex}"
+    created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+    with closing(connect(db_path)) as connection, connection:
+        parent = connection.execute("SELECT 1 FROM materials WHERE id = ?", (parent_material_id,)).fetchone()
+        if parent is None:
+            return None
+        binding = inherit_binding
+        member_label: str | None = None
+        if review_id is not None:
+            review = connection.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
+            if review is None:
+                raise RevisionReviewMissing("找不到该 Review", [f"id={review_id}"])
+            member = connection.execute(
+                "SELECT 1 FROM review_materials WHERE review_id = ? AND material_id = ?",
+                (review_id, parent_material_id),
+            ).fetchone()
+            if member is None:
+                raise ParentNotInReview(
+                    "父材料不在该 Review 中",
+                    [f"review_id={review_id}", f"material_id={parent_material_id}"],
+                )
+            binding = (review["rubric_id"], review["rubric_revision"])
+            member_label = label if label is not None else preview.filename
+        saved_blocks = _insert_material_with_blocks(connection, preview, material_id, created_at)
+        revision = _insert_revision_relation(connection, material_id, parent_material_id, created_at)
+        if binding is not None:
+            _set_binding(connection, material_id, binding[0], binding[1], created_at)
+        if review_id is not None and member_label is not None:
+            _add_review_member(connection, review_id, material_id, member_label)
+
+    return (
+        SavedMaterial(
+            id=material_id,
+            filename=preview.filename,
+            size_bytes=preview.size_bytes,
+            sha256=preview.sha256,
+            line_count=preview.line_count,
+            created_at=created_at,
+            blocks=saved_blocks,
+        ),
+        revision,
     )
 
 
@@ -349,6 +492,62 @@ def delete_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
                     "INSERT INTO recent_material (singleton, material_id) VALUES (1, ?)", (successor["id"],)
                 )
     return True
+
+
+def get_revision_context(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> RevisionContext | None:
+    """只读直接 parent/children；材料不存在返回 None。parent 删除后 parent_available=false。"""
+    with closing(connect(db_path)) as connection:
+        material = connection.execute("SELECT 1 FROM materials WHERE id = ?", (material_id,)).fetchone()
+        if material is None:
+            return None
+        relation = connection.execute(
+            "SELECT r.parent_material_id, (m.id IS NOT NULL) AS parent_available"
+            " FROM material_revisions r LEFT JOIN materials m ON m.id = r.parent_material_id"
+            " WHERE r.child_material_id = ?",
+            (material_id,),
+        ).fetchone()
+        parent = None
+        if relation is not None:
+            parent = RevisionParent(
+                material_id=relation["parent_material_id"],
+                parent_available=bool(relation["parent_available"]),
+            )
+        children_rows = connection.execute(
+            "SELECT r.child_material_id, r.created_at, (m.id IS NOT NULL) AS available"
+            " FROM material_revisions r LEFT JOIN materials m ON m.id = r.child_material_id"
+            " WHERE r.parent_material_id = ?"
+            " ORDER BY r.created_at ASC, r.child_material_id ASC",
+            (material_id,),
+        ).fetchall()
+    return RevisionContext(
+        material_id=material_id,
+        parent=parent,
+        children=[
+            RevisionChild(
+                material_id=row["child_material_id"],
+                available=bool(row["available"]),
+                created_at=row["created_at"],
+            )
+            for row in children_rows
+        ],
+    )
+
+
+def get_editable_source(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> EditableSource | None:
+    """按真实 line_number/line_count 重建 Markdown（LF、补空行）；不承诺 BOM/CRLF/末尾换行。"""
+    material = get_material(material_id, db_path=db_path)
+    if material is None:
+        return None
+    size = max([material.line_count] + [block.locator.index for block in material.blocks])
+    lines = [""] * size
+    for block in material.blocks:
+        lines[block.locator.index - 1] = block.text
+    return EditableSource(
+        material_id=material.id,
+        format="md",
+        text="\n".join(lines),
+        normalization="lf",
+    )
 
 
 def _annotation_from_row(row: sqlite3.Row) -> EvidenceAnnotation:

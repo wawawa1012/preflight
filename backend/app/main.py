@@ -18,11 +18,14 @@ from .contracts import (
     CrossCompareRequest,
     CrossCompareResponse,
     DetectedStatement,
+    EditableSource,
     EvidenceAnnotation,
     EvidenceAnnotationCreate,
     MarkdownPreview,
     MaterialPreflightReport,
     MaterialPreflightSummary,
+    MaterialRevisionCreate,
+    MaterialRevisionCreated,
     MaterialSummary,
     ProposalAcceptance,
     ProposalCandidate,
@@ -34,6 +37,7 @@ from .contracts import (
     ReviewMaterialEntry,
     ReviewMaterialUpsert,
     ReviewUpdate,
+    RevisionContext,
     Rubric,
     RubricBinding,
     RubricBindingCreate,
@@ -44,7 +48,7 @@ from .evidence import QuoteNotFound
 from .markdown_preview import MAX_BYTES, PreviewRejected, build_preview
 from .mock_report import MOCK_REPORT
 from .preflight_report import assemble_report, assemble_summaries
-from .storage import CandidateInput, InvalidCandidate, RubricNotBound, SpanMismatch, StorageConflict
+from .storage import CandidateInput, InvalidCandidate, ParentNotInReview, RubricNotBound, SpanMismatch, StorageConflict
 
 
 @asynccontextmanager
@@ -133,6 +137,66 @@ def remove_material(material_id: str) -> Response:
     if not storage.delete_material(material_id):
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
     return Response(status_code=204)
+
+
+# —— Material Revision v1：只支持 .md；旧材料不可变，child 是全新 Material ——
+
+
+@app.post("/api/v1/materials/{parent_id}/revisions", response_model=MaterialRevisionCreated, status_code=201)
+def create_material_revision(parent_id: str, payload: MaterialRevisionCreate) -> MaterialRevisionCreated:
+    if not storage.material_exists(parent_id):
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={parent_id}"])
+    try:
+        data = payload.text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise PreviewRejected("invalid_encoding", "text 不是有效 UTF-8", [str(exc)]) from exc
+    preview = build_preview(payload.filename, data)
+
+    binding: tuple[str, int] | None = None
+    if payload.review_id is not None:
+        review = storage.get_review_detail(payload.review_id)
+        if review is None:
+            raise LookupFailed("review_not_found", "找不到该 Review", [f"id={payload.review_id}"])
+        if all(entry.material_id != parent_id for entry in review.materials):
+            raise ParentNotInReview(
+                "父材料不在该 Review 中",
+                [f"review_id={payload.review_id}", f"material_id={parent_id}"],
+            )
+        binding = (review.rubric_id, review.rubric_revision)
+    else:
+        parent_binding = storage.get_binding(parent_id)
+        if parent_binding is not None:
+            binding = (parent_binding.rubric_id, parent_binding.rubric_revision)
+    if binding is not None and rubric_store.get_rubric(binding[0], binding[1]) is None:
+        raise LookupFailed("rubric_not_found", "找不到该评分标准版本", [f"{binding[0]} rev{binding[1]}"])
+
+    result = storage.create_material_revision(
+        parent_id,
+        preview,
+        review_id=payload.review_id,
+        label=payload.label,
+        inherit_binding=binding if payload.review_id is None else None,
+    )
+    if result is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={parent_id}"])
+    material, revision = result
+    return MaterialRevisionCreated(material=material, revision=revision)
+
+
+@app.get("/api/v1/materials/{material_id}/revision-context", response_model=RevisionContext)
+def material_revision_context(material_id: str) -> RevisionContext:
+    context = storage.get_revision_context(material_id)
+    if context is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return context
+
+
+@app.get("/api/v1/materials/{material_id}/editable-source", response_model=EditableSource)
+def material_editable_source(material_id: str) -> EditableSource:
+    source = storage.get_editable_source(material_id)
+    if source is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={material_id}"])
+    return source
 
 
 # 只读预审装配：从现有绑定与已确认关联计算，不写库、不做满足判定。

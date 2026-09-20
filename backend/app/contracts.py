@@ -479,6 +479,52 @@ class ReviewDetail(Review):
     materials: list[ReviewMaterialEntry]
 
 
+class MaterialRevision(Contract):
+    # Revision v1：只表示“基于此材料创建”，不代表质量改善/审核完成；创建后不可修改。
+    child_material_id: str
+    parent_material_id: str
+    created_at: str
+
+
+class MaterialRevisionCreate(Contract):
+    # text 是完整 Markdown 文本；服务端按真实 UTF-8 bytes 重算 sha256 并重新解析，不信任客户端 locator。
+    text: str
+    filename: str = Field(min_length=1)
+    review_id: str | None = None
+    label: str | None = Field(default=None, min_length=1)
+
+
+class MaterialRevisionCreated(Contract):
+    material: SavedMaterial
+    revision: MaterialRevision
+
+
+class RevisionParent(Contract):
+    material_id: str
+    parent_available: bool
+
+
+class RevisionChild(Contract):
+    material_id: str
+    available: bool
+    created_at: str
+
+
+class RevisionContext(Contract):
+    # 只返回直接 parent/children；不构成版本树。
+    material_id: str
+    parent: RevisionParent | None = None
+    children: list[RevisionChild]
+
+
+class EditableSource(Contract):
+    # 规范化可编辑文本：LF 换行、按 line_count 补回空行；不承诺 BOM/CRLF/原始终末换行。
+    material_id: str
+    format: Literal["md"]
+    text: str
+    normalization: Literal["lf"]
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -514,4 +560,11 @@ class ContractBundle(Contract):
     repair_suggestion: RepairSuggestion
     cross_compare_request: CrossCompareRequest
     cross_compare_response: CrossCompareResponse
+    material_revision: MaterialRevision
+    material_revision_create: MaterialRevisionCreate
+    material_revision_created: MaterialRevisionCreated
+    revision_parent: RevisionParent
+    revision_child: RevisionChild
+    revision_context: RevisionContext
+    editable_source: EditableSource
     error: ApiError
