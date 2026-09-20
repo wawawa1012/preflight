@@ -1,0 +1,38 @@
+{
+  "id": "rubric_aic2026_review",
+  "revision": 1,
+  "title": "2026 AIC 作品审查标准（Golden v2 配套 · 非官方）",
+  "source_note": "Golden v2 演示包配套标准，由 benchmark/golden-v2/review_standard.md 转录；仅用于演示与模型评估，非官方赛事细则。",
+  "criteria": [
+    {
+      "id": "crit_implementation",
+      "title": "技术实现",
+      "requirement": "核心功能已实现并可运行，部署与运行环境有说明；关键指标有明确出处（实验、测试集、样本量），同一指标在不同处数字一致或已解释条件差异；技术路线选择有依据。",
+      "required_evidence": ["功能与运行说明段落", "关键数字及其测试条件的原文"]
+    },
+    {
+      "id": "crit_functionality",
+      "title": "功能完整度",
+      "requirement": "宣称支持的输入类型与输出内容均在测试或部署实测中有对应记录；测试范围与排除项明确；演示安排不超出已验证范围。",
+      "required_evidence": ["功能支持声明的原文", "测试范围与排除项的原文"]
+    },
+    {
+      "id": "crit_completeness",
+      "title": "方案完整度",
+      "requirement": "背景、做法、实验、不足齐全；数字结论配有测试条件（测试集规模、统计口径、样本构成），光给数字不给条件视为论证不完整；不足与风险如实说明。",
+      "required_evidence": ["测试条件说明段落", "不足或风险说明段落"]
+    },
+    {
+      "id": "crit_innovation",
+      "title": "创新性",
+      "requirement": "创新点有具体描述、动机与现有做法对比，可在材料中定位；“首创/唯一/最优”类表述须有可核查依据（调研范围、对比对象），无依据按过度表述处理；优于传统方法的说法须说明对比对象与数据条件。",
+      "required_evidence": ["创新点描述与对比的原文", "首创类表述及其依据的原文"]
+    },
+    {
+      "id": "crit_value",
+      "title": "应用价值",
+      "requirement": "有真实试用记录与具体用户反馈；从工具输出到可用之间的人工环节与自动化边界说清楚；测试中暴露的短板不得在结论中隐瞒。",
+      "required_evidence": ["试用记录与反馈的原文", "自动化边界说明的原文"]
+    }
+  ]
+}
