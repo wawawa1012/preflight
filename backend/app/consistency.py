@@ -9,7 +9,9 @@
 """
 import re
 
+from .claim_inspector import MAX_STATEMENTS
 from .contracts import Block, ConsistencyCitation, ConsistencyFinding, DetectedStatement
+from .numeric_value import value_key
 
 NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
 
@@ -98,14 +100,6 @@ def _measure_after(text: str, end: int) -> str:
     return run[-MEASURE_MAX:] if len(run) > MEASURE_MAX else run
 
 
-def _value_key(raw: str) -> str:
-    """95 与 95.0 视为同一数值。"""
-    number = float(raw)
-    if number == int(number):
-        return str(int(number))
-    return f"{number:g}"
-
-
 class _Measurement:
     __slots__ = ("value", "unit", "display", "value_key", "measure")
 
@@ -113,7 +107,7 @@ class _Measurement:
         self.value = value
         self.unit = unit
         self.display = f"{value}{unit}"
-        self.value_key = _value_key(value)
+        self.value_key = value_key(value)
         self.measure = measure
 
 
@@ -157,14 +151,21 @@ def _canonical_measures(measures: set[str]) -> dict[str, str]:
     return mapping
 
 
-def _distinct_values(entries: list[tuple[DetectedStatement, _Measurement]]) -> list[str]:
-    """按首次出现顺序列出不同数值（展示形式，带单位）。"""
-    seen_keys: set[str] = set()
+def _distinct_values(
+    entries: list[tuple[DetectedStatement, _Measurement]], *, unit_aware: bool = False
+) -> list[str]:
+    """按首次出现顺序列出不同数值（展示形式，带单位）。
+
+    unit_aware=True 时以 (数值, 单位) 判重，供 cross_compare 使用：95 ms 与 95 秒
+    不能因为裸数值相同就被合并成一条；默认 False 保持同材料历史语义不变。
+    """
+    seen_keys: set[object] = set()
     values: list[str] = []
     for _statement, item in _ordered(entries):
-        if item.value_key in seen_keys:
+        key: object = (item.value_key, item.unit) if unit_aware else item.value_key
+        if key in seen_keys:
             continue
-        seen_keys.add(item.value_key)
+        seen_keys.add(key)
         values.append(item.display)
     return values
 
@@ -192,7 +193,11 @@ def _build_finding(
         for statement, item in ordered
     ]
     joined = "、".join(values)
-    scope = f"已扫描 {block_count} 段原文的 {statement_count} 条关键陈述"
+    coverage = "已达提取上限" if statement_count >= MAX_STATEMENTS else "未达提取上限"
+    scope = (
+        f"扫描范围：{block_count} 段原文，参与检查 {statement_count} 条已提取信号"
+        f"（关键信号提取上限 {MAX_STATEMENTS} 条，{coverage}，非全文穷尽检查）"
+    )
     if kind == "numeric_inconsistency":
         explanation = (
             f"同一度量词「{measure}」在本材料 {len(citations)} 处给出不同数值：{joined}；"
@@ -215,15 +220,20 @@ def _build_finding(
         values=values,
         searched_block_count=block_count,
         searched_statement_count=statement_count,
+        statement_scan_limit=MAX_STATEMENTS,
         explanation=explanation,
         citations=citations,
     )
 
 
 def find_numeric_findings(
-    statements: list[DetectedStatement], blocks: list[Block]
+    statements: list[DetectedStatement], blocks: list[Block], *, unit_aware: bool = False
 ) -> list[ConsistencyFinding]:
-    """返回同材料内的数值一致性 Finding；宁漏勿错，空列表是合法结果。"""
+    """返回数值一致性 Finding；宁漏勿错，空列表是合法结果。
+
+    unit_aware=False 是单材料历史语义（同数值不同单位不报）；cross_compare 传 True，
+    候选形成阶段就保留单位 identity（95 ms vs 95 秒 不能被裸数值去重吞掉）。
+    """
     blocks_by_id = {block.id: block for block in blocks}
     measured: list[tuple[DetectedStatement, _Measurement]] = []
     for statement in statements:
@@ -245,7 +255,7 @@ def find_numeric_findings(
         if entry[1].measure:
             by_measure.setdefault(canonical[entry[1].measure], []).append(entry)
     for measure, entries in by_measure.items():
-        values = _distinct_values(entries)
+        values = _distinct_values(entries, unit_aware=unit_aware)
         if len(values) < 2:
             continue
         units = {item.unit for _statement, item in entries}
@@ -263,12 +273,15 @@ def find_numeric_findings(
         )
 
     # 2) 没有度量词：只有同一量纲单位 + 不同数值才降级为 needs_review，其余不报。
+    #    unit_aware（cross-material）时把所有量纲单位放进同一桶，单位差异留给分类降级；
+    #    单材料默认按单位分桶，历史语义不变。
     by_unit: dict[str, list[tuple[DetectedStatement, _Measurement]]] = {}
     for entry in measured:
         if not entry[1].measure and entry[1].unit in QUANTITATIVE_UNITS:
-            by_unit.setdefault(entry[1].unit, []).append(entry)
+            bucket = "" if unit_aware else entry[1].unit
+            by_unit.setdefault(bucket, []).append(entry)
     for _unit, entries in by_unit.items():
-        values = _distinct_values(entries)
+        values = _distinct_values(entries, unit_aware=unit_aware)
         if len(values) < 2:
             continue
         findings.append(

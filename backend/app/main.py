@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 
-from . import cross_compare, diff, grill, llm, repair_suggest, rubric_store, storage
+from . import criteria_builder, cross_compare, diff, grill, llm, repair_suggest, rubric_store, storage
 from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
@@ -41,6 +41,9 @@ from .contracts import (
     Rubric,
     RubricBinding,
     RubricBindingCreate,
+    RubricDraft,
+    RubricDraftRequest,
+    RubricPublish,
     RunReport,
     SavedMaterial,
 )
@@ -248,8 +251,8 @@ def create_comparison(payload: CrossCompareRequest) -> CrossCompareResponse:
 
 
 # 修改前后 Finding 集合差：人显式选两份材料；同 id 400，缺一 404。不落库。
-@app.post("/api/v1/diffs", response_model=diff.DiffResponse)
-def create_diff(payload: diff.DiffRequest) -> diff.DiffResponse:
+@app.post("/api/v1/diffs", response_model=diff.FindingSetDiffResponse)
+def create_diff(payload: diff.FindingSetDiffRequest) -> diff.FindingSetDiffResponse:
     if payload.material_id_before == payload.material_id_after:
         raise diff.SameMaterialDiff(payload.material_id_before)
     before = storage.get_material(payload.material_id_before)
@@ -318,6 +321,17 @@ def remove_evidence_annotation(material_id: str, annotation_id: str) -> Response
 @app.get("/api/v1/rubrics", response_model=list[Rubric])
 def available_rubrics() -> list[Rubric]:
     return rubric_store.list_rubrics()
+
+
+@app.post("/api/v1/rubrics/draft", response_model=RubricDraft)
+def draft_rubric(payload: RubricDraftRequest) -> RubricDraft:
+    return criteria_builder.draft_requirements(payload)
+
+
+@app.post("/api/v1/rubrics", response_model=Rubric, status_code=201)
+def publish_rubric(payload: RubricPublish) -> Rubric:
+    # 已确认的草稿在这里成为不可变新标准；每次调用都是新 identity，不覆盖旧文件。
+    return rubric_store.publish(payload)
 
 
 @app.get("/api/v1/materials/{material_id}/rubric-binding", response_model=RubricBinding | None)
@@ -527,11 +541,21 @@ def update_review(review_id: str, payload: ReviewUpdate) -> Review:
     return review
 
 
+@app.delete("/api/v1/reviews/{review_id}", status_code=204)
+def remove_review(review_id: str) -> Response:
+    # 只删 Review 本体与成员关系（FK CASCADE）；Material 及其内容、其他历史一律不动。
+    if not storage.delete_review(review_id):
+        raise LookupFailed("review_not_found", "找不到该 Review", [f"id={review_id}"])
+    return Response(status_code=204)
+
+
 @app.put("/api/v1/reviews/{review_id}/materials/{material_id}", response_model=ReviewMaterialEntry)
 def upsert_review_material(
     review_id: str, material_id: str, payload: ReviewMaterialUpsert, response: Response
 ) -> ReviewMaterialEntry:
-    # 区分 404：review 先于 material；绑定冲突由 StorageConflict 处理器返回 409。
+    # 区分 404：review 先于 material。首次加入时，未绑定材料由 storage 在同一事务里
+    # 绑定本 Review 的标准版本（完成首次 binding，不要求用户理解 binding）；
+    # 已绑定其他版本时抛 BindingConflict → 409，绝不自动换绑、不覆盖历史绑定。
     if storage.get_review_detail(review_id) is None:
         raise LookupFailed("review_not_found", "找不到该 Review", [f"id={review_id}"])
     if not storage.material_exists(material_id):
@@ -557,6 +581,18 @@ def remove_review_material(review_id: str, material_id: str) -> Response:
 
 @app.exception_handler(PreviewRejected)
 async def preview_rejected(request: Request, exc: PreviewRejected) -> JSONResponse:
+    error = ApiError(code=exc.code, message=exc.message, details=exc.details)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(criteria_builder.DraftRejected)
+async def draft_rejected(request: Request, exc: criteria_builder.DraftRejected) -> JSONResponse:
+    error = ApiError(code=exc.code, message=exc.message, details=exc.details)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(rubric_store.RubricRejected)
+async def rubric_rejected(request: Request, exc: rubric_store.RubricRejected) -> JSONResponse:
     error = ApiError(code=exc.code, message=exc.message, details=exc.details)
     return JSONResponse(status_code=400, content=error.model_dump())
 

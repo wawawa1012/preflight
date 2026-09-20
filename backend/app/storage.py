@@ -637,13 +637,35 @@ def get_binding(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> RubricBind
     return _binding_from_row(row) if row is not None else None
 
 
+def _ensure_binding_compatible_with_memberships(
+    connection: sqlite3.Connection, material_id: str, rubric_id: str, rubric_revision: int
+) -> None:
+    """connection-aware 单一 invariant：材料所属 Review 的标准版本必须与将绑定的版本一致。
+
+    历史数据可能留下「已在 Review A、却未绑定」的材料；auto first-binding 与显式
+    bind 都调用本 guard，冲突即抛 BindingConflict，由调用方事务整体回滚。
+    """
+    conflicts = connection.execute(
+        "SELECT r.id AS review_id, r.rubric_id, r.rubric_revision FROM review_materials rm"
+        " JOIN reviews r ON r.id = rm.review_id WHERE rm.material_id = ?"
+        " AND (r.rubric_id != ? OR r.rubric_revision != ?)",
+        (material_id, rubric_id, rubric_revision),
+    ).fetchall()
+    if conflicts:
+        raise BindingConflict(
+            "该材料已加入使用其他评分标准版本的 Review，须先移除不兼容的 Review membership 后再绑定",
+            [f"review_id={row['review_id']} 使用 {row['rubric_id']} rev{row['rubric_revision']}" for row in conflicts],
+        )
+
+
 def bind_material_rubric(
     material_id: str, rubric_id: str, rubric_revision: int, db_path: Path = DEFAULT_DB_PATH
 ) -> tuple[RubricBinding, bool] | None:
     """返回 (binding, created)；同版本重复绑定幂等返回已有，换绑抛 BindingConflict；材料不存在返回 None。
 
-    首次绑定前反向检查该材料所属全部 Review：任一 Review 标准与本次绑定不同即抛
-    BindingConflict（保持未绑定，不动 membership）。检查与写入在同一连接事务内完成。
+    首次绑定前反向检查该材料所属全部 Review（与 auto first-binding 共用同一 guard）：
+    任一 Review 标准与本次绑定不同即抛 BindingConflict（保持未绑定，不动 membership）。
+    检查与写入在同一连接事务内完成。
     """
     with closing(connect(db_path)) as connection, connection:
         material = connection.execute("SELECT 1 FROM materials WHERE id = ?", (material_id,)).fetchone()
@@ -659,17 +681,7 @@ def bind_material_rubric(
                 "该材料已绑定其他评分标准版本",
                 [f"已绑定 {existing['rubric_id']} rev{existing['rubric_revision']}"],
             )
-        conflicts = connection.execute(
-            "SELECT r.id AS review_id, r.rubric_id, r.rubric_revision FROM review_materials rm"
-            " JOIN reviews r ON r.id = rm.review_id WHERE rm.material_id = ?"
-            " AND (r.rubric_id != ? OR r.rubric_revision != ?)",
-            (material_id, rubric_id, rubric_revision),
-        ).fetchall()
-        if conflicts:
-            raise BindingConflict(
-                "该材料已加入使用其他评分标准版本的 Review，须先移除不兼容的 Review membership 后再绑定",
-                [f"review_id={row['review_id']} 使用 {row['rubric_id']} rev{row['rubric_revision']}" for row in conflicts],
-            )
+        _ensure_binding_compatible_with_memberships(connection, material_id, rubric_id, rubric_revision)
         created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         connection.execute(
             "INSERT INTO material_rubric_bindings (material_id, rubric_id, rubric_revision, created_at)"
@@ -1099,7 +1111,9 @@ def upsert_review_material(
 ) -> tuple[ReviewMaterialEntry, bool] | None:
     """单事务 upsert 成员：返回 (entry, created)；review/material 不存在返回 None。
 
-    材料已绑定其他 rubric 版本时抛 BindingConflict（绝不自动改绑定）；
+    首次 binding（普通用户不理解 binding，由 Wizard 的「材料 + 标准」确认触发）：
+    材料未绑定 → 在同一事务内绑定本 Review 的标准版本；已绑定相同版本 → 保留原绑定；
+    已绑定其他版本 → BindingConflict（409），绝不自动改绑定、不覆盖历史绑定。
     label 缺省取 filename，position 缺省追加到末尾；更新时缺省保持原值。
     """
     with closing(connect(db_path)) as connection, connection:
@@ -1122,6 +1136,19 @@ def upsert_review_material(
             raise BindingConflict(
                 "该材料已绑定其他评分标准版本，不允许在 Review 中暗中换绑",
                 [f"已绑定 {binding['rubric_id']} rev{binding['rubric_revision']}"],
+            )
+        if binding is None:
+            # Legacy 数据可能已有「已属于其他 Review、却未绑定」的材料；先过共享 guard，
+            # 冲突时整事务回滚：材料保持未绑定、旧 membership 不变、新 membership 不创建。
+            _ensure_binding_compatible_with_memberships(
+                connection, material_id, review["rubric_id"], review["rubric_revision"]
+            )
+            _set_binding(
+                connection,
+                material_id,
+                review["rubric_id"],
+                review["rubric_revision"],
+                datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
             )
         existing = connection.execute(
             "SELECT * FROM review_materials WHERE review_id = ? AND material_id = ?",

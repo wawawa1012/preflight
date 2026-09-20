@@ -254,7 +254,7 @@
     },
     "ConsistencyFinding": {
       "additionalProperties": false,
-      "description": "I8 同材料数值一致性：只在同一度量词下数值不同（或降级需人工判断）时产生。",
+      "description": "I8 同材料数值一致性：只在同一度量词下数值不同（或降级需人工判断）时产生。\n\nsearched_statement_count 是本 Finding 实际参与检查的信号数；statement_scan_limit 是\n「每份材料」的关键陈述提取上限。单材料 Finding 满足 count <= limit；跨材料 Finding 的\ncount 是两侧之和（每侧最多 limit 条），可能大于 limit。两者相等只意味着提取达到上限、\n材料可能还有未提取信号，绝不表示已检查全文。",
       "properties": {
         "material_id": {
           "title": "Material Id",
@@ -290,6 +290,11 @@
           "title": "Searched Statement Count",
           "type": "integer"
         },
+        "statement_scan_limit": {
+          "minimum": 1,
+          "title": "Statement Scan Limit",
+          "type": "integer"
+        },
         "explanation": {
           "minLength": 1,
           "title": "Explanation",
@@ -311,6 +316,7 @@
         "values",
         "searched_block_count",
         "searched_statement_count",
+        "statement_scan_limit",
         "explanation",
         "citations"
       ],
@@ -338,6 +344,75 @@
           },
           "title": "Required Evidence",
           "type": "array"
+        },
+        "max_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Score"
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weight"
+        },
+        "rubric_levels": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/RubricLevel"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric Levels"
+        },
+        "scoring_anchors": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Anchors"
+        },
+        "scoring_sources": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Sources"
         }
       },
       "required": [
@@ -390,6 +465,114 @@
         "finding_ids"
       ],
       "title": "CriterionAssessment",
+      "type": "object"
+    },
+    "CriterionDraft": {
+      "additionalProperties": false,
+      "description": "草稿项：order 只存在于发布前；publish 校验 id/order 后按 order 排序。",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "requirement": {
+          "title": "Requirement",
+          "type": "string"
+        },
+        "required_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Evidence",
+          "type": "array"
+        },
+        "max_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Score"
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Weight"
+        },
+        "rubric_levels": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/RubricLevel"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric Levels"
+        },
+        "scoring_anchors": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Anchors"
+        },
+        "scoring_sources": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Sources"
+        },
+        "order": {
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "requirement",
+        "required_evidence",
+        "order"
+      ],
+      "title": "CriterionDraft",
       "type": "object"
     },
     "CriterionEvidenceLink": {
@@ -951,6 +1134,90 @@
         "searched_document_ids"
       ],
       "title": "Finding",
+      "type": "object"
+    },
+    "FindingSetDiffRequest": {
+      "additionalProperties": false,
+      "description": "实际 POST /api/v1/diffs 的请求：用户显式选中的修改前 / 修改后两个材料 id。",
+      "properties": {
+        "material_id_before": {
+          "minLength": 1,
+          "title": "Material Id Before",
+          "type": "string"
+        },
+        "material_id_after": {
+          "minLength": 1,
+          "title": "Material Id After",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id_before",
+        "material_id_after"
+      ],
+      "title": "FindingSetDiffRequest",
+      "type": "object"
+    },
+    "FindingSetDiffResponse": {
+      "additionalProperties": false,
+      "description": "实际 POST /api/v1/diffs 的数值 Finding 集合差（resolved/unchanged/new）；不落库、不给分。\n\n与 VersionDiff 语义不同：这里比较的是两份材料的同材料数值一致性 Finding 指纹集合。\nresolved 只表示修改后本次规则未再检出同一 fingerprint，不代表事实已正确或风险已解决。",
+      "properties": {
+        "material_id_before": {
+          "title": "Material Id Before",
+          "type": "string"
+        },
+        "material_id_after": {
+          "title": "Material Id After",
+          "type": "string"
+        },
+        "filename_before": {
+          "minLength": 1,
+          "title": "Filename Before",
+          "type": "string"
+        },
+        "filename_after": {
+          "minLength": 1,
+          "title": "Filename After",
+          "type": "string"
+        },
+        "note": {
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        },
+        "resolved": {
+          "items": {
+            "$ref": "#/$defs/ConsistencyFinding"
+          },
+          "title": "Resolved",
+          "type": "array"
+        },
+        "unchanged": {
+          "items": {
+            "$ref": "#/$defs/ConsistencyFinding"
+          },
+          "title": "Unchanged",
+          "type": "array"
+        },
+        "new": {
+          "items": {
+            "$ref": "#/$defs/ConsistencyFinding"
+          },
+          "title": "New",
+          "type": "array"
+        }
+      },
+      "required": [
+        "material_id_before",
+        "material_id_after",
+        "filename_before",
+        "filename_after",
+        "note",
+        "resolved",
+        "unchanged",
+        "new"
+      ],
+      "title": "FindingSetDiffResponse",
       "type": "object"
     },
     "Locator": {
@@ -1789,6 +2056,148 @@
       "title": "RepairSuggestion",
       "type": "object"
     },
+    "Review": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "rubric_id",
+        "rubric_revision",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "Review",
+      "type": "object"
+    },
+    "ReviewCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "title",
+        "rubric_id",
+        "rubric_revision"
+      ],
+      "title": "ReviewCreate",
+      "type": "object"
+    },
+    "ReviewDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "rubric_id": {
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "rubric_revision": {
+          "minimum": 1,
+          "title": "Rubric Revision",
+          "type": "integer"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "materials": {
+          "items": {
+            "$ref": "#/$defs/ReviewMaterialEntry"
+          },
+          "title": "Materials",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "rubric_id",
+        "rubric_revision",
+        "created_at",
+        "updated_at",
+        "materials"
+      ],
+      "title": "ReviewDetail",
+      "type": "object"
+    },
+    "ReviewMaterialEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "position": {
+          "minimum": 0,
+          "title": "Position",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "material_id",
+        "label",
+        "position"
+      ],
+      "title": "ReviewMaterialEntry",
+      "type": "object"
+    },
     "ReviewQuestion": {
       "additionalProperties": false,
       "properties": {
@@ -1936,6 +2345,84 @@
           },
           "title": "Criteria",
           "type": "array"
+        },
+        "source_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Text"
+        },
+        "source_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "plain_text",
+                "markdown",
+                "rubric_json",
+                "manual"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Type"
+        },
+        "source_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Name"
+        },
+        "aggregation_rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation Rule"
+        },
+        "aggregation_rule_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation Rule Source"
+        },
+        "model_assisted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Assisted"
         }
       },
       "required": [
@@ -1996,6 +2483,271 @@
         "rubric_revision"
       ],
       "title": "RubricBindingCreate",
+      "type": "object"
+    },
+    "RubricDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "source_note": {
+          "minLength": 1,
+          "title": "Source Note",
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "plain_text",
+            "markdown",
+            "rubric_json",
+            "manual"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "source_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Name"
+        },
+        "source_text": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "aggregation_rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation Rule"
+        },
+        "aggregation_rule_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation Rule Source"
+        },
+        "model_assisted": {
+          "default": false,
+          "title": "Model Assisted",
+          "type": "boolean"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/CriterionDraft"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Criteria",
+          "type": "array"
+        }
+      },
+      "required": [
+        "title",
+        "source_note",
+        "source_type",
+        "source_text",
+        "criteria"
+      ],
+      "title": "RubricDraft",
+      "type": "object"
+    },
+    "RubricDraftRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "source_type": {
+          "default": "plain_text",
+          "enum": [
+            "plain_text",
+            "markdown",
+            "rubric_json"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "source_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Name"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "RubricDraftRequest",
+      "type": "object"
+    },
+    "RubricLevel": {
+      "additionalProperties": false,
+      "description": "源标准里真实写出过的评分档位；label 必须能在源文本中定位，缺失一律不填。",
+      "properties": {
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "title": "RubricLevel",
+      "type": "object"
+    },
+    "RubricPublish": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "source_note": {
+          "minLength": 1,
+          "title": "Source Note",
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "plain_text",
+            "markdown",
+            "rubric_json",
+            "manual"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "source_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Name"
+        },
+        "source_text": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "aggregation_rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation Rule"
+        },
+        "aggregation_rule_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation Rule Source"
+        },
+        "model_assisted": {
+          "default": false,
+          "title": "Model Assisted",
+          "type": "boolean"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/CriterionDraft"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Criteria",
+          "type": "array"
+        },
+        "confirmed": {
+          "const": true,
+          "title": "Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "title",
+        "source_note",
+        "source_type",
+        "source_text",
+        "criteria",
+        "confirmed"
+      ],
+      "title": "RubricPublish",
       "type": "object"
     },
     "Run": {
@@ -2327,6 +3079,7 @@
     },
     "VersionDiff": {
       "additionalProperties": false,
+      "description": "Phase 0 冻结的 Run-based 版本差（尚未实现）；不是 /api/v1/diffs 的 Finding 集合差。",
       "properties": {
         "before_run_id": {
           "title": "Before Run Id",
@@ -2372,11 +3125,44 @@
   },
   "additionalProperties": false,
   "properties": {
+    "rubric_draft_request": {
+      "$ref": "#/$defs/RubricDraftRequest"
+    },
+    "rubric_draft": {
+      "$ref": "#/$defs/RubricDraft"
+    },
+    "rubric_publish": {
+      "$ref": "#/$defs/RubricPublish"
+    },
+    "rubric_level": {
+      "$ref": "#/$defs/RubricLevel"
+    },
+    "criterion_draft": {
+      "$ref": "#/$defs/CriterionDraft"
+    },
+    "review": {
+      "$ref": "#/$defs/Review"
+    },
+    "review_create": {
+      "$ref": "#/$defs/ReviewCreate"
+    },
+    "review_detail": {
+      "$ref": "#/$defs/ReviewDetail"
+    },
+    "review_material": {
+      "$ref": "#/$defs/ReviewMaterialEntry"
+    },
     "report": {
       "$ref": "#/$defs/RunReport"
     },
     "diff": {
       "$ref": "#/$defs/VersionDiff"
+    },
+    "finding_set_diff_request": {
+      "$ref": "#/$defs/FindingSetDiffRequest"
+    },
+    "finding_set_diff_response": {
+      "$ref": "#/$defs/FindingSetDiffResponse"
     },
     "run_request": {
       "$ref": "#/$defs/RunRequest"
@@ -2482,8 +3268,19 @@
     }
   },
   "required": [
+    "rubric_draft_request",
+    "rubric_draft",
+    "rubric_publish",
+    "rubric_level",
+    "criterion_draft",
+    "review",
+    "review_create",
+    "review_detail",
+    "review_material",
     "report",
     "diff",
+    "finding_set_diff_request",
+    "finding_set_diff_response",
     "run_request",
     "preview",
     "saved_material",

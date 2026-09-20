@@ -15,11 +15,27 @@ class Project(Contract):
     name: str
 
 
+class RubricLevel(Contract):
+    """源标准里真实写出过的评分档位；label 必须能在源文本中定位，缺失一律不填。"""
+
+    label: str = Field(min_length=1)
+    description: str | None = None
+    score: float | None = None
+
+
 class Criterion(Contract):
     id: str
     title: str
     requirement: str
     required_evidence: list[str]
+    # 评分语义：只有源标准真实写出时才允许填写，否则一律 null。
+    # 模型不得自行设计分数/权重/档位/锚点；plain_text/markdown 来源的每个评分字段
+    # 必须由 scoring_sources 里的逐字原文片段支持（见 scoring_provenance）。
+    max_score: float | None = None
+    weight: float | None = None
+    rubric_levels: list[RubricLevel] | None = None
+    scoring_anchors: list[str] | None = None
+    scoring_sources: list[str] | None = None
 
 
 class Rubric(Contract):
@@ -28,6 +44,44 @@ class Rubric(Contract):
     title: str
     source_note: str
     criteria: list[Criterion]
+    # 溯源：publish 时原样保留用户提供的来源与整理方式；旧文件永不改写。
+    source_text: str | None = None
+    source_type: Literal["plain_text", "markdown", "rubric_json", "manual"] | None = None
+    source_name: str | None = None
+    aggregation_rule: str | None = None
+    aggregation_rule_source: str | None = None
+    model_assisted: bool | None = None
+
+
+class RubricDraftRequest(Contract):
+    text: str = Field(min_length=1, max_length=20000)
+    source_type: Literal["plain_text", "markdown", "rubric_json"] = "plain_text"
+    source_name: str | None = Field(default=None, max_length=200)
+
+
+class CriterionDraft(Criterion):
+    """草稿项：order 只存在于发布前；publish 校验 id/order 后按 order 排序。"""
+
+    order: int = Field(ge=0)
+
+
+class RubricDraft(Contract):
+    title: str = Field(min_length=1)
+    source_note: str = Field(min_length=1)
+    # 草稿端点只产生前三种；"manual" 供模型不可用时用户手工发布留档。
+    source_type: Literal["plain_text", "markdown", "rubric_json", "manual"]
+    source_name: str | None = None
+    source_text: str = Field(min_length=1, max_length=20000)
+    aggregation_rule: str | None = None
+    # aggregation_rule 的逐字来源片段（plain_text/markdown 必填，否则 publish 拒绝）。
+    aggregation_rule_source: str | None = None
+    model_assisted: bool = False
+    criteria: list[CriterionDraft] = Field(min_length=1, max_length=50)
+
+
+class RubricPublish(RubricDraft):
+    # 显式人工确认后才发布；每次 publish 生成新 identity/revision，旧文件永不改写。
+    confirmed: Literal[True]
 
 
 class MaterialVersion(Contract):
@@ -165,6 +219,8 @@ class RunReport(Contract):
 
 
 class DiffEntry(Contract):
+    # resolved 只表示「修改后本次规则未再检出同一 fingerprint」，不代表事实已正确、
+    # 风险已解决或修改一定有效；new/unchanged 同理只是本轮规则输出。
     fingerprint: str
     status: Literal["resolved", "new", "unchanged"]
     before_finding_id: str | None
@@ -172,6 +228,8 @@ class DiffEntry(Contract):
 
 
 class VersionDiff(Contract):
+    """Phase 0 冻结的 Run-based 版本差（尚未实现）；不是 /api/v1/diffs 的 Finding 集合差。"""
+
     before_run_id: str
     after_run_id: str
     comparable: bool
@@ -400,7 +458,13 @@ class ConsistencyCitation(Contract):
 
 
 class ConsistencyFinding(Contract):
-    """I8 同材料数值一致性：只在同一度量词下数值不同（或降级需人工判断）时产生。"""
+    """I8 同材料数值一致性：只在同一度量词下数值不同（或降级需人工判断）时产生。
+
+    searched_statement_count 是本 Finding 实际参与检查的信号数；statement_scan_limit 是
+    「每份材料」的关键陈述提取上限。单材料 Finding 满足 count <= limit；跨材料 Finding 的
+    count 是两侧之和（每侧最多 limit 条），可能大于 limit。两者相等只意味着提取达到上限、
+    材料可能还有未提取信号，绝不表示已检查全文。
+    """
 
     material_id: str
     kind: Literal["numeric_inconsistency", "needs_review"]
@@ -408,8 +472,33 @@ class ConsistencyFinding(Contract):
     values: list[str] = Field(min_length=2)
     searched_block_count: int = Field(ge=0)
     searched_statement_count: int = Field(ge=0)
+    statement_scan_limit: int = Field(ge=1)
     explanation: str = Field(min_length=1)
     citations: list[ConsistencyCitation] = Field(min_length=2)
+
+
+class FindingSetDiffRequest(Contract):
+    """实际 POST /api/v1/diffs 的请求：用户显式选中的修改前 / 修改后两个材料 id。"""
+
+    material_id_before: str = Field(min_length=1)
+    material_id_after: str = Field(min_length=1)
+
+
+class FindingSetDiffResponse(Contract):
+    """实际 POST /api/v1/diffs 的数值 Finding 集合差（resolved/unchanged/new）；不落库、不给分。
+
+    与 VersionDiff 语义不同：这里比较的是两份材料的同材料数值一致性 Finding 指纹集合。
+    resolved 只表示修改后本次规则未再检出同一 fingerprint，不代表事实已正确或风险已解决。
+    """
+
+    material_id_before: str
+    material_id_after: str
+    filename_before: str = Field(min_length=1)
+    filename_after: str = Field(min_length=1)
+    note: str = Field(min_length=1)
+    resolved: list[ConsistencyFinding]
+    unchanged: list[ConsistencyFinding]
+    new: list[ConsistencyFinding]
 
 
 class RepairSuggestion(Contract):
@@ -532,8 +621,19 @@ class ApiError(Contract):
 
 
 class ContractBundle(Contract):
+    rubric_draft_request: RubricDraftRequest
+    rubric_draft: RubricDraft
+    rubric_publish: RubricPublish
+    rubric_level: RubricLevel
+    criterion_draft: CriterionDraft
+    review: Review
+    review_create: ReviewCreate
+    review_detail: ReviewDetail
+    review_material: ReviewMaterialEntry
     report: RunReport
     diff: VersionDiff
+    finding_set_diff_request: FindingSetDiffRequest
+    finding_set_diff_response: FindingSetDiffResponse
     run_request: RunRequest
     preview: MarkdownPreview
     saved_material: SavedMaterial

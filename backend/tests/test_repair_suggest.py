@@ -159,6 +159,7 @@ class RepairSuggestionPureTest(unittest.TestCase):
             values=["95%", "90%"],
             searched_block_count=1,
             searched_statement_count=2,
+            statement_scan_limit=20,
             explanation="同一单位出现不同数值",
             citations=[
                 ConsistencyCitation(

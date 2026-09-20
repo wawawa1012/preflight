@@ -144,11 +144,11 @@ class DiffFindingsPureTest(unittest.TestCase):
         second = diff.diff_findings(before, after).model_dump()
         self.assertEqual(first, second)
 
-    def test_request_and_response_are_local_contracts(self) -> None:
-        request = diff.DiffRequest(material_id_before="mat_before", material_id_after="mat_after")
+    def test_request_and_response_use_exported_finding_set_diff_contracts(self) -> None:
+        request = diff.FindingSetDiffRequest(material_id_before="mat_before", material_id_after="mat_after")
         self.assertEqual(request.material_id_before, "mat_before")
         with self.assertRaises(ValueError):
-            diff.DiffRequest(material_id_before="mat_before", material_id_after="mat_after", extra_field="x")
+            diff.FindingSetDiffRequest(material_id_before="mat_before", material_id_after="mat_after", extra_field="x")
 
         before = material_of("mat_before", "draft.md", ["实验组准确率达到 88%。", "复现实验的准确率达到 93%。"])
         after = material_of("mat_after", "revised.md", ["实验组准确率达到 93%。"])
@@ -161,12 +161,37 @@ class DiffFindingsPureTest(unittest.TestCase):
                     "material_id_after",
                     "filename_before",
                     "filename_after",
+                    "note",
                     "resolved",
                     "unchanged",
                     "new",
                 ]
             ),
         )
+
+    def test_finding_set_diff_is_exported_and_distinct_from_version_diff(self) -> None:
+        from app.contracts import ContractBundle, FindingSetDiffResponse, VersionDiff
+
+        self.assertIsNot(FindingSetDiffResponse, VersionDiff)
+        self.assertIn("finding_set_diff_request", ContractBundle.model_fields)
+        self.assertIn("finding_set_diff_response", ContractBundle.model_fields)
+        self.assertIn("finding_set_diff_response", ContractBundle.model_json_schema()["properties"])
+
+        before = material_of("mat_before", "draft.md", ["实验组准确率达到 88%。", "复现实验的准确率达到 93%。"])
+        after = material_of("mat_after", "revised.md", ["实验组准确率达到 93%。"])
+        self.assertIsInstance(diff.diff_findings(before, after), FindingSetDiffResponse)
+
+    def test_resolved_does_not_overclaim_fix(self) -> None:
+        # resolved 只是「本轮规则未再检出同一 fingerprint」，不得表述为事实已正确或风险已解决。
+        before = material_of("mat_before", "draft.md", ["实验组准确率达到 88%。", "复现实验的准确率达到 93%。"])
+        after = material_of("mat_after", "revised.md", ["实验组准确率达到 93%。", "复现实验的准确率达到 93%。"])
+
+        result = diff.diff_findings(before, after)
+
+        self.assertIn("未再检出", result.note)
+        self.assertIn("不代表", result.note)
+        self.assertIn("正确", result.note)
+        self.assertIn("解决", result.note)
 
     def test_diff_module_stays_pure(self) -> None:
         source = Path(diff.__file__).read_text(encoding="utf-8")

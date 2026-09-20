@@ -151,7 +151,9 @@ class RevisionStorageTest(unittest.TestCase):
         self.assertNotEqual(detail.updated_at, before_updated)
         binding = storage.get_binding(child.id, self.db)
         self.assertEqual((binding.rubric_id, binding.rubric_revision), ("rubric_syn", 1))
-        self.assertIsNone(storage.get_binding(self.parent.id, self.db))
+        # 加入 Review 时首次 binding 已完成：parent 同样绑定 Review 的精确 rubric。
+        parent_binding = storage.get_binding(self.parent.id, self.db)
+        self.assertEqual((parent_binding.rubric_id, parent_binding.rubric_revision), ("rubric_syn", 1))
 
     def test_review_path_explicit_label_wins(self) -> None:
         review = storage.create_review("评审", "rubric_syn", 1, self.db)

@@ -1,0 +1,37 @@
+{
+  "test_only": true,
+  "draft": {
+    "title": "Fixture 标准（test-only）",
+    "source_note": "契约 fixture，非真实标准",
+    "source_type": "plain_text",
+    "source_name": "fixture.txt",
+    "source_text": "一、技术实现：核心功能已实现并可运行，满分 20 分。\n二、创新性：创新点需与现有做法对比。",
+    "aggregation_rule": null,
+    "model_assisted": true,
+    "criteria": [
+      {
+        "id": "crit_fixture_1",
+        "title": "技术实现",
+        "requirement": "核心功能已实现并可运行",
+        "required_evidence": ["功能与运行说明段落"],
+        "max_score": 20,
+        "weight": null,
+        "rubric_levels": null,
+        "scoring_anchors": null,
+        "scoring_sources": ["满分 20 分"],
+        "order": 0
+      },
+      {
+        "id": "crit_fixture_2",
+        "title": "创新性",
+        "requirement": "创新点需与现有做法对比",
+        "required_evidence": [],
+        "max_score": null,
+        "weight": null,
+        "rubric_levels": null,
+        "scoring_anchors": null,
+        "order": 1
+      }
+    ]
+  }
+}

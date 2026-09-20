@@ -1,5 +1,21 @@
 # Progress log
 
+## 2026-09-20 — Sprint 1 Usability Foundation（Integration Fix Round，待 Mechanical QA，未提交）
+
+本轮只动 backend/contracts/docs 与 generated `frontend/src/types/contracts.ts`（其他 frontend 未触碰）：
+
+- **Trust P0 sameVariantSets + unit-aware 候选形成**：`cross_compare` 以 unit_aware 模式调用一致性 finder，候选阶段按 (数值, 单位) 判重——95 ms vs 95 秒 不再被裸数值 95 去重吞掉；两侧归一化集合相同（顺序不同、95 vs 95.0、百分比/单位别名）不产生跨材料 Finding；部分重合或单位不可安全比较降级 `needs_review`；只有同一度量词、可比较单位、集合无交集才报 `numeric_inconsistency`。单材料 finder 默认语义不变（有回归锁定）。跨材料解释说明「每份最多前 20 条、非全文穷尽、未判定条件相同/任何一方正确」。
+- **Statement scope**：`ConsistencyFinding.statement_scan_limit`（每份材料提取上限）+ explanation 区分已达/未达上限并写明非穷尽。
+- **Scoring provenance（替换全 source substring anchoring）**：plain_text/markdown 来源的评分语义必须带 `scoring_sources` 逐字原文片段；程序复验片段存在、数值独立 token（20 不命中 120）、档位 label/description/score 与锚点可定位；支持不了则草稿丢弃、publish 拒绝（`confirmed=true` 不能豁免）。rubric_json 结构化原文与 manual 用户自撰规则不走该外部校验。`Rubric` 保留 `source_name` / `aggregation_rule_source` / `scoring_sources` 溯源。
+- **Legacy binding guard**：explicit binding 与 auto first-binding 共用 `_ensure_binding_compatible_with_memberships`；历史「已属于 Review A、却未绑定」材料加入不同标准 Review B 时 409，整事务回滚。legacy fixture 用原始 SQL 构造，不经新 API。
+- **Contract export**：实际 `/diffs` 的 `FindingSetDiffRequest` / `FindingSetDiffResponse` 移入 contracts.py 并加入 ContractBundle，与 Run-based `VersionDiff` 保持独立 identity；schema 重导出、generated TS 重生成并包含 Revision / Criteria Builder / scoring metadata / `statement_scan_limit` / Diff note / Review contracts。
+- **Review 可用性**：`DELETE /api/v1/reviews/{id}`（只删 Review 与成员关系）；成员首次加入完成未绑定材料的首次 binding。
+- 内部实现：数值归一化 `value_key`/数字 token 定位移入 backend-internal `numeric_value.py`，不进入 wire contract。
+
+验证命令（只跑步本 Fix Round targeted tests；完整 suite 由 Mechanical QA 跑）：
+`backend/.venv/Scripts/python.exe -X utf8 -m unittest tests.test_cross_compare tests.test_consistency tests.test_criteria_builder tests.test_reviews tests.test_diff tests.test_contract_export` → PASS；
+`backend/.venv/Scripts/python.exe -X utf8 scripts/export_contracts.py` + `scripts/check_contracts.py` → PASS；`npm.cmd --prefix frontend run contracts` 后 generated TS 含全部要求 identity。前端未构建、未调用真实 LLM、未提交。
+
 ## 2026-09-19 — Agent Red-Team & Evaluation Gate（独立 worktree，未合并）
 
 基线 `190158f`；实际复现三角色接受重复JSON字段、Evidence接受十万字符rationale的解析缺口。

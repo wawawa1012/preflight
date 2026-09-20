@@ -11,6 +11,8 @@ from app.contracts import (
     CriterionEvidenceLink,
     EvidenceAnnotation,
     MaterialPreflightReport,
+    RubricDraft,
+    RubricPublish,
     RunReport,
     VersionDiff,
 )
@@ -78,6 +80,16 @@ def check_report(report: RunReport) -> None:
 schema = json.loads((ROOT / "contracts/schema.json").read_text(encoding="utf-8"))
 schema.pop("$schema")
 assert schema == ContractBundle.model_json_schema(), "Stale JSON Schema; regenerate"
+properties = schema["properties"]
+assert properties["diff"]["$ref"] != properties["finding_set_diff_response"]["$ref"], (
+    "VersionDiff 与实际 /diffs 的 FindingSetDiffResponse 必须是独立 identity"
+)
+assert "statement_scan_limit" in schema["$defs"]["ConsistencyFinding"]["properties"], (
+    "ConsistencyFinding 必须导出 statement_scan_limit"
+)
+assert "scoring_sources" in schema["$defs"]["Criterion"]["properties"], (
+    "Criterion 必须导出 scoring_sources provenance"
+)
 raw = (ROOT / "contracts/fixtures/report.json").read_text(encoding="utf-8")
 report = RunReport.model_validate_json(raw)
 check_report(report)
@@ -215,7 +227,43 @@ except AssertionError:
     pass
 else:
     raise AssertionError("Zero-citation row without scope sentence was accepted")
+
+
+def check_rubric_draft_fixture(fixture: dict) -> None:
+    """Criteria Builder fixture：草稿可编辑、id/order 唯一、评分语义只在源有分数时出现。"""
+    draft = RubricDraft.model_validate(fixture["draft"])
+    publish = RubricPublish.model_validate({**fixture["draft"], "confirmed": True})
+    assert draft.source_text and draft.source_text == publish.source_text
+    assert publish.confirmed is True
+    ids = [criterion.id for criterion in publish.criteria]
+    orders = [criterion.order for criterion in publish.criteria]
+    assert len(set(ids)) == len(ids), "criterion ids must be unique"
+    assert len(set(orders)) == len(orders), "criterion orders must be unique"
+    assert draft.criteria[0].max_score == 20, "scoring present in source must be preserved"
+    assert draft.criteria[0].scoring_sources == ["满分 20 分"], "scoring provenance quotes must survive"
+    assert draft.criteria[1].max_score is None, "absent scoring must stay null"
+
+
+rubric_draft_raw = json.loads((ROOT / "contracts/fixtures/rubric_draft.json").read_text(encoding="utf-8"))
+assert rubric_draft_raw["test_only"] is True
+check_rubric_draft_fixture(rubric_draft_raw)
+tampered_draft = json.loads(json.dumps(rubric_draft_raw))
+tampered_draft["draft"]["criteria"][1]["id"] = tampered_draft["draft"]["criteria"][0]["id"]
+try:
+    check_rubric_draft_fixture(tampered_draft)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Duplicate criterion ids were accepted")
+tampered_publish = {**rubric_draft_raw["draft"], "confirmed": False}
+try:
+    RubricPublish.model_validate(tampered_publish)
+except ValidationError:
+    pass
+else:
+    raise AssertionError("Unconfirmed rubric publish was accepted")
 print(
     "PASS: schema freshness, fixture structure/references, quote checks, "
-    "evidence annotation checks, criterion link checks, proposal checks, preflight report checks, negative cases"
+    "evidence annotation checks, criterion link checks, proposal checks, preflight report checks, "
+    "rubric draft checks, negative cases"
 )

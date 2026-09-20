@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from app import main, storage
-from app.claim_inspector import inspect_statements
+from app.claim_inspector import MAX_STATEMENTS, inspect_statements
 from app.consistency import find_numeric_findings
 from app.contracts import DetectedStatement
 from app.markdown_preview import build_preview
@@ -118,6 +118,40 @@ class FindNumericFindingsTest(unittest.TestCase):
     def test_no_statements_no_findings(self) -> None:
         blocks, _statements = statements_of("只有一段没有任何数字的普通文字。\n")
         self.assertEqual(find_numeric_findings([], blocks), [])
+
+    def test_same_numeric_different_unit_stays_silent_for_single_material(self) -> None:
+        # 单材料历史语义不变：裸数值相同的单位差异不算数值不一致（cross 路径才 unit_aware）。
+        blocks, statements = statements_of("准确率达到 95%。\n\n准确率达到 95 毫秒。\n")
+        self.assertEqual(find_numeric_findings(statements, blocks), [])
+
+    def test_unit_aware_mode_keeps_unit_identity_for_cross_path(self) -> None:
+        blocks, statements = statements_of("准确率达到 95%。\n\n准确率达到 95 毫秒。\n")
+        findings = find_numeric_findings(statements, blocks, unit_aware=True)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].kind, "needs_review")
+        self.assertEqual(findings[0].values, ["95%", "95毫秒"])
+
+    def test_scope_is_truthful_when_extraction_hits_the_cap(self) -> None:
+        # 30 行、每行一个信号：inspect_statements 只提取前 20 条，Finding 必须如实说明非穷尽。
+        text = "".join(f"第 {index} 项准确率达到 {index}%。\n\n" for index in range(1, 31))
+        blocks, statements = statements_of(text)
+        self.assertEqual(len(statements), MAX_STATEMENTS)
+
+        findings = find_numeric_findings(statements, blocks)
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(finding.searched_statement_count, MAX_STATEMENTS)
+        self.assertEqual(finding.statement_scan_limit, MAX_STATEMENTS)
+        self.assertIn(str(MAX_STATEMENTS), finding.explanation)
+        self.assertIn("已达提取上限", finding.explanation)
+        self.assertIn("非全文穷尽检查", finding.explanation)
+
+    def test_scope_marks_uncapped_scan_when_below_limit(self) -> None:
+        blocks, statements = statements_of("准确率达到 95%。\n\n准确率达到 90%。\n")
+        finding = find_numeric_findings(statements, blocks)[0]
+        self.assertEqual(finding.statement_scan_limit, MAX_STATEMENTS)
+        self.assertIn("未达提取上限", finding.explanation)
 
 
 class ConsistencyApiTest(unittest.TestCase):
