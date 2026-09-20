@@ -9,7 +9,8 @@ import { locatorLabel } from '../utils/locatorLabel'
 // 修改前后变化时间线：只比较两个下拉里由人显式选中的「修改前 / 修改后」两个材料 id。
 // 打开页面只 GET 材料列表；POST /api/v1/diffs 只由「比较修改效果」按钮触发，不会自动扫描材料库。
 // 契约与后端 app/diff.py 同形，自带在本视图内，不改共享 types。
-// 页头/空态消费共享 review/PageHeader + review/EmptyState；页宽 max-w-6xl；结果区少边框（色调底 + divide）。
+// 页面主视觉是「变化」：先给 修改前 N 个一致性待核对项 → 修改后 M 个一致性待核对项 的摘要与一句差值说明，
+// 再按 已解决/仍存在/新增 时间线摊开；与检查页的左右对照区分开，这里不做并排两栏。
 interface DiffRequest {
   material_id_before: string
   material_id_after: string
@@ -43,7 +44,7 @@ const canDiff = computed(() => materialIdBefore.value !== '' && materialIdAfter.
 const beforeCount = computed(() => (result.value ? result.value.resolved.length + result.value.unchanged.length : 0))
 const afterCount = computed(() => (result.value ? result.value.unchanged.length + result.value.new.length : 0))
 
-// 三组都空是合法结果：对照完成但两份版本间没有可对照的数值一致性差异。
+// 三组都空是对照完成的正常结果：两份版本之间没有可识别的问题变化。
 const emptyResult = computed(
   () =>
     result.value !== null &&
@@ -52,18 +53,28 @@ const emptyResult = computed(
     result.value.new.length === 0,
 )
 
-// 变化时间线固定顺序：已解决（emerald）→ 仍存在（amber）→ 新增（rose）；空组也渲染（合法结果）。
+// 摘要下的一句话：只陈述两组数字的差，不评价修改质量。
+const deltaSentence = computed(() => {
+  if (!result.value || emptyResult.value) return ''
+  const before = beforeCount.value
+  const after = afterCount.value
+  if (after < before) return `比修改前少了 ${before - after} 个待核对项。`
+  if (after > before) return `比修改前多了 ${after - before} 个待核对项，请重点查看「新增」。`
+  return '待核对项数量没有变化。'
+})
+
+// 变化时间线固定顺序：已解决（emerald）→ 仍存在（amber）→ 新增（rose）；空组也渲染（部分空时给说明）。
 const groups = computed(() =>
   result.value === null
     ? []
     : [
-        { key: 'resolved', title: '已解决', tone: 'emerald', hint: '修改前存在、修改后不再出现。', findings: result.value.resolved },
-        { key: 'unchanged', title: '仍存在', tone: 'amber', hint: '修改前后都在，还没有被改掉。', findings: result.value.unchanged },
+        { key: 'resolved', title: '已解决', tone: 'emerald', hint: '修改前有、这次修改后不再出现。', findings: result.value.resolved },
+        { key: 'unchanged', title: '仍存在', tone: 'amber', hint: '修改前后都在，还没有消失。', findings: result.value.unchanged },
         { key: 'new', title: '新增', tone: 'rose', hint: '修改前没有、修改后新出现。', findings: result.value.new },
       ],
 )
 
-// 组色调只做视觉提示（点 / 大数字 / 卡片底色），不改文案语义。
+// 组色调只做视觉提示（点 / 数字 / 卡片底色），不改文案语义。
 const toneDot: Record<string, string> = {
   emerald: 'border-emerald-400 bg-emerald-950',
   amber: 'border-amber-400 bg-amber-950',
@@ -110,7 +121,7 @@ async function compare() {
   if (diffing.value || !canDiff.value) return
   if (sameSelection.value) {
     result.value = null
-    diffError.value = '不能对照同一份材料，请选择两份不同的材料'
+    diffError.value = '两份材料不能相同，请选择两份不同的材料'
     return
   }
   diffing.value = true
@@ -213,46 +224,47 @@ loadMaterials()
 
 <template>
   <main class="mx-auto max-w-6xl px-6 py-10">
-    <PageHeader title="修改前后少了什么问题" subtitle="看审查发现哪些已解决、哪些还在、哪些是新的。">
+    <PageHeader title="修改效果" subtitle="看一致性待核对项哪些已解决、哪些仍在、哪些是新的。">
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
       <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
     </PageHeader>
 
-    <!-- 选材面板：材料够两份才渲染表单；空态/错误态走共享 EmptyState，不再各自套边框。 -->
-    <UCard v-if="!loading && !loadError && materials.length >= 2" class="mt-6">
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="text-xs text-slate-400">
+    <!-- 选材行：修改前 → 修改后 是一条先后顺序，不是并排两栏；材料够两份才渲染。 -->
+    <div v-if="!loading && !loadError && materials.length >= 2" class="mt-6 rounded-xl bg-slate-950/40 px-5 py-4">
+      <div class="flex flex-wrap items-end gap-x-5 gap-y-3">
+        <label class="text-xs text-slate-500">
           修改前
           <select
             v-model="materialIdBefore"
             aria-label="修改前材料"
-            class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+            class="mt-1 block w-52 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
           >
             <option value="">请选择材料</option>
             <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
           </select>
         </label>
-        <label class="text-xs text-slate-400">
+        <span class="pb-2.5 text-lg text-slate-600" aria-hidden="true">→</span>
+        <label class="text-xs text-slate-500">
           修改后
           <select
             v-model="materialIdAfter"
             aria-label="修改后材料"
-            class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+            class="mt-1 block w-52 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
           >
             <option value="">请选择材料</option>
             <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
           </select>
         </label>
-      </div>
-      <p class="mt-3 text-xs text-slate-500">只对照选中的两份版本；点引用可回看原文。</p>
-      <div class="mt-4 flex flex-wrap items-center gap-3">
-        <UButton icon="i-lucide-git-compare" :loading="diffing" :disabled="!canDiff" @click="compare">
-          {{ diffing ? '对照中…' : '比较修改效果' }}
+        <UButton class="mb-0.5" icon="i-lucide-arrow-right-left" :loading="diffing" :disabled="!canDiff" @click="compare">
+          {{ diffing ? '比较中…' : '比较修改效果' }}
         </UButton>
-        <span v-if="sameSelection" class="text-xs text-amber-300">不能对照同一份材料，请选择两份不同的材料</span>
+      </div>
+      <div class="mt-3 flex flex-wrap items-center gap-3">
+        <span v-if="sameSelection" class="text-xs text-amber-300">两份材料不能相同，请选择两份不同的材料</span>
+        <span v-else class="text-xs text-slate-500">只比较你选中的这两份材料；点结果里的引用可回看原文。</span>
       </div>
       <p v-if="diffError" class="mt-3 text-sm text-red-400" role="alert">{{ diffError }}</p>
-    </UCard>
+    </div>
 
     <p v-else-if="loading" class="mt-6 text-sm text-slate-400">正在读取材料列表…</p>
 
@@ -269,37 +281,42 @@ loadMaterials()
       <UButton to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
     </EmptyState>
 
-    <!-- 变化结果：先给两个大数字（修改前 N 个待处理 → 修改后 M 个待处理），再按时间线摊开三组。 -->
-    <section v-if="result" class="mt-6">
-      <div class="rounded-xl bg-slate-950/40 px-6 py-5">
-        <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
+    <!-- 变化结果：主视觉先给摘要——修改前 N 个一致性待核对项 → 修改后 M 个一致性待核对项，一句话说差在哪；下面时间线摊开三组。 -->
+    <section v-if="result" class="mt-8">
+      <div class="rounded-xl bg-slate-950/40 px-6 py-6">
+        <div class="flex flex-wrap items-end gap-x-10 gap-y-4">
           <div>
-            <p class="text-xs text-slate-400">修改前</p>
-            <p class="mt-1 flex items-baseline gap-1.5">
-              <span class="text-4xl font-semibold leading-none tracking-tight text-slate-100">{{ beforeCount }}</span>
-              <span class="text-xs text-slate-500">个待处理</span>
+            <p class="text-xs text-slate-500">修改前</p>
+            <p class="mt-1.5 flex items-baseline gap-1.5">
+              <span class="text-5xl font-semibold leading-none tracking-tight text-slate-100">{{ beforeCount }}</span>
+              <span class="text-sm text-slate-500">个一致性待核对项</span>
             </p>
           </div>
-          <span class="text-2xl text-slate-600" aria-hidden="true">→</span>
+          <span class="pb-1.5 text-3xl leading-none text-slate-600" aria-hidden="true">→</span>
           <div>
-            <p class="text-xs text-slate-400">修改后</p>
-            <p class="mt-1 flex items-baseline gap-1.5">
+            <p class="text-xs text-slate-500">修改后</p>
+            <p class="mt-1.5 flex items-baseline gap-1.5">
               <span
-                class="text-4xl font-semibold leading-none tracking-tight"
+                class="text-5xl font-semibold leading-none tracking-tight"
                 :class="afterCount < beforeCount ? 'text-emerald-300' : afterCount > beforeCount ? 'text-rose-300' : 'text-slate-100'"
               >{{ afterCount }}</span>
-              <span class="text-xs text-slate-500">个待处理</span>
+              <span class="text-sm text-slate-500">个一致性待核对项</span>
             </p>
           </div>
-          <p class="ml-auto text-xs text-slate-500">{{ result.filename_before }} → {{ result.filename_after }}</p>
+          <p v-if="deltaSentence" class="ml-auto max-w-xs pb-1.5 text-sm text-slate-300">{{ deltaSentence }}</p>
         </div>
-        <p v-if="emptyResult" class="mt-3 text-sm text-slate-400">
-          这两份版本之间没有可对照的数值差异。
-        </p>
+        <p class="mt-4 text-xs text-slate-500">{{ result.filename_before }} → {{ result.filename_after }}</p>
       </div>
 
-      <!-- 变化时间线：已解决 → 仍存在 → 新增；每组一个大数字，空组也渲染（合法结果）。 -->
-      <div class="relative mt-6 pl-10">
+      <EmptyState
+        v-if="emptyResult"
+        class="mt-2"
+        title="这两份材料之间没有发现一致性待核对项的变化。"
+        :hint="`比较的是 ${result.filename_before} 和 ${result.filename_after}；换一组版本再看。`"
+      />
+
+      <!-- 变化时间线：已解决 → 仍存在 → 新增；每组不只是数字，条目里能看到具体解决了/残留/新出了什么。 -->
+      <div v-else class="relative mt-6 pl-10">
         <ol class="space-y-6">
           <li v-for="(group, index) in groups" :key="group.key" class="relative">
             <!-- 连线从本组圆点中心连到下一组圆点中心；最后一组不画，线止于最后一个节点。 -->
@@ -316,7 +333,7 @@ loadMaterials()
             <div class="rounded-xl p-4" :class="toneCard[group.tone]">
               <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <h3 class="text-base font-semibold text-slate-100">{{ group.title }}</h3>
-                <span class="text-3xl font-semibold leading-none tracking-tight" :class="toneCount[group.tone]">{{ group.findings.length }}</span>
+                <span class="text-2xl font-semibold leading-none tracking-tight" :class="toneCount[group.tone]">{{ group.findings.length }}</span>
                 <span class="text-xs text-slate-500">条</span>
                 <span class="ml-auto text-xs text-slate-500">{{ group.hint }}</span>
               </div>
@@ -327,7 +344,7 @@ loadMaterials()
                   :key="`${finding.kind}:${finding.measure}:${finding.citations[0].block_id}:${finding.citations[0].start}`"
                   class="py-3"
                 >
-                  <div class="flex flex-wrap items-center gap-2">
+                  <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                     <UBadge
                       :color="finding.kind === 'numeric_inconsistency' ? 'warning' : 'neutral'"
                       variant="subtle"
@@ -335,17 +352,19 @@ loadMaterials()
                     >
                       {{ findingLabel(finding.kind) }}
                     </UBadge>
-                    <span v-if="finding.measure" class="text-xs text-slate-300">度量词：{{ finding.measure }}</span>
-                    <span class="font-mono text-xs text-slate-300">{{ finding.values.join(' / ') }}</span>
+                    <span v-if="finding.measure" class="text-sm font-medium text-slate-200">{{ finding.measure }}</span>
+                    <span v-if="finding.values.length" class="font-mono text-xs text-amber-300/90">{{ finding.values.join(' / ') }}</span>
                   </div>
                   <ul class="mt-2 space-y-1">
                     <li v-for="citation in finding.citations" :key="`${citation.block_id}:${citation.start}`">
                       <button
                         type="button"
-                        class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
+                        class="group flex w-full flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1.5 text-left transition hover:bg-slate-800/60"
                         @click="openCitation(citation)"
                       >
-                        <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · {{ rowLocation(citation.block_id, citation.line_number) }}</span>
+                        <span class="text-sm text-slate-300">“{{ citation.quote }}”</span>
+                        <span class="font-mono text-xs text-slate-500">{{ rowLocation(citation.block_id, citation.line_number) }}</span>
+                        <span class="ml-auto text-[11px] text-slate-600 transition group-hover:text-violet-300">查看原文</span>
                       </button>
                     </li>
                   </ul>

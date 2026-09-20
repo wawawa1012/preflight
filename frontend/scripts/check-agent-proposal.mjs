@@ -21,7 +21,7 @@ const jsonResponse = (data, status = 200) =>
 const detailSource = readFileSync(new URL('../src/views/MaterialDetailView.vue', import.meta.url), 'utf8')
 
 check('详情页不含“已满足/已支撑”措辞', !detailSource.includes('已满足') && !detailSource.includes('已支撑'))
-check('存在 AI 预检按钮', detailSource.includes('AI 预检') || detailSource.includes('重新预检'))
+check('存在依据审计按钮', detailSource.includes('依据审计') && detailSource.includes('重新依据审计'))
 check('不再使用「通过验证」徽章文案', !detailSource.includes('通过验证'))
 check('候选徽章写「原文引用有效」', detailSource.includes('原文引用有效'))
 check(
@@ -39,24 +39,24 @@ check(
   !detailSource.includes('无效：') && detailSource.includes('原文引用无效') && detailSource.includes('validation_code'),
 )
 check('接受按钮对非 passed 候选禁用', detailSource.includes("candidate.validation_status !== 'passed'"))
-check('空预检主句不是「尚未关联引用」独占', detailSource.includes('预检完成 · 当前材料尚未发现候选引用'))
+check('空依据审计主句不是「尚未关联引用」独占', detailSource.includes('依据审计完成 · 当前材料尚未发现候选引用'))
 check('正交展示待审核与已确认关联', detailSource.includes('已发现') && detailSource.includes('已确认关联'))
 check('标注 title 含手动圈一句', detailSource.includes('手动圈一句'))
 check(
   '尚未关联引用仅用于尚未预检',
   detailSource.includes('!completedProposalFor(criterion.id)'),
 )
-check('评分标准区有「预检全部」', detailSource.includes('预检全部'))
-check('预检按钮带本地秒表', detailSource.includes('正在预检…') && detailSource.includes('preflightSeconds'))
+check('审查标准区有「依据审计全部」', detailSource.includes('依据审计全部'))
+check('依据审计按钮带本地秒表', detailSource.includes('依据审计中…') && detailSource.includes('preflightSeconds'))
 check('前端不含 max_tokens（封顶只在后端）', !detailSource.includes('max_tokens'))
 check('空预检且已有关联时文案为「本次未提出新候选」', detailSource.includes('本次未提出新候选'))
 check(
   '失败文案说人话且带再试',
-  detailSource.includes('预检没有返回内容，点「重新预检」再试。') &&
-    detailSource.includes('预检结果不完整，点「重新预检」再试。'),
+  detailSource.includes('依据审计没有返回内容，点「重新依据审计」再试。') &&
+    detailSource.includes('依据审计结果不完整，点「重新依据审计」再试。'),
 )
 check('禁止原生 confirm/alert', !detailSource.includes('window.confirm') && !detailSource.includes('window.alert'))
-check('全已预检时按钮为「再预检全部」', detailSource.includes('再预检全部'))
+check('全已审计时按钮为「再依据审计全部」', detailSource.includes('再依据审计全部'))
 check('顶栏显示预检进度而非整钮死转', detailSource.includes('preflightAllLabel'))
 // 主操作收口：每条 criterion 只有一个主按钮「确认这 N 条依据」；单条接受/拒绝降为次要样式。
 const primaryButtonBlock = (() => {
@@ -380,7 +380,7 @@ try {
     check('预检成功后提案进入列表', bindings.proposals.value.length === 1 && state.counts.propose === 1)
     check(
       '预检成功提示含有效/无效计数',
-      bindings.proposalNotice.value === '预检完成：原文引用有效 1 条，无效 1 条，待你判断是否关联',
+      bindings.proposalNotice.value === '依据审计完成：原文引用有效 1 条，无效 1 条，待你判断是否关联',
       bindings.proposalNotice.value,
     )
     const candidates = bindings.latestProposalFor('c_syn_1').candidates
@@ -398,7 +398,7 @@ try {
     await bindings.runPreflight(RUBRIC.criteria[0])
     check(
       '空候选提示为「没有提出候选（空结果正常）」',
-      bindings.proposalNotice.value === '预检完成：没有提出候选（空结果正常）',
+      bindings.proposalNotice.value === '依据审计完成：没有提出候选（空结果正常）',
       bindings.proposalNotice.value,
     )
   }
@@ -412,8 +412,8 @@ try {
       '有历史时展示候选且不自动 POST',
       state.counts.propose === 0 && bindings.latestProposalFor('c_syn_1').status === 'completed',
     )
-    check('有 completed 历史时按钮为「重新预检」', bindings.preflightButtonLabel('c_syn_1') === '重新预检')
-    check('无历史时按钮为「AI 预检」', bindings.preflightButtonLabel('c_syn_2') === 'AI 预检')
+    check('有 completed 历史时按钮为「重新依据审计」', bindings.preflightButtonLabel('c_syn_1') === '重新依据审计')
+    check('无历史时按钮为「依据审计」', bindings.preflightButtonLabel('c_syn_2') === '依据审计')
   }
 
   // 互斥收窄：同一条重复点被忽略；不同 criterion 并行；accept 仍互斥。
@@ -423,7 +423,7 @@ try {
     state.proposeDefer = true
     const first = bindings.runPreflight(RUBRIC.criteria[0])
     check('预检中 busy=true', bindings.busy.value === true)
-    check('顶栏进度为「预检中 1/2」', bindings.preflightAllLabel() === '预检中 1/2', bindings.preflightAllLabel())
+    check('顶栏进度为「依据审计中 1/2」', bindings.preflightAllLabel() === '依据审计中 1/2', bindings.preflightAllLabel())
     check('秒表：预检中该条显示秒数', bindings.preflightSeconds('c_syn_1') >= 1)
     await bindings.runPreflight(RUBRIC.criteria[0])
     check('同一条 criterion 重复点击被忽略', state.proposeReleases.length === 1)
@@ -448,7 +448,7 @@ try {
     check(
       '预检全部：失败一条不影响另一条',
       bindings.latestProposalFor('c_syn_1')?.status === 'completed' &&
-        bindings.proposalError.value === '预检服务暂时不可用，点「重新预检」再试。',
+        bindings.proposalError.value === '依据审计服务暂时不可用，点「重新依据审计」再试。',
       bindings.proposalError.value,
     )
   }
@@ -458,15 +458,15 @@ try {
   {
     state.proposals = [proposal(), { ...proposal(), id: 'ap_c_syn_2', criterion_id: 'c_syn_2' }]
     const bindings = await mount()
-    check('全已预检时按钮为「再预检全部」', bindings.preflightAllLabel() === '再预检全部')
+    check('全已审计时按钮为「再依据审计全部」', bindings.preflightAllLabel() === '再依据审计全部')
     await bindings.runPreflightAll()
     check('全已预检时直接重跑 2 条（无 confirm）', state.counts.propose === 2, `propose=${state.counts.propose}`)
   }
 
   // 失败人话：机器码不当主句。
   for (const [message, expected] of [
-    ['响应内容为空', '预检没有返回内容，点「重新预检」再试。'],
-    ['响应不是合法 JSON（Unterminated string）', '预检结果不完整，点「重新预检」再试。'],
+    ['响应内容为空', '依据审计没有返回内容，点「重新依据审计」再试。'],
+    ['响应不是合法 JSON（Unterminated string）', '依据审计结果不完整，点「重新依据审计」再试。'],
   ]) {
     resetState()
     state.proposeFailure = { status: 502, code: 'llm_invalid_response', message }

@@ -126,9 +126,9 @@ try {
   const initial = await context()
   const initialHtml = await renderToString(initial.app)
   check(
-    'SSR 画出 /diff 大白话标题、副标题与两个出口',
-    initialHtml.includes('修改前后少了什么问题') &&
-      initialHtml.includes('看审查发现哪些已解决、哪些还在、哪些是新的') &&
+    'SSR 画出 /diff 正式名称、副标题与两个出口',
+    initialHtml.includes('修改效果') &&
+      initialHtml.includes('看一致性待核对项哪些已解决、哪些仍在、哪些是新的') &&
       initialHtml.includes('href="/materials"') &&
       initialHtml.includes('href="/"'),
   )
@@ -153,7 +153,7 @@ try {
       !viewSource.includes('材料 A') &&
       !viewSource.includes('材料 B'),
   )
-  check('按钮文案 比较修改效果（加载中 对照中…）', viewSource.includes('比较修改效果') && viewSource.includes('对照中…'))
+  check('按钮文案 比较修改效果（加载中 比较中…）', viewSource.includes('比较修改效果') && viewSource.includes('比较中…'))
 
   // B. setup 行为：装载材料列表；同一份材料不发；两份不同才 POST 一次，body 只含两个选中 id。
   resetState()
@@ -175,7 +175,7 @@ try {
   bindings.materialIdAfter.value = 'mat_before'
   await bindings.compare()
   check('同一份材料不发送 POST', state.posts.length === 0, `posts=${state.posts.length}`)
-  check('同一份材料就地报错', bindings.diffError.value.includes('不能对照同一份材料'), bindings.diffError.value)
+  check('同一份材料就地报错', bindings.diffError.value.includes('两份材料不能相同'), bindings.diffError.value)
   check('同一份材料不产生结果', bindings.result.value === null)
 
   bindings.materialIdAfter.value = 'mat_after'
@@ -244,10 +244,10 @@ try {
     `before=${emptyBindings.beforeCount?.value} after=${emptyBindings.afterCount?.value}`,
   )
   check(
-    '空结果走空态文案且空组也渲染',
+    '空结果走人话空态，部分空组仍带说明',
     emptyBindings.emptyResult.value === true &&
       emptyBindings.groups.value.length === 3 &&
-      viewSource.includes('没有可对照的数值差异') &&
+      viewSource.includes('这两份材料之间没有发现一致性待核对项的变化') &&
       viewSource.includes('这一组目前没有条目'),
   )
 
@@ -310,12 +310,19 @@ try {
       viewSource.includes('border-rose-400'),
   )
   check(
-    'hero 两个大数字在模板里（修改前 N 个待处理 → 修改后 M 个待处理）',
-    templateSource.includes('个待处理') &&
+    'hero 两个大数字在模板里（修改前 N 个一致性待核对项 → 修改后 M 个一致性待核对项）',
+    templateSource.includes('个一致性待核对项') &&
       templateSource.includes('beforeCount') &&
       templateSource.includes('afterCount') &&
       templateSource.includes('修改前') &&
       templateSource.includes('修改后'),
+  )
+  check(
+    '变化摘要带一句人话差值说明（少了/多了/没变化），且不再说「问题」',
+    viewSource.includes('比修改前少了') &&
+      viewSource.includes('比修改前多了') &&
+      viewSource.includes('待核对项数量没有变化') &&
+      !templateSource.includes('个问题'),
   )
   check(
     '按钮与三组标题在源码中',
@@ -326,13 +333,13 @@ try {
     viewSource.includes("import PageHeader from '../components/review/PageHeader.vue'") &&
       viewSource.includes("import EmptyState from '../components/review/EmptyState.vue'") &&
       templateSource.includes('<PageHeader') &&
-      (templateSource.match(/<EmptyState/g) || []).length === 2,
+      (templateSource.match(/<EmptyState/g) || []).length === 3,
   )
   check(
     '页宽 max-w-6xl，标题经 PageHeader 传入（模板不再自铺 h1）',
     viewSource.includes('max-w-6xl') &&
       !viewSource.includes('max-w-4xl') &&
-      templateSource.includes('title="修改前后少了什么问题"') &&
+      templateSource.includes('title="修改效果"') &&
       !templateSource.includes('<h1'),
   )
   check(

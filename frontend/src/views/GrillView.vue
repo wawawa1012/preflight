@@ -6,8 +6,8 @@ import PageHeader from '../components/review/PageHeader.vue'
 import EmptyState from '../components/review/EmptyState.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 
-// 质询（Grill）：把当前材料里已发现的问题摊成一副编号追问卡片；只读材料，不打分。
-// 打开页面只 GET 材料列表；POST /api/v1/grill 只由「生成追问」按钮触发，绝不自动生成。
+// 质询（Grill）：把当前材料里已暴露的薄弱点摊成一副编号追问卡；只读材料，不打分。
+// 打开页面只 GET 材料列表；POST /api/v1/grill 只由「开始质询」按钮触发，绝不自动生成。
 // 追问里的 quote/start/end 已由后端逐条复验（quote == block.text[start:end]），前端只渲染。
 interface GrillQuestion {
   prompt: string
@@ -24,7 +24,8 @@ const loadError = ref('')
 const materialId = ref('')
 
 const generating = ref(false)
-const error = ref('')
+// 失败主文案说人话；code/HTTP 状态码这类机器串放 detail，页面上低权重展示。
+const error = ref<{ message: string; detail: string } | null>(null)
 const questions = ref<GrillQuestion[]>([])
 // 空追问是合法结果：生成完成但没有任何引用站得住的追问。
 const generated = ref(false)
@@ -55,18 +56,19 @@ async function loadMaterials() {
   }
 }
 
-function failureText(code: string, message: string) {
-  if (code === 'llm_unconfigured') return '后端未配置 LLM，配置后重试'
-  if (code === 'llm_timeout') return '生成超时，可重试'
-  if (code === 'material_not_found') return '材料不存在，请重新选择'
-  return message || code
+function failureText(code: string, message: string): { message: string; detail: string } {
+  if (code === 'llm_unconfigured') return { message: '质询服务暂未就绪。', detail: code }
+  if (code === 'llm_timeout') return { message: '质询服务暂不可用，请稍后重试。', detail: code }
+  if (code === 'material_not_found') return { message: '材料不存在，请重新选择。', detail: code }
+  // 未知错误主文案固定为人话；原始 message 与内部码降级进技术细节，不上主句。
+  return { message: '质询服务暂不可用，请稍后重试。', detail: message !== '' ? `${code} · ${message}` : code }
 }
 
-// 「生成追问」是唯一 POST 入口：选中一份材料才发；body 只含这一个 id。
+// 「开始质询」是唯一 POST 入口：选中一份材料才发；body 只含这一个 id。
 async function generate() {
   if (generating.value || materialId.value === '') return
   generating.value = true
-  error.value = ''
+  error.value = null
   questions.value = []
   generated.value = false
   try {
@@ -78,13 +80,14 @@ async function generate() {
     const body = await response.json().catch(() => null)
     if (!response.ok) {
       const code = body && body.code ? body.code : `HTTP ${response.status}`
-      throw new Error(failureText(code, body && body.message ? body.message : code))
+      // 失败必须可见：主文案可操作，机器串降级，并保留「重试」。
+      error.value = failureText(code, body && body.message ? body.message : '')
+      return
     }
     questions.value = Array.isArray(body) ? (body as GrillQuestion[]) : []
     generated.value = true
   } catch (cause) {
-    // 失败必须可见：写清原因，并留下「重试」按钮，不静默吞掉。
-    error.value = cause instanceof Error ? cause.message : '未知错误'
+    error.value = { message: '质询服务暂不可用，请稍后重试。', detail: cause instanceof Error ? cause.message : '网络错误' }
   } finally {
     generating.value = false
   }
@@ -98,7 +101,7 @@ function retry() {
 watch(materialId, () => {
   questions.value = []
   generated.value = false
-  error.value = ''
+  error.value = null
   blocks.value = []
   blocksUnavailable.value = false
 })
@@ -156,78 +159,79 @@ loadMaterials()
 
 <template>
   <main class="mx-auto max-w-6xl px-6 py-10">
-    <PageHeader title="质询" subtitle="根据材料里已经发现的问题，列出评审可能追问的点">
+    <PageHeader title="质询" subtitle="针对已暴露的薄弱点，提前列出评审席的针对性追问">
       <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">材料库</UButton>
       <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
     </PageHeader>
-    <!-- 小字说明：只列追问不打分；引用必须对上原文（对不上的已丢弃）。 -->
-    <p class="mt-3 text-xs text-slate-500">只列可能被追问的点，不是打分；引用必须能在原文里对上，对不上的已丢弃。</p>
 
-    <UCard class="mt-6">
+    <!-- 材料选择保持一行：不占页面主体，主视觉留给下方的追问卡组。 -->
+    <section class="mt-6" aria-label="选择材料">
       <p v-if="loading" class="text-sm text-slate-400">正在读取材料列表…</p>
       <div v-else-if="loadError">
-        <p class="text-sm text-slate-400">请求失败：{{ loadError }}</p>
-        <UButton class="mt-4" size="sm" icon="i-lucide-refresh-cw" @click="loadMaterials">重试</UButton>
+        <p class="text-sm text-slate-300">材料列表读取失败，请重试。</p>
+        <p class="mt-0.5 text-xs text-slate-500">技术细节：{{ loadError }}</p>
+        <UButton class="mt-3" size="sm" icon="i-lucide-refresh-cw" @click="loadMaterials">重试</UButton>
       </div>
       <div v-else-if="materials.length === 0">
-        <p class="text-sm text-slate-300">还没有已保存的材料，先添加一份再生成追问。</p>
-        <UButton class="mt-4" size="sm" to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
+        <p class="text-sm text-slate-300">还没有已保存的材料，先添加一份再开始质询。</p>
+        <UButton class="mt-3" size="sm" to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
       </div>
-      <div v-else>
-        <label class="text-xs text-slate-400">
-          材料
-          <select
-            v-model="materialId"
-            aria-label="材料"
-            class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
-          >
-            <option value="">请选择材料</option>
-            <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
-          </select>
-        </label>
-        <p class="mt-3 text-xs text-slate-500">打开页面不会自动生成追问；范围：只追问选中的这一份材料，不会自动扫描材料库。</p>
-        <div class="mt-4 flex flex-wrap items-center gap-3">
-          <UButton icon="i-lucide-help-circle" :loading="generating" :disabled="materialId === ''" @click="generate">
-            {{ generating ? '生成中…' : '生成追问' }}
-          </UButton>
-        </div>
-        <p v-if="error" class="mt-3 text-sm text-red-400" role="alert">生成失败：{{ error }}</p>
-        <div v-if="error && !generating" class="mt-2">
-          <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-refresh-cw" @click="retry">重试</UButton>
-        </div>
+      <div v-else class="flex flex-wrap items-center gap-3">
+        <select
+          v-model="materialId"
+          aria-label="选择材料"
+          class="w-full max-w-md rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+        >
+          <option value="">选择材料</option>
+          <option v-for="item in materials" :key="item.id" :value="item.id">{{ item.filename }}</option>
+        </select>
+        <UButton icon="i-lucide-crosshair" :loading="generating" :disabled="materialId === ''" @click="generate">
+          {{ generating ? '正在质询…' : '开始质询' }}
+        </UButton>
       </div>
-    </UCard>
 
-    <!-- 追问卡片：编号 + 追问点 + 依据（引用原文，点开回看）；空追问合法（引用站不住的一律丢弃）。 -->
-    <section v-if="generated" class="mt-8">
-      <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 class="text-sm font-medium text-slate-200">追问清单</h2>
-        <span class="text-xs text-slate-500">{{ questions.length }} 条 · 每条都引用材料原文</span>
+      <!-- 失败主文案可操作；HTTP 状态码这类机器串只在低权重小字里出现。 -->
+      <div v-if="error" class="mt-4" role="alert">
+        <p class="text-sm text-red-400">{{ error.message }}</p>
+        <p v-if="error.detail" class="mt-0.5 text-xs text-slate-500">技术细节：{{ error.detail }}</p>
+        <UButton v-if="!generating" class="mt-3" size="sm" color="neutral" variant="subtle" icon="i-lucide-refresh-cw" @click="retry">重试</UButton>
+      </div>
+    </section>
+
+    <!-- 追问卡组：编号 + 问题正文（最醒目）+ 触发依据（可点回原文）。 -->
+    <section v-if="generated" class="mt-10">
+      <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-800 pb-3">
+        <h2 class="text-sm font-medium tracking-wide text-slate-200">针对性追问</h2>
+        <span class="text-xs text-slate-500">{{ questions.length }} 条 · 仅展示能够回到原文的追问</span>
       </div>
       <EmptyState
         v-if="emptyResult"
         class="mt-4"
-        title="当前范围没有可引用的追问"
-        hint="引用对不上原文的追问已丢弃。"
+        title="当前材料没有生成可追溯的针对性追问。"
+        hint="可以先完成审查，或更换材料后再试。"
       />
-      <ol v-else class="mt-4 space-y-3">
+      <ol v-else class="mt-5 space-y-4">
         <li
           v-for="(question, index) in questions"
           :key="`${question.block_id}:${question.start}:${index}`"
-          class="rounded-lg border border-slate-800 bg-slate-900/40 p-4"
+          class="rounded-lg border border-slate-800 bg-slate-900/40 p-5"
         >
-          <div class="flex gap-4">
-            <span class="select-none font-mono text-2xl leading-none text-violet-400/80">{{ String(index + 1).padStart(2, '0') }}</span>
+          <div class="flex gap-5">
+            <span aria-hidden="true" class="w-10 shrink-0 select-none text-right font-mono text-3xl leading-tight text-violet-400/70">{{ String(index + 1).padStart(2, '0') }}</span>
             <div class="min-w-0 flex-1">
-              <p class="text-base leading-relaxed text-slate-100">{{ question.prompt }}</p>
-              <p class="mt-3 text-xs text-slate-500">依据 · 针对已核对的原文</p>
+              <p class="text-lg font-medium leading-relaxed text-slate-100">{{ question.prompt }}</p>
+
+              <p class="mt-5 text-xs tracking-widest text-slate-500">触发依据</p>
               <button
                 type="button"
-                class="mt-1 w-full rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-left transition hover:border-violet-500/40 hover:bg-slate-800/60"
+                class="group mt-1.5 flex w-full items-center justify-between gap-4 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2.5 text-left transition hover:border-violet-500/40 hover:bg-slate-800/60"
                 @click="openQuestion(question)"
               >
-                <span class="font-mono text-xs text-slate-300">“{{ question.quote }}”</span>
-                <span class="ml-2 text-xs text-slate-500">{{ rowLocation(question.block_id) }}</span>
+                <span class="min-w-0 text-sm leading-relaxed text-slate-300">“{{ question.quote }}”</span>
+                <span class="flex shrink-0 items-center gap-3">
+                  <span class="text-xs text-slate-500">{{ rowLocation(question.block_id) }}</span>
+                  <span class="text-xs text-violet-300/90 transition group-hover:text-violet-200">查看原文 →</span>
+                </span>
               </button>
             </div>
           </div>

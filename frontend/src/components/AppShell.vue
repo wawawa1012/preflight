@@ -7,7 +7,7 @@ const route = useRoute()
 
 const links = [
   { label: '审查', to: '/' },
-  { label: '对照', to: '/compare' },
+  { label: '一致性检查', to: '/compare' },
   { label: '修改效果', to: '/diff' },
   { label: '质询', to: '/grill' },
   { label: '材料', to: '/materials' },

@@ -42,7 +42,7 @@ loadSummaries()
 
 <template>
   <main class="mx-auto max-w-6xl px-6 py-10">
-    <PageHeader title="让重要结论有据可查" subtitle="按你的审查标准检查材料中的依据、关键陈述、一致性与风险。" />
+    <PageHeader title="让重要结论有据可查" subtitle="按你的审查标准，由职责明确的审查角色协同查找依据、检查关键陈述与一致性，并集中呈现需要人工确认的待核对项。" />
 
     <!-- 主入口：一张大卡承担唯一 CTA，不铺一排小按钮。 -->
     <UCard class="mt-8">
@@ -66,7 +66,7 @@ loadSummaries()
 
     <section class="mt-10">
       <div class="flex items-center justify-between">
-        <h2 class="text-sm font-medium text-slate-400">最近审查</h2>
+        <h2 class="text-sm font-medium text-slate-400">最近材料</h2>
         <span class="text-xs text-slate-500">{{ summaries.length }} 份材料</span>
       </div>
 
@@ -96,11 +96,11 @@ loadSummaries()
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="min-w-0">
               <p class="truncate text-sm text-slate-200">{{ item.filename }}</p>
-              <p class="mt-1 text-xs text-slate-500">{{ item.block_count }} 段原文 · {{ formatSavedAt(item.created_at) }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ formatSavedAt(item.created_at) }}</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <template v-if="item.bound">
-                <UBadge color="neutral" variant="subtle" size="sm">已绑定 rev{{ item.rubric_revision }}</UBadge>
+                <UBadge color="neutral" variant="subtle" size="sm">已绑定 · 标准版本 {{ item.rubric_revision }}</UBadge>
                 <UBadge :color="criteriaColor(item)" variant="subtle" size="sm">{{ criteriaLabel(item) }}</UBadge>
                 <UBadge v-if="item.criteria_without_citations" color="neutral" variant="subtle" size="sm">
                   当前范围尚未发现引用 {{ item.criteria_without_citations }} 项

@@ -191,7 +191,7 @@ try {
   {
     const bindings = await mount()
     check('空标准仓：rubrics 为空且无绑定', bindings.rubrics.value.length === 0 && bindings.binding.value === null)
-    check('空仓有明确文案（不伪装标准）', detailSource.includes('尚未配置评分标准'))
+    check('空仓有明确文案（不伪装标准）', detailSource.includes('尚未配置审查标准'))
   }
 
   // 绑定成功与冲突文案。

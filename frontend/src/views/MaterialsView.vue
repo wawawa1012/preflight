@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import type { MaterialPreflightSummary, MaterialSummary } from '../types/contracts'
 import { formatSavedAt } from '../utils/format'
+import PageHeader from '../components/review/PageHeader.vue'
+import EmptyState from '../components/review/EmptyState.vue'
 
 const materials = ref<MaterialSummary[]>([])
 // 行内 k/n 只来自只读装配的 preflight-summaries，不在前端另算一套计数。
@@ -33,6 +35,13 @@ function relationshipColor(item: MaterialSummary): BadgeColor {
   if (!summary.bound) return 'warning'
   if (summary.criteria_total === null || summary.criteria_total === undefined) return 'neutral'
   return 'success'
+}
+
+// 待核对提示：复用摘要里已确认依据之外的引用缺口，不另算口径。
+function pendingHint(item: MaterialSummary) {
+  const summary = summaryById.value.get(item.id)
+  if (!summary || !summary.bound) return 0
+  return summary.criteria_without_citations ?? 0
 }
 
 async function loadMaterials() {
@@ -101,7 +110,7 @@ function formatLabel(filename: string) {
 }
 
 // 右侧 rail 只展示由列表响应直接计算的真实数据，不引入后端 KPI。
-const totalBlocks = computed(() => materials.value.reduce((sum, item) => sum + item.block_count, 0))
+const boundCount = computed(() => summaries.value.filter((item) => item.bound).length)
 // 列表已按保存时间倒序，第一条即最近保存。
 const latestSavedAt = computed(() => (materials.value.length > 0 ? formatSavedAt(materials.value[0].created_at) : ''))
 
@@ -110,17 +119,10 @@ loadMaterials()
 
 <template>
   <main class="mx-auto max-w-6xl px-6 py-10">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <p class="text-sm font-medium text-violet-400">MATERIALS</p>
-        <h1 class="mt-2 text-3xl font-semibold tracking-tight">Materials</h1>
-        <p class="mt-2 text-sm text-slate-400">Preflight 的 evidence sources：每条预检结论都回溯到这些原文。</p>
-      </div>
-      <div class="flex flex-wrap items-center gap-3">
-        <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
-        <UButton to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
-      </div>
-    </div>
+    <PageHeader title="材料" subtitle="所有审查基于这里的材料进行，结论可回溯到原文。">
+      <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
+      <UButton to="/materials/new" icon="i-lucide-plus">添加材料</UButton>
+    </PageHeader>
 
     <UCard v-if="loading" class="mt-8">
       <p class="text-sm text-slate-400">正在读取材料列表…</p>
@@ -133,12 +135,14 @@ loadMaterials()
     </UCard>
 
     <!-- 空态：一句说明 + 唯一 CTA，不做填充式页面。 -->
-    <div v-else-if="materials.length === 0" class="mt-16 text-center">
-      <UIcon name="i-lucide-folder-open" class="mx-auto text-3xl text-slate-600" />
-      <p class="mt-4 text-sm text-slate-300">还没有已保存的材料</p>
-      <p class="mt-1 text-xs text-slate-500">上传第一份 Markdown，生成可追溯的 Block 与原文件行号。</p>
-      <UButton class="mt-6" to="/materials/new" icon="i-lucide-plus">添加第一份材料</UButton>
-    </div>
+    <EmptyState
+      v-else-if="materials.length === 0"
+      class="mt-10"
+      title="还没有材料"
+      hint="上传第一份 Markdown 文件，即可开始按标准审查。"
+    >
+      <UButton to="/materials/new" icon="i-lucide-plus">添加第一份材料</UButton>
+    </EmptyState>
 
     <div v-else class="mt-8 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(240px,1fr)]">
       <section class="divide-y divide-slate-800 self-start overflow-hidden rounded-lg border border-slate-800">
@@ -157,7 +161,9 @@ loadMaterials()
             </span>
             <span class="flex shrink-0 flex-wrap items-center gap-3 text-xs text-slate-500">
               <UBadge :color="relationshipColor(item)" variant="subtle" size="sm">{{ relationshipLabel(item) }}</UBadge>
-              <span>{{ item.block_count }} blocks</span>
+              <UBadge v-if="pendingHint(item)" color="neutral" variant="subtle" size="sm">
+                当前范围尚未发现引用 {{ pendingHint(item) }} 项
+              </UBadge>
               <span>{{ formatSavedAt(item.created_at) }}</span>
             </span>
           </RouterLink>
@@ -180,8 +186,8 @@ loadMaterials()
             <dd class="text-sm font-medium text-slate-200">{{ materials.length }}</dd>
           </div>
           <div class="flex items-baseline justify-between gap-3">
-            <dt class="text-xs text-slate-500">总 Block 数</dt>
-            <dd class="text-sm font-medium text-slate-200">{{ totalBlocks }}</dd>
+            <dt class="text-xs text-slate-500">已绑定审查标准</dt>
+            <dd class="text-sm font-medium text-slate-200">{{ boundCount }} / {{ materials.length }}</dd>
           </div>
           <div class="flex items-baseline justify-between gap-3">
             <dt class="text-xs text-slate-500">最近保存</dt>
@@ -205,7 +211,7 @@ loadMaterials()
     >
       <template #body>
         <p class="text-sm text-slate-300">
-          确定删除「{{ pendingDelete?.filename }}」？该材料的 Block、证据标注、已确认关联与预检记录将一并删除。
+          确定删除「{{ pendingDelete?.filename }}」？该材料已确认的关联与审查结果将一并删除。
         </p>
         <p v-if="deleteError" class="mt-3 text-sm text-red-400" role="alert">{{ deleteError }}</p>
       </template>

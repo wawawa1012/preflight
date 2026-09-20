@@ -58,7 +58,7 @@ const confirmedCriterionCount = computed(() =>
 
 // 预检概览（C1）：材料级计数不依赖报告；已确认依据只在报告到手后给 k / n，否则给 —。
 const overviewCounts = computed(() => {
-  const base = `待核对 ${findings.value.length} · 关键陈述 ${signals.value.length}`
+  const base = `待核对项 ${findings.value.length} · 关键陈述 ${signals.value.length}`
   if (!report.value) return `${base} · 已确认依据 —`
   return `${base} · 已确认依据 ${confirmedCriterionCount.value} / ${report.value.criteria.length} 项`
 })
@@ -284,17 +284,17 @@ loadProposals()
 
 <template>
   <main class="mx-auto max-w-6xl px-6 py-10">
-    <PageHeader :title="report ? report.filename : '预审报告'" subtitle="按每条审查要求在原文里找依据">
+    <PageHeader :title="report ? report.filename : '审查结果'" subtitle="按每条审查要求在原文里找依据">
       <UButton v-if="report" icon="i-lucide-sparkles" :loading="verifying" @click="verifyCriteria">
-        {{ verifying ? '核验中…' : '核验审查要求' }}
+        {{ verifying ? '依据审计中…' : '运行依据审计' }}
       </UButton>
       <UButton :to="`/materials/${materialId}`" color="neutral" variant="ghost" size="xs" icon="i-lucide-file-text">返回材料</UButton>
       <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
     </PageHeader>
-    <p class="mt-2 text-sm text-slate-300">预检概览 · {{ overviewCounts }}</p>
+    <p class="mt-2 text-sm text-slate-300">审查概览 · {{ overviewCounts }}</p>
     <p class="mt-2 text-sm text-slate-400">
       <span v-if="report">{{ report.rubric_title }} · 标准版本 {{ report.rubric_revision }} · {{ report.block_count }} 段原文</span>
-      <span v-else>绑定评分标准后才能按条核验。</span>
+      <span v-else>绑定审查标准后才能逐条运行依据审计。</span>
     </p>
 
     <!-- 材料级区块：不依赖绑定，各自装、各自画（待核对问题在关键陈述之上）。 -->
@@ -303,7 +303,7 @@ loadProposals()
       <section class="rounded-lg bg-slate-950/40 p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h2 class="text-sm font-medium text-slate-200">审查团队</h2>
-          <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描。依据核验、修复建议、质询才会调用模型。</span>
+          <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描。依据审计、修复建议、质询才会调用模型。</span>
         </div>
         <ul class="mt-3 grid gap-2 sm:grid-cols-3">
           <li>
@@ -312,7 +312,7 @@ loadProposals()
               <p class="mt-0.5 text-[10px] text-violet-300">模型</p>
               <p class="mt-1 text-xs text-slate-400">按审查要求寻找可直接引用的原文</p>
               <p class="mt-2 text-sm text-slate-200">
-                <span v-if="verifying">正在按审查标准查找依据</span>
+                <span v-if="verifying">依据审计中…</span>
                 <span v-else-if="report">已确认依据 {{ confirmedCriterionCount }} / {{ report.criteria.length }} 项</span>
                 <span v-else-if="unbound">未绑定审查标准</span>
                 <span v-else-if="loading">正在读取审查要求</span>
@@ -327,7 +327,7 @@ loadProposals()
               <p class="mt-1 text-xs text-slate-400">检查同一指标在材料中的不同说法</p>
               <p class="mt-2 text-sm text-slate-200">
                 <span v-if="findingsUnavailable">扫描不可用</span>
-                <span v-else>待核对 {{ findings.length }} 条</span>
+                <span v-else>待核对项 {{ findings.length }} 条</span>
               </p>
             </button>
           </li>
@@ -346,26 +346,26 @@ loadProposals()
         <p class="mt-3 text-xs text-slate-500">
           <button type="button" class="text-slate-300 hover:underline" @click="scrollToSection('pending-findings')">修复顾问</button>
           <span v-if="repairFinding"> · 已生成 1 条建议</span>
-          <span v-else> · 点待处理问题后才运行</span>
+          <span v-else> · 点待核对项后才运行</span>
           <span class="mx-2 text-slate-700">·</span>
           <button type="button" class="text-slate-300 hover:underline" @click="router.push('/grill')">质询官</button>
           · 需要时在质询页生成追问
         </p>
       </section>
 
-      <!-- I8 待核对问题（首屏主区：待处理问题）：同一材料内同一度量词的数值对照；每条都能点回原文 Drawer。 -->
+      <!-- I8 待核对项（首屏主区）：同一材料内同一指标的数值对照；每条都能点回原文 Drawer。 -->
       <section id="pending-findings" class="rounded-lg border border-amber-900/50 bg-amber-950/10 p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-lg font-semibold text-slate-100">待处理问题</h2>
+          <h2 class="text-lg font-semibold text-slate-100">待核对项</h2>
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-xs text-slate-500">{{ findings.length }} 条 · 同一材料内数值对照</span>
-            <!-- 与另一份材料对照：常显（未绑定/装配中也可用），不带 query，不触任何写接口。 -->
-            <UButton to="/compare" color="neutral" variant="subtle" size="xs" icon="i-lucide-git-compare">与另一份材料对照</UButton>
+            <!-- 与另一份材料做一致性检查：常显（未绑定/读取中也可用），不带 query，不触任何写接口。 -->
+            <UButton to="/compare" color="neutral" variant="subtle" size="xs" icon="i-lucide-git-compare">与另一份材料做一致性检查</UButton>
           </div>
         </div>
-        <p v-if="findingsUnavailable" class="mt-2 text-xs text-amber-300">待核对问题不可用</p>
+        <p v-if="findingsUnavailable" class="mt-2 text-xs text-amber-300">待核对项不可用</p>
         <!-- 空态只有一块：两句话同段（原先两个连续 v-else-if 让第二句永不渲染）。 -->
-        <p v-else-if="findings.length === 0" class="mt-2 text-xs text-slate-400">当前范围尚未发现待核对问题（同一材料内同一度量词的不同数字）。跨材料的数字对照在「与另一份材料对照」。</p>
+        <p v-else-if="findings.length === 0" class="mt-2 text-xs text-slate-400">当前范围尚未发现待核对项（同一指标在材料中出现了不同数值）。跨材料的数值对照在「一致性检查」。</p>
         <ul v-else class="mt-3 space-y-3">
           <li
             v-for="finding in findings"
@@ -416,11 +416,11 @@ loadProposals()
     </div>
 
     <!-- 报告主体：需要绑定；装配中/未绑定/找不到/失败各自给出路，不挡上面的材料级区块。 -->
-    <p v-if="loading" class="mt-4 text-xs text-slate-500">正在读取审查要求…</p>
+    <p v-if="loading" class="mt-4 text-xs text-slate-500">正在读取审查结果…</p>
 
     <UCard v-else-if="notFound" class="mt-4">
-      <h2 class="text-lg font-medium">找不到该材料</h2>
-      <p class="mt-2 text-sm text-slate-400">该 ID 不存在，或本地数据库中没有这条记录。</p>
+      <h2 class="text-lg font-medium">找不到这份材料</h2>
+      <p class="mt-2 text-sm text-slate-400">可能已被删除。</p>
       <div class="mt-6 flex flex-wrap gap-3">
         <UButton :to="`/materials/${materialId}`" color="neutral" variant="subtle" icon="i-lucide-file-text">
           返回材料
@@ -430,18 +430,18 @@ loadProposals()
     </UCard>
 
     <UCard v-else-if="unbound" class="mt-4">
-      <h2 class="text-lg font-medium">尚未绑定评分标准</h2>
+      <h2 class="text-lg font-medium">尚未绑定审查标准</h2>
       <p class="mt-2 text-sm text-slate-400">
-        上面的待处理问题来自材料原文，不需要先懂标注。绑定评分标准后才能按条核验。
+        上面的材料级检查结果无需绑定审查标准也可查看。绑定审查标准后才能逐条运行依据审计。
       </p>
       <div class="mt-6 flex flex-wrap gap-3">
-        <UButton :to="`/materials/${materialId}`" icon="i-lucide-link">去绑定评分标准</UButton>
+        <UButton :to="`/materials/${materialId}`" icon="i-lucide-link">去绑定审查标准</UButton>
         <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
       </div>
     </UCard>
 
     <UCard v-else-if="error" class="mt-4">
-      <h2 class="text-lg font-medium">无法读取审查要求</h2>
+      <h2 class="text-lg font-medium">无法读取审查结果</h2>
       <p class="mt-2 text-sm text-slate-400">请求失败：{{ error }}</p>
       <div class="mt-6 flex flex-wrap gap-3">
         <UButton icon="i-lucide-refresh-cw" @click="loadReport">重试</UButton>
@@ -452,7 +452,7 @@ loadProposals()
     <div v-else-if="report" class="mt-4 space-y-4">
       <!-- Phase 3：审查要求进度 —— 每条要求一行；行内显示本条核验状态，失败只落在该行。 -->
       <h2 id="review-criteria" class="text-sm font-medium text-slate-200">审查要求进度</h2>
-      <p v-if="proposalsUnavailable" class="text-xs text-amber-300">预检记录不可用</p>
+      <p v-if="proposalsUnavailable" class="text-xs text-amber-300">依据审计记录不可用</p>
 
       <div v-for="row in report.criteria" :key="row.criterion_id" class="rounded-lg border border-slate-800 p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
@@ -461,9 +461,9 @@ loadProposals()
             <p class="mt-1 text-xs text-slate-500">{{ row.requirement }}</p>
           </div>
           <div class="flex flex-wrap justify-end gap-2">
-            <UBadge v-if="neverPreflighted(row.criterion_id)" color="neutral" variant="subtle">尚未预检</UBadge>
+            <UBadge v-if="neverPreflighted(row.criterion_id)" color="neutral" variant="subtle">尚未运行依据审计</UBadge>
             <UBadge v-if="emptyPreflight(row.criterion_id)" color="neutral" variant="subtle">
-              {{ row.verified_citation_count > 0 ? '本次未提出新候选' : '预检完成 · 当前材料尚未发现候选引用' }}
+              {{ row.verified_citation_count > 0 ? '本次未提出新候选' : '依据审计完成 · 当前材料尚未发现候选引用' }}
             </UBadge>
             <UBadge v-if="pendingFor(row.criterion_id) > 0" color="warning" variant="subtle">
               已发现 {{ pendingFor(row.criterion_id) }} 条候选，待审核
@@ -472,11 +472,11 @@ loadProposals()
               已确认关联 {{ row.verified_citation_count }} 条
             </UBadge>
             <!-- 行内核验态：只在这一行的徽章旁显示，不做整卡 spinner，也不门控上方区块。 -->
-            <span v-if="verifyingIds.includes(row.criterion_id)" class="text-xs text-slate-500">本条核验中…</span>
+            <span v-if="verifyingIds.includes(row.criterion_id)" class="text-xs text-slate-500">本条依据审计中…</span>
           </div>
         </div>
         <p v-if="failedWithoutCompleted(row.criterion_id)" class="mt-2 text-xs text-red-400">
-          预检失败：{{ latestProposal(proposals, row.criterion_id)?.error }}
+          依据审计失败：{{ latestProposal(proposals, row.criterion_id)?.error }}
         </p>
         <p v-if="rowError[row.criterion_id]" class="mt-2 text-xs text-red-400" role="alert">
           {{ rowError[row.criterion_id] }}

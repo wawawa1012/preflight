@@ -116,9 +116,9 @@ try {
   const initial = await context()
   const initialHtml = await renderToString(initial.app)
   check(
-    'SSR 画出 /compare 大白话标题与两个出口',
-    initialHtml.includes('检查两份材料有没有说法不一致') &&
-      initialHtml.includes('看它们是否对同一指标说了不同的数字') &&
+    'SSR 画出 /compare 正式名称与两个出口',
+    initialHtml.includes('一致性检查') &&
+      initialHtml.includes('检查两份材料是否对同一指标使用了不同数值') &&
       initialHtml.includes('href="/materials"') &&
       initialHtml.includes('href="/"'),
   )
@@ -143,7 +143,7 @@ try {
       !viewSource.includes('材料 A') &&
       !viewSource.includes('材料 B'),
   )
-  check('按钮文案 检查是否一致（加载中 检查中…）', viewSource.includes('检查是否一致') && viewSource.includes('检查中…'))
+  check('按钮文案 检查一致性（加载中 检查中…）', viewSource.includes('检查一致性') && viewSource.includes('检查中…'))
 
   // B. setup 行为：装载材料列表；同一份材料不发；两份不同才 POST 一次，body 只含两个选中 id。
   resetState()
@@ -165,7 +165,7 @@ try {
   bindings.materialIdB.value = 'mat_a'
   await bindings.compare()
   check('同一份材料不发送 POST', state.posts.length === 0, `posts=${state.posts.length}`)
-  check('同一份材料就地报错', bindings.compareError.value.includes('不能对照同一份材料'), bindings.compareError.value)
+  check('同一份材料就地报错', bindings.compareError.value.includes('两份材料不能相同'), bindings.compareError.value)
   check('同一份材料不产生结果', bindings.result.value === null)
   check('同一份材料也不取原文', detailCalls().length === 0, detailCalls().map((call) => call.url).join(' | '))
 
@@ -231,10 +231,10 @@ try {
     emptyBindings.compareError.value,
   )
   check(
-    '空结果走空态文案',
+    '空结果走人话空态',
     emptyBindings.emptyResult.value === true &&
-      viewSource.includes('当前范围尚未发现同指标不同数字') &&
-      viewSource.includes('中英译文通常对不上'),
+      viewSource.includes('当前没有发现两份材料对同一指标使用不同数值') &&
+      viewSource.includes('换个对照材料'),
   )
 
   // D. 引用点开 Drawer：检查成功后原文已到手，点引用不重复取；位置用 locatorLabel。
@@ -273,17 +273,17 @@ try {
     bannedWords.filter((word) => viewSource.includes(word)).join('、'),
   )
   check(
-    'hero 不再出现 COMPARE 眉题，标题副标题用大白话',
+    'hero 不再出现 COMPARE 眉题，标题用正式名称、副标题说真实能力',
     !viewSource.includes('COMPARE') &&
-      viewSource.includes('检查两份材料有没有说法不一致') &&
-      viewSource.includes('看它们是否对同一指标说了不同的数字'),
+      viewSource.includes('一致性检查') &&
+      viewSource.includes('检查两份材料是否对同一指标使用了不同数值'),
   )
   check(
     '页头消费共享 PageHeader（标题/副标题走 props，右侧出口走插槽）',
     viewSource.includes("import PageHeader from '../components/review/PageHeader.vue'") &&
       templateSource.includes('<PageHeader') &&
-      templateSource.includes('title="检查两份材料有没有说法不一致"') &&
-      templateSource.includes('subtitle="看它们是否对同一指标说了不同的数字"') &&
+      templateSource.includes('title="一致性检查"') &&
+      templateSource.includes('subtitle="检查两份材料是否对同一指标使用了不同数值。"') &&
       !templateSource.includes('<h1'),
   )
   check(
@@ -305,7 +305,14 @@ try {
       templateSource.includes('主材料 · ') &&
       templateSource.includes('对照材料 · '),
   )
-  check('结果头部说 发现 N 处需要核对', viewSource.includes('处需要核对') && !viewSource.includes('条 · 引用横跨两份材料'))
+  check(
+    '每条问题先给人话结论，再左右摊开两边数值与引用（split 对照主视觉）',
+    viewSource.includes('findingHeadline') &&
+      viewSource.includes("sideValue(finding, 'a')") &&
+      viewSource.includes("sideValue(finding, 'b')") &&
+      templateSource.includes('↔'),
+  )
+  check('结果头部说 发现 N 处待核对项', viewSource.includes('处待核对项') && !viewSource.includes('处需要核对'))
   check('不扫描材料库只留在注释里，不进页面文案', viewSource.includes('自动扫描材料库') && !templateSource.includes('自动扫描材料库'))
   check('路由新增一条 /compare', routerSource.includes("path: '/compare'") && routerSource.includes('CompareView'))
   check('Workbench 有指向 /compare 的低权重入口', workbenchSource.includes('to="/compare"'))

@@ -116,7 +116,7 @@ check(
 )
 check('Drawer 使用 USlideover', drawerSource.includes('USlideover'))
 check('报告页标签为「已确认关联」且不再用「已核证」', reportSource.includes('已确认关联') && !reportSource.includes('已核证'))
-check('空预检文案在报告源码中', reportSource.includes('预检完成 · 当前材料尚未发现候选引用'))
+check('空依据审计文案在报告源码中', reportSource.includes('依据审计完成 · 当前材料尚未发现候选引用'))
 check('有确认关联的空预检文案在报告源码中', reportSource.includes('本次未提出新候选'))
 check('报告组合 agent-proposals', reportSource.includes('agent-proposals'))
 check('正交：待审核与已确认可同时出现在模板', reportSource.includes('已发现') && reportSource.includes('已确认关联'))
@@ -124,10 +124,10 @@ check('引用行标注「原文已校验」', reportSource.includes('原文已�
 check('报告页含关键陈述栏目', reportSource.includes('关键陈述'))
 check('报告页请求 statement-signals', reportSource.includes('statement-signals'))
 check('报告页请求 consistency-findings', reportSource.includes('consistency-findings'))
-check('报告页含待核对问题栏目', reportSource.includes('待核对问题'))
-check('首屏主区标题为可见的「待处理问题」', reportSource.includes('>待处理问题</h2>'))
+check('报告页含待核对项栏目', reportSource.includes('待核对项'))
+check('首屏主区标题为可见的「待核对项」', reportSource.includes('>待核对项</h2>'))
 check(
-  '待核对问题只给事实标签（数值不一致 / 待人工判断）',
+  '待核对项只给事实标签（数值不一致 / 待人工判断）',
   reportSource.includes('数值不一致') && reportSource.includes('待人工判断'),
 )
 check('待核对引用点回同一 Drawer', reportSource.includes('openHighlight(citation)'))
@@ -145,12 +145,15 @@ check(
   (reportSource.match(/to="\/"/g) ?? []).length >= 3 && reportSource.includes('>审查</UButton>'),
   `to="/" 出现 ${(reportSource.match(/to="\/"/g) ?? []).length} 次`,
 )
-// 顶栏入口文案现为「核验审查要求」（旧「开始核验」退役；旧检索词「核验评分要求」仅存于视图注释）。
-check('顶栏提供「核验审查要求」入口', reportSource.includes("{{ verifying ? '核验中…' : '核验审查要求' }}"))
-// 审查团队条：头部之下、待处理问题之上；三个角色各报各自的事实来源（两条程序扫描、一条调用模型）。
-// 核验中的依据核验行改口「正在按审查标准查找依据」，不与已确认计数同时出现。
+// 顶栏入口文案现为「运行依据审计」（旧「核验审查要求/开始核验」退役），加载态「依据审计中…」。
 check(
-  '审查团队：三张主卡 + 按需修复/质询，排在待处理问题之上',
+  '顶栏提供「运行依据审计」入口',
+  reportSource.includes("{{ verifying ? '依据审计中…' : '运行依据审计' }}") && !reportSource.includes('核验审查要求'),
+)
+// 审查团队条：头部之下、待核对项之上；三个角色各报各自的事实来源（两条程序扫描、一条调用模型）。
+// 运行中的依据审计行改口「依据审计中…」，与顶栏主按钮同一加载态。
+check(
+  '审查团队：三张主卡 + 按需修复/质询，排在待核对项之上',
   reportSource.includes('审查团队') &&
     reportSource.includes('依据审计员') &&
     reportSource.includes('一致性检查') &&
@@ -159,15 +162,15 @@ check(
     reportSource.includes('质询官') &&
     reportSource.includes('模型') &&
     reportSource.includes('程序') &&
-    reportSource.includes('正在按审查标准查找依据') &&
-    reportSource.includes('点待处理问题后才运行') &&
+    reportSource.includes('依据审计中…') &&
+    reportSource.includes('点待核对项后才运行') &&
     reportSource.includes('需要时在质询页生成追问') &&
     reportSource.includes('才会调用模型') &&
     reportSource.includes('sm:grid-cols-3') &&
     !reportSource.includes('sm:grid-cols-5') &&
-    reportSource.indexOf('>审查团队</h2>') > reportSource.indexOf('预检概览') &&
-    reportSource.indexOf('>审查团队</h2>') < reportSource.indexOf('>待处理问题</h2>'),
-  `团队@${reportSource.indexOf('>审查团队</h2>')} 待处理@${reportSource.indexOf('>待处理问题</h2>')}`,
+    reportSource.indexOf('>审查团队</h2>') > reportSource.indexOf('审查概览') &&
+    reportSource.indexOf('>审查团队</h2>') < reportSource.indexOf('>待核对项</h2>'),
+  `团队@${reportSource.indexOf('>审查团队</h2>')} 待核对项@${reportSource.indexOf('>待核对项</h2>')}`,
 )
 check(
   '已确认依据 k/n 按「有引用的审查要求数」计，不是引用条数之和',
@@ -182,8 +185,8 @@ check(
     !reportSource.includes('本次核验'),
 )
 check(
-  '报告页提供「与另一份材料对照」出口（to="/compare"，已从顶栏移入待处理问题区块）',
-  reportSource.includes('与另一份材料对照') && reportSource.includes('to="/compare"'),
+  '报告页提供「与另一份材料做一致性检查」出口（to="/compare"，已从顶栏移入待核对项区块）',
+  reportSource.includes('与另一份材料做一致性检查') && reportSource.includes('to="/compare"'),
 )
 check(
   '报告页不做 accept（无候选物化端点）',
@@ -191,11 +194,11 @@ check(
 )
 // 注：审查团队条含「关键陈述审查」字样，锚点用关键陈述 h2，避免被条上文案抢先命中。
 check(
-  '待核对区块排在关键陈述之上',
-  reportSource.includes('待核对问题') &&
+  '待核对项区块排在关键陈述之上',
+  reportSource.includes('待核对项') &&
     reportSource.includes('>关键陈述</h2>') &&
-    reportSource.indexOf('待核对问题') < reportSource.indexOf('>关键陈述</h2>'),
-  `待核对@${reportSource.indexOf('待核对问题')} 关键陈述h2@${reportSource.indexOf('>关键陈述</h2>')}`,
+    reportSource.indexOf('待核对项') < reportSource.indexOf('>关键陈述</h2>'),
+  `待核对@${reportSource.indexOf('待核对项')} 关键陈述h2@${reportSource.indexOf('>关键陈述</h2>')}`,
 )
 check(
   '评分要求矩阵排在关键陈述之上（v-for="row in report.criteria" 先于关键陈述 h2）',
@@ -205,7 +208,7 @@ check(
 )
 // 首屏 IA（finding-first）：待处理问题区块恒显（不再按条数门控），关键陈述保留自身 v-if；二者都不挂 loading。
 const findingsBlock = reportSource.slice(
-  reportSource.indexOf('<!-- I8 待核对问题'),
+  reportSource.indexOf('<!-- I8 待核对项'),
   reportSource.indexOf('<!-- 修复建议'),
 )
 const signalsBlock = reportSource.slice(
@@ -231,16 +234,16 @@ check(
   `v-for@${reportSource.indexOf('v-for="finding in findings"')} 面板@${reportSource.indexOf('<RepairSuggestionPanel')} 关键陈述@${reportSource.indexOf('>关键陈述</h2>')}`,
 )
 check(
-  '装配中只留一行状态（v-if="loading" 不再是整卡 UCard，材料级区块先画）',
+  '读取中只留一行状态（v-if="loading" 不再是整卡 UCard，材料级区块先画）',
   reportSource.includes('v-if="loading"') &&
-    reportSource.includes('正在读取审查要求…') &&
+    reportSource.includes('正在读取审查结果…') &&
     !reportSource.includes('<UCard v-if="loading"'),
 )
 check('核验失败只落在该行（行级 rowError）', reportSource.includes('rowError'))
 // Phase 3：逐条核验的行内状态 + 报告分支小标题；待处理问题区块仍不随核验/装载卸下。
 check(
-  '每条评分要求行显示本条核验状态（verifyingIds.includes → 本条核验中…）',
-  reportSource.includes('verifyingIds.includes(row.criterion_id)') && reportSource.includes('本条核验中…'),
+  '每条审查要求行显示本条依据审计状态（verifyingIds.includes → 本条依据审计中…）',
+  reportSource.includes('verifyingIds.includes(row.criterion_id)') && reportSource.includes('本条依据审计中…'),
 )
 check(
   '报告分支含「审查要求进度」小标题且排在 criteria 矩阵之上',
@@ -252,11 +255,11 @@ check(
   '待处理问题区块不随核验/装载卸下（区块内无 verifying 门控）',
   findingsBlock.length > 0 && !findingsBlock.includes('verifying'),
 )
-// P1：待核对空态是单一文案块 —— 两句话同段，findings.length === 0 只出现一次。
+// P1：待核对项空态是单一文案块 —— 两句话同段，findings.length === 0 只出现一次。
 const emptyFindingsCopy =
-  '当前范围尚未发现待核对问题（同一材料内同一度量词的不同数字）。跨材料的数字对照在「与另一份材料对照」。'
+  '当前范围尚未发现待核对项（同一指标在材料中出现了不同数值）。跨材料的数值对照在「一致性检查」。'
 check(
-  '待核对空态为单一块（两句话同段、findings.length === 0 仅一次）',
+  '待核对项空态为单一块（两句话同段、findings.length === 0 仅一次）',
   reportSource.includes(emptyFindingsCopy) && (reportSource.match(/findings\.length === 0/g) ?? []).length === 1,
   `空态 v-else-if 数=${(reportSource.match(/findings\.length === 0/g) ?? []).length}`,
 )
@@ -268,8 +271,9 @@ check(
     !reportSource.includes('去材料页审核候选'),
 )
 check(
-  '未绑定卡片：待处理问题来自材料原文，不需要先懂标注',
-  reportSource.includes('上面的待处理问题来自材料原文，不需要先懂标注。绑定评分标准后才能按条核验。'),
+  '未绑定卡片：材料级检查结果无需绑定也可查看，不再出现「标注」内部概念',
+  reportSource.includes('上面的材料级检查结果无需绑定审查标准也可查看。绑定审查标准后才能逐条运行依据审计。') &&
+    !reportSource.includes('懂标注'),
 )
 check(
   '报告页对用户不再说「个 Block」（rubric/范围行均为「段原文」）',
@@ -374,8 +378,8 @@ try {
     check('有引用行计数为 1 且 quote/line 正确', byId.c_syn_1.verified_citation_count === 1 && byId.c_syn_1.citations[0].line_number === 7 && byId.c_syn_1.citations[0].quote === '准确率达到 95%')
     check('零引用行 missing 说明含文件名与段原文数', byId.c_syn_2.missing.explanation.includes('ev.md') && byId.c_syn_2.missing.explanation.includes('1 段原文'))
     check(
-      '零引用行源码用正交预检文案而非灰徽章独占',
-      reportSource.includes('预检完成 · 当前材料尚未发现候选引用') && reportSource.includes('emptyPreflight'),
+      '零引用行源码用正交空审计文案而非灰徽章独占',
+      reportSource.includes('依据审计完成 · 当前材料尚未发现候选引用') && reportSource.includes('emptyPreflight'),
     )
 
     bindings.openCitation(byId.c_syn_1.citations[0])
@@ -580,7 +584,7 @@ try {
     await flush()
     check('409 进入未绑定态且不渲染矩阵', bindings.unbound.value === true && bindings.report.value === null)
     check('409 SSR 仍有回审查首页出口（按钮文案「审查」）', html.includes('href="/"') && html.includes('审查<!--'))
-    check('409 提供去材料详情绑定的入口', reportSource.includes('尚未绑定评分标准') && reportSource.includes('`/materials/${materialId}`'))
+    check('409 提供去材料详情绑定的入口', reportSource.includes('尚未绑定审查标准') && reportSource.includes('`/materials/${materialId}`'))
   }
 
   // 404：与详情页一致的 notFound，保留回审查首页的出口。

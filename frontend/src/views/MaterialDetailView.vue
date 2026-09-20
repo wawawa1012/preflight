@@ -242,7 +242,7 @@ async function saveAnnotation() {
   if (busy.value) return
   const block = selectedBlock.value
   if (!block) {
-    annotationError.value = '请先在 Block 行选择“标注”'
+    annotationError.value = '请先在原文段落行选择“标注”'
     return
   }
   savingAnnotation.value = true
@@ -346,7 +346,7 @@ async function saveLink() {
     return
   }
   if (!linkCriterionId.value) {
-    linkError.value = '请选择评分要求'
+    linkError.value = '请选择审查要求'
     return
   }
   if (!linkRationale.value.trim()) {
@@ -491,7 +491,7 @@ function criterionEmptyPreflight(criterionId: string) {
 
 function preflightButtonLabel(criterionId: string) {
   // 已有 completed 提案时只展示历史，必须点「重新预检」才会再次 POST。
-  return latestProposalFor(criterionId)?.status === 'completed' ? '重新预检' : 'AI 预检'
+  return latestProposalFor(criterionId)?.status === 'completed' ? '重新依据审计' : '依据审计'
 }
 
 function preflightSeconds(criterionId: string) {
@@ -546,14 +546,14 @@ async function runPreflight(criterion: Rubric['criteria'][number]) {
     proposals.value = [proposal, ...proposals.value.filter(item => item.id !== proposal.id)]
     if (proposal.status === 'completed') {
       if (proposal.candidates.length === 0) {
-        proposalNotice.value = '预检完成：没有提出候选（空结果正常）'
+        proposalNotice.value = '依据审计完成：没有提出候选（空结果正常）'
       } else {
         const passed = proposal.candidates.filter(item => item.validation_status === 'passed').length
         const invalid = proposal.candidates.filter(item => item.validation_status === 'invalid').length
-        proposalNotice.value = `预检完成：原文引用有效 ${passed} 条，无效 ${invalid} 条，待你判断是否关联`
+        proposalNotice.value = `依据审计完成：原文引用有效 ${passed} 条，无效 ${invalid} 条，待你判断是否关联`
       }
     } else {
-      proposalError.value = `预检失败：${proposal.error ?? '未知错误'}`
+      proposalError.value = `依据审计失败：${proposal.error ?? '未知错误'}`
     }
   } catch (cause) {
     const raw = cause instanceof Error ? cause.message : ''
@@ -581,25 +581,25 @@ async function runPreflightAll() {
 
 function preflightAllLabel() {
   const total = boundRubric.value?.criteria.length ?? 0
-  if (proposingIds.value.length > 0) return `预检中 ${proposingIds.value.length}/${total}`
+  if (proposingIds.value.length > 0) return `依据审计中 ${proposingIds.value.length}/${total}`
   const criteria = boundRubric.value?.criteria ?? []
   const allCompleted = criteria.length > 0 && criteria.every(item => completedProposalFor(item.id) !== null)
-  return allCompleted ? '再预检全部' : '预检全部'
+  return allCompleted ? '再依据审计全部' : '依据审计全部'
 }
 
 function humanizePreflightError(raw: string | null | undefined) {
   // 主句只说人话；机器码/原始报错放 title（调用方传入）。
   const text = (raw ?? '').trim()
-  if (!text) return '预检失败，点「重新预检」再试。'
+  if (!text) return '依据审计失败，点「重新依据审计」再试。'
   if (text.includes('llm_invalid_response')) {
     return text.includes('空')
-      ? '预检没有返回内容，点「重新预检」再试。'
-      : '预检结果不完整，点「重新预检」再试。'
+      ? '依据审计没有返回内容，点「重新依据审计」再试。'
+      : '依据审计结果不完整，点「重新依据审计」再试。'
   }
-  if (text.includes('llm_timeout')) return '预检超时，点「重新预检」再试。'
-  if (text.includes('llm_unavailable')) return '预检服务暂时不可用，点「重新预检」再试。'
+  if (text.includes('llm_timeout')) return '依据审计超时，点「重新依据审计」再试。'
+  if (text.includes('llm_unavailable')) return '依据审计服务暂时不可用，点「重新依据审计」再试。'
   if (text.includes('llm_unconfigured')) return '尚未配置 LLM，检查 backend/.env 后再试。'
-  if (text.includes('material_too_large')) return '材料过大，预检未执行；请拆分材料后再试。'
+  if (text.includes('material_too_large')) return '材料过大，依据审计未执行；请拆分材料后再试。'
   return text
 }
 
@@ -616,7 +616,7 @@ function humanizeAcceptFailure(raw: string) {
 
 function batchAcceptNotice(accepted: number, skipped: number) {
   if (accepted === 0) {
-    return skipped > 0 ? `${skipped} 条候选的原文已关联此评分要求，未重复建立关联` : '没有可接受的候选'
+    return skipped > 0 ? `${skipped} 条候选的原文已关联此审查要求，未重复建立关联` : '没有可接受的候选'
   }
   return `已接受 ${accepted} 条候选并物化为引用（agent）${skipped > 0 ? `；${skipped} 条原文已关联，已跳过` : ''}`
 }
@@ -630,7 +630,7 @@ async function acceptCandidate(candidate: ProposalCandidate) {
   const criterionId = criterionIdForCandidate(candidate)
   if (candidateLinkedFor(criterionId, candidate)) {
     // 已关联的候选不再发请求，主句也不是红字：它已经是人确认过的关联。
-    proposalNotice.value = '该候选的原文已关联此评分要求'
+    proposalNotice.value = '该候选的原文已关联此审查要求'
     return
   }
   acceptingCandidateId.value = candidate.id
@@ -650,7 +650,7 @@ async function acceptCandidate(candidate: ProposalCandidate) {
     if (isDuplicateLinkError(raw)) {
       // 客户端镜像滞后（别处已建过同一关联）：刷新关联让候选收敛到「已关联」，不写红字主句。
       await Promise.all([loadAnnotations(), loadLinks(), loadProposals()])
-      proposalNotice.value = '该候选的原文已关联此评分要求'
+      proposalNotice.value = '该候选的原文已关联此审查要求'
     } else {
       proposalError.value = raw
     }
@@ -776,7 +776,7 @@ function lineFor(annotation: EvidenceAnnotation) {
 const meta = computed(() => {
   const current = material.value
   if (!current) return ''
-  return `${current.size_bytes} 字节 · ${current.line_count} 行 · ${current.blocks.length} 个 Block · sha256 ${current.sha256.slice(0, 12)}…`
+  return `${current.size_bytes} 字节 · ${current.line_count} 行 · ${current.blocks.length} 段原文 · sha256 ${current.sha256.slice(0, 12)}…`
 })
 
 async function init() {
@@ -800,7 +800,7 @@ init()
           <h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ notFound ? '找不到该材料' : 'Material' }}</h1>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
           <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">全部材料</UButton>
         </div>
       </div>
@@ -808,7 +808,7 @@ init()
         <p class="text-sm text-slate-400">正在读取材料…</p>
       </UCard>
       <UCard v-else-if="notFound" class="mt-8">
-        <p class="text-sm text-slate-400">该 ID 不存在，或本地数据库中没有这条记录。</p>
+        <p class="text-sm text-slate-400">找不到这份材料，可能已被删除。</p>
         <UButton class="mt-6" to="/materials" icon="i-lucide-folder-open">返回全部材料</UButton>
       </UCard>
       <UCard v-else-if="error" class="mt-8">
@@ -833,9 +833,9 @@ init()
             variant="subtle"
             icon="i-lucide-table"
           >
-            查看预审报告
+            查看审查结果
           </UButton>
-          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
         </div>
       </div>
 
@@ -854,7 +854,7 @@ init()
       <!-- 评分标准：只读标准仓 + 材料绑定 + 人工关联列表。 -->
       <section class="mt-4 rounded-lg border border-slate-800">
         <div class="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-          <h2 class="text-sm font-medium text-slate-300">评分标准</h2>
+          <h2 class="text-sm font-medium text-slate-300">审查标准</h2>
           <div class="flex items-center gap-2">
             <UButton
               v-if="boundRubric"
@@ -872,7 +872,7 @@ init()
         </div>
 
         <p v-if="bindingLoading || rubricsLoading || linksLoading" class="px-3 py-3 text-sm text-slate-400">
-          正在读取评分标准与关联…
+          正在读取审查标准与关联…
         </p>
         <p
           v-else-if="bindingError || rubricsError || linksError"
@@ -887,10 +887,10 @@ init()
             <p class="text-sm text-slate-200">
               {{ boundRubric ? boundRubric.title : binding.rubric_id }}
               <span class="text-xs text-slate-500">
-                · rev{{ binding.rubric_revision }} · 来源：{{ boundRubric ? boundRubric.source_note : '标准文件不可用' }}
+                · 标准版本 {{ binding.rubric_revision }} · 来源：{{ boundRubric ? boundRubric.source_note : '标准文件不可用' }}
               </span>
             </p>
-            <p v-if="!boundRubric" class="mt-2 text-xs text-red-400">绑定的评分标准版本已不可用</p>
+            <p v-if="!boundRubric" class="mt-2 text-xs text-red-400">绑定的审查标准版本已不可用</p>
             <div v-else class="mt-3 space-y-3">
               <div
                 v-for="criterion in boundRubric.criteria"
@@ -906,7 +906,7 @@ init()
                     variant="subtle"
                     size="sm"
                   >
-                    尚未预检
+                    尚未运行依据审计
                   </UBadge>
                   <UBadge
                     v-if="criterionEmptyPreflight(criterion.id)"
@@ -914,7 +914,7 @@ init()
                     variant="subtle"
                     size="sm"
                   >
-                    {{ criterionConfirmed(criterion.id) > 0 ? '本次未提出新候选' : '预检完成 · 当前材料尚未发现候选引用' }}
+                    {{ criterionConfirmed(criterion.id) > 0 ? '本次未提出新候选' : '依据审计完成 · 当前材料尚未发现候选引用' }}
                   </UBadge>
                   <UBadge
                     v-if="criterionPending(criterion.id) > 0"
@@ -937,7 +937,7 @@ init()
                   v-if="criterionEmptyPreflight(criterion.id) && material"
                   class="mt-1 text-xs text-slate-500"
                 >
-                  范围：{{ material.filename }} · {{ material.blocks.length }} 个 Block
+                  范围：{{ material.filename }} · {{ material.blocks.length }} 段原文
                 </p>
                 <div class="mt-2 space-y-2">
                   <div v-for="link in linksFor(criterion.id)" :key="link.id" class="rounded-md bg-slate-900/60 p-2">
@@ -985,7 +985,7 @@ init()
                 <div class="mt-3 border-t border-slate-800 pt-3">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <p class="text-xs text-slate-500">
-                      最新预检：{{ latestProposalFor(criterion.id) ? latestProposalFor(criterion.id)!.status : '尚未运行' }}
+                      最新依据审计：{{ latestProposalFor(criterion.id) ? latestProposalFor(criterion.id)!.status : '尚未运行' }}
                     </p>
                     <UButton
                       size="xs"
@@ -996,7 +996,7 @@ init()
                       :disabled="!boundRubric"
                       @click="runPreflight(criterion)"
                     >
-                      {{ proposingIds.includes(criterion.id) ? `正在预检… ${preflightSeconds(criterion.id)}s` : preflightButtonLabel(criterion.id) }}
+                      {{ proposingIds.includes(criterion.id) ? `依据审计中… ${preflightSeconds(criterion.id)}s` : preflightButtonLabel(criterion.id) }}
                     </UButton>
                   </div>
                   <template v-if="latestProposalFor(criterion.id)">
@@ -1005,7 +1005,7 @@ init()
                       class="mt-2 text-xs text-red-400"
                       :title="latestProposalFor(criterion.id)!.error ?? undefined"
                     >
-                      上次预检失败：{{ humanizePreflightError(latestProposalFor(criterion.id)!.error) }}
+                      上次依据审计失败：{{ humanizePreflightError(latestProposalFor(criterion.id)!.error) }}
                     </p>
                     <div v-else class="mt-2 space-y-2">
                       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -1095,7 +1095,7 @@ init()
         </template>
 
         <template v-else>
-          <p v-if="rubrics.length === 0" class="px-3 py-3 text-sm text-slate-500">尚未配置评分标准</p>
+          <p v-if="rubrics.length === 0" class="px-3 py-3 text-sm text-slate-500">尚未配置审查标准</p>
           <ul v-else class="divide-y divide-slate-800">
             <li
               v-for="rubric in rubrics"
@@ -1105,7 +1105,7 @@ init()
               <div class="min-w-0">
                 <p class="truncate text-sm text-slate-200">{{ rubric.title }}</p>
                 <p class="mt-0.5 truncate text-xs text-slate-500">
-                  {{ rubric.source_note }} · rev{{ rubric.revision }} · {{ rubric.criteria.length }} 项
+                  {{ rubric.source_note }} · 标准版本 {{ rubric.revision }} · {{ rubric.criteria.length }} 项
                 </p>
               </div>
               <UButton size="sm" :loading="bindingBusy" :disabled="busy" @click="bindRubric(rubric)">绑定</UButton>
@@ -1149,7 +1149,7 @@ init()
           <p v-else-if="annotationsError" class="px-3 py-3 text-sm text-red-400" role="alert">{{ annotationsError }}</p>
           <template v-else>
           <p v-if="annotations.length === 0" class="px-3 py-3 text-sm text-slate-500">
-            还没有已保存的引用。预检点「接受」会出现在这里；也可在 Block 行手动圈一句。
+            还没有已保存的引用。依据审计点「接受」会出现在这里；也可在原文段落行手动圈一句。
           </p>
           <ul v-else class="divide-y divide-slate-800">
             <li v-for="item in annotations" :key="item.id" class="px-3 py-2">
@@ -1168,7 +1168,7 @@ init()
                   variant="ghost"
                   icon="i-lucide-link"
                   :disabled="busy || !binding"
-                  :title="binding ? undefined : '绑定评分标准后可关联'"
+                  :title="binding ? undefined : '绑定审查标准后可关联'"
                   @click="selectAnnotationToLink(item)"
                 >
                   关联
@@ -1205,13 +1205,13 @@ init()
                 class="mt-2 rounded-md border border-slate-800 bg-slate-950/60 p-3"
               >
                 <p class="text-xs text-slate-500">
-                  关联到评分要求（{{ boundRubric ? boundRubric.title : '尚未绑定评分标准' }}）
+                  关联到审查要求（{{ boundRubric ? boundRubric.title : '尚未绑定审查标准' }}）
                 </p>
                 <select
                   v-model="linkCriterionId"
                   class="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-200"
                 >
-                  <option disabled value="">选择评分要求</option>
+                  <option disabled value="">选择审查要求</option>
                   <option v-for="criterion in boundRubric?.criteria ?? []" :key="criterion.id" :value="criterion.id">
                     {{ criterion.title }}
                   </option>
@@ -1257,7 +1257,7 @@ init()
           :aria-expanded="blocksOpen"
           @click="toggleBlocks"
         >
-          <span class="text-sm font-medium text-slate-300">全文 Block 列表</span>
+          <span class="text-sm font-medium text-slate-300">原文段落列表</span>
           <span class="flex items-center gap-2 text-xs text-slate-500">
             共 {{ material.blocks.length }} 个
             <UIcon :name="blocksOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
@@ -1278,7 +1278,7 @@ init()
                 variant="ghost"
                 icon="i-lucide-quote"
                 :disabled="busy"
-                title="AI 预检未找到时，可手动圈一句原文再关联。平时请用上面的接受。"
+                title="依据审计未找到时，可手动圈一句原文再关联。平时请用上面的接受。"
                 @click="selectBlock(block)"
               >
                 标注

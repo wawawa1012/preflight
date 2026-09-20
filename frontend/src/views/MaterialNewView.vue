@@ -159,7 +159,7 @@ async function saveMaterial() {
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
           <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">全部材料</UButton>
         </div>
       </div>
@@ -204,7 +204,7 @@ async function saveMaterial() {
         <template v-if="!selectedFile">
           <UIcon name="i-lucide-file-up" class="mx-auto text-3xl text-slate-500" />
           <p class="mt-4 text-sm text-slate-300">点击选择或拖入 Markdown 文件</p>
-          <p class="mt-1 text-xs text-slate-500">.md · UTF-8 · 单文件不超过 1 MiB · 后端会再次校验</p>
+          <p class="mt-1 text-xs text-slate-500">.md · UTF-8 · 单文件不超过 1 MiB · 保存时会再次校验文件内容</p>
         </template>
         <template v-else>
           <UIcon name="i-lucide-file-check" class="mx-auto text-3xl text-violet-400" />
@@ -230,7 +230,7 @@ async function saveMaterial() {
           <span class="text-slate-300">添加材料</span>
         </p>
         <div class="flex flex-wrap items-center gap-3">
-          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">Workbench</UButton>
+          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
           <UButton color="neutral" variant="subtle" icon="i-lucide-refresh-cw" :disabled="busy" @click="resetFile">
             更换文件
           </UButton>

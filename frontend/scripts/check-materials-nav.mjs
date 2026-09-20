@@ -120,7 +120,7 @@ try {
     'Workbench 渲染开始审查 CTA → /materials/new',
     workbenchHtml.includes('href="/materials/new"') && workbenchHtml.includes('开始审查'),
   )
-  check('Workbench 渲染「最近审查」区块', workbenchHtml.includes('最近审查'))
+  check('Workbench 渲染「最近材料」区块', workbenchHtml.includes('最近材料'))
   const workbenchSource = readFileSync(new URL('../src/views/WorkbenchView.vue', import.meta.url), 'utf8')
   check(
     'Workbench 源码不含禁用词',
@@ -197,14 +197,14 @@ try {
     materialsFetch([summary, draftSummary], [boundSummary, unboundSummary]),
   )
   const materialsHtml = await renderToString(materials.app)
-  check('/materials 渲染 Workbench 出口', materialsHtml.includes('href="/"') && materialsHtml.includes('Workbench'))
+  check('/materials 渲染回审查首页出口（按钮文案「审查」）', materialsHtml.includes('href="/"') && materialsHtml.includes('审查'))
   check('/materials 渲染 添加材料 主 CTA', materialsHtml.includes('href="/materials/new"'))
 
   const materialNew = await context('/src/views/MaterialNewView.vue', '/materials/new', async () => jsonResponse({}))
   const materialNewHtml = await renderToString(materialNew.app)
   check(
-    '/materials/new 渲染 Workbench 出口与内部导航',
-    materialNewHtml.includes('href="/"') && materialNewHtml.includes('Workbench') && materialNewHtml.includes('href="/materials"'),
+    '/materials/new 渲染回审查首页出口与内部导航',
+    materialNewHtml.includes('href="/"') && materialNewHtml.includes('审查') && materialNewHtml.includes('href="/materials"'),
   )
   check('/materials/new 初始态含文件输入', materialNewHtml.includes('type="file"'))
 
@@ -212,7 +212,7 @@ try {
     jsonResponse(detail),
   )
   const detailHtml = await renderToString(detailContext.app)
-  check('/materials/:id 渲染 Workbench 出口', detailHtml.includes('href="/"') && detailHtml.includes('Workbench'))
+  check('/materials/:id 渲染回审查首页出口（「审查」）', detailHtml.includes('href="/"') && detailHtml.includes('审查'))
   check(
     '/materials/:id 渲染层无保存按钮/无上传控件',
     !detailHtml.includes('保存材料') && !detailHtml.includes('type="file"'),
@@ -343,7 +343,7 @@ try {
   // D. 源码层：预览态与列表行的导航目标（SSR 初始态无法覆盖的状态）。
   const newSource = readFileSync(new URL('../src/views/MaterialNewView.vue', import.meta.url), 'utf8')
   const materialsSource = readFileSync(new URL('../src/views/MaterialsView.vue', import.meta.url), 'utf8')
-  check('预览态仍有 Workbench 出口与 Materials 面包屑', newSource.includes('Workbench') && newSource.includes('to="/materials"'))
+  check('预览态仍有回审查首页出口（「审查」）与 Materials 面包屑', newSource.includes('>审查</UButton>') && newSource.includes('to="/materials"'))
   check('列表行链接到各自详情', materialsSource.includes(':to="`/materials/${item.id}`"'))
   check(
     '/materials 不再使用「条要求已有关联」旧措辞',
