@@ -20,3 +20,28 @@ frontend/components.d.ts
 *.log
 benchmark/results/
 .worktrees/
+
+# Python / test caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+coverage/
+htmlcov/
+*.egg-info/
+
+# Build / generic caches
+build/
+.cache/
+tmp/
+temp/
+
+# Frontend / test artifacts
+*.tsbuildinfo
+test-results/
+playwright-report/
+
+# OS noise
+.DS_Store
+Thumbs.db
