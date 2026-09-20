@@ -885,7 +885,7 @@ init()
         <template v-else-if="binding">
           <div class="px-3 py-3">
             <p class="text-sm text-slate-200">
-              {{ boundRubric ? boundRubric.title : binding.rubric_id }}
+              {{ boundRubric ? boundRubric.title : '绑定的标准已不可用' }}
               <span class="text-xs text-slate-500">
                 · 标准版本 {{ binding.rubric_revision }} · 来源：{{ boundRubric ? boundRubric.source_note : '标准文件不可用' }}
               </span>

@@ -2,22 +2,20 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
-// 全站唯一一级导航：五项已实现入口，高亮只来自当前路由 path。
+// 全站一级导航只剩两条：审查（Home）与材料库。
+// 一致性/修改效果/质询不再是独立入口——它们是 Review Workspace 内的视角，避免与首页重复的 IA。
 const route = useRoute()
 
 const links = [
   { label: '审查', to: '/' },
-  { label: '一致性检查', to: '/compare' },
-  { label: '修改效果', to: '/diff' },
-  { label: '质询', to: '/grill' },
   { label: '材料', to: '/materials' },
 ]
 
 const currentPath = computed(() => route.path)
 
-// 首页只匹配根路径；其余按前缀匹配子路由（如 /materials/:id、/materials/new）。
+// 审查匹配根路径与整个 /reviews 工作区；材料按前缀匹配子路由。
 function isActive(to: string) {
-  if (to === '/') return currentPath.value === '/'
+  if (to === '/') return currentPath.value === '/' || currentPath.value.startsWith('/reviews')
   return currentPath.value === to || currentPath.value.startsWith(`${to}/`)
 }
 </script>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 import RepairSuggestionPanel from '../components/RepairSuggestionPanel.vue'
@@ -10,7 +10,6 @@ import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCoun
 
 // 材料级预审报告：装配结果（需要绑定）与材料级信号（不需要绑定）各自装、各自画。
 const route = useRoute()
-const router = useRouter()
 const materialId = String(route.params.materialId)
 
 // —— 报告主体：受绑定与装配状态影响 ——
@@ -348,7 +347,7 @@ loadProposals()
           <span v-if="repairFinding"> · 已生成 1 条建议</span>
           <span v-else> · 点待核对项后才运行</span>
           <span class="mx-2 text-slate-700">·</span>
-          <button type="button" class="text-slate-300 hover:underline" @click="router.push('/grill')">质询官</button>
+          <span class="text-slate-300">质询官</span>
           · 需要时在质询页生成追问
         </p>
       </section>
@@ -359,8 +358,6 @@ loadProposals()
           <h2 class="text-lg font-semibold text-slate-100">待核对项</h2>
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-xs text-slate-500">{{ findings.length }} 条 · 同一材料内数值对照</span>
-            <!-- 与另一份材料做一致性检查：常显（未绑定/读取中也可用），不带 query，不触任何写接口。 -->
-            <UButton to="/compare" color="neutral" variant="subtle" size="xs" icon="i-lucide-git-compare">与另一份材料做一致性检查</UButton>
           </div>
         </div>
         <p v-if="findingsUnavailable" class="mt-2 text-xs text-amber-300">待核对项不可用</p>
@@ -405,6 +402,7 @@ loadProposals()
             <RepairSuggestionPanel
               v-if="repairFinding === finding"
               :material-id="materialId"
+              :material-label="report?.filename ?? ''"
               :finding="repairFinding"
               @open-citation="openHighlight"
               @close="repairFinding = null"

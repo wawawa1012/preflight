@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import type { ConsistencyCitation, ConsistencyFinding, RepairSuggestion } from '../types/contracts'
+import { useSessionStore } from '../stores/session'
 
 // 修复建议面板：收到一条待核对问题就调一次 LLM，只展示改稿方向；材料原文只读。
 // POST 只在这里发生：报告页只负责选中哪一条问题，不搬 LLM 逻辑。
-const props = defineProps<{ materialId: string; finding: ConsistencyFinding | null }>()
+const props = defineProps<{ materialId: string; materialLabel?: string; finding: ConsistencyFinding | null }>()
 const emit = defineEmits<{
   (e: 'open-citation', citation: ConsistencyCitation): void
   (e: 'close'): void
 }>()
+
+const router = useRouter()
+const session = useSessionStore()
 
 const suggestion = ref<RepairSuggestion | null>(null)
 const generating = ref(false)
@@ -50,6 +55,19 @@ function retry() {
   if (props.finding) void generate(props.finding)
 }
 
+// 「按此建议编辑」：打开修订稿编辑器并带上建议上下文。建议不是补丁——编辑器只展示它。
+function startEditing() {
+  if (!props.finding || !suggestion.value) return
+  session.setRevisionAdvice({
+    materialId: props.materialId,
+    sourceLabel: props.materialLabel ?? '',
+    findingSummary: props.finding.explanation,
+    suggestion: suggestion.value.suggestion,
+    action: suggestion.value.action,
+  })
+  void router.push(`/materials/${encodeURIComponent(props.materialId)}/revise`)
+}
+
 // 点「生成修复建议」→ 选中 finding → 这里发一次请求；打开页面时 finding 为空，不发请求。
 watch(
   () => props.finding,
@@ -75,6 +93,9 @@ watch(
     <div v-else-if="suggestion" class="mt-3 space-y-2">
       <p class="text-sm text-slate-200">{{ suggestion.suggestion }}</p>
       <p class="text-xs text-violet-300">建议动作：{{ suggestion.action }}</p>
+      <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-pencil-line" @click="startEditing">
+        按此建议编辑
+      </UButton>
     </div>
     <div v-if="error && !generating" class="mt-2">
       <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-refresh-cw" @click="retry">重试</UButton>
