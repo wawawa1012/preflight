@@ -184,9 +184,13 @@ check(
     reportSource.includes('<PageHeader') &&
     !reportSource.includes('本次核验'),
 )
+// 跨材料一致性已正式迁入 Review Workspace：legacy 报告不再承担 cross-material 导航，
+// 只留一句文本指向（无旧 /compare 链接，避免复活已退役的独立路由）。
 check(
-  '报告页提供「与另一份材料做一致性检查」出口（to="/compare"，已从顶栏移入待核对项区块）',
-  reportSource.includes('与另一份材料做一致性检查') && reportSource.includes('to="/compare"'),
+  '报告页不复活旧 /compare（跨材料对照在 Review 一致性视角）',
+  !reportSource.includes('to="/compare"') &&
+    !reportSource.includes('与另一份材料做一致性检查') &&
+    reportSource.includes('跨材料的数值对照在「一致性检查」'),
 )
 check(
   '报告页不做 accept（无候选物化端点）',

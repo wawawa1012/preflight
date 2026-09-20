@@ -1,12 +1,13 @@
-// Leaf B 检查（SSR 载入 + setup 行为级，不引入测试框架）：
-// /compare 检查两份材料说法是否一致：打开页面只 GET 材料列表、零 POST（不自动扫描材料库）；
-// 同一份材料不发送且就地报错；两个不同 id 才 POST /api/v1/comparisons（body 只含两个选中 id）；
-// 检查成功后按需 GET 两份材料的 blocks（左右分栏靠 document_id 判侧，引用点开 Drawer，位置按 locatorLabel）；
-// 页面头与空态消费共享 review/PageHeader、review/EmptyState，页面宽度 max-w-6xl；空 findings 是合法结果，走共享空态。
+// Review 一致性检查（SSR 载入 + setup 行为级，不引入测试框架）：
+// ReviewConsistencyView 在本次审查的成员里显式选两份材料做数值对照：
+// 打开只读材料库、零 POST（不自动扫描）；同一份材料不发送且就地报错；
+// 两个不同 id 才 POST /api/v1/comparisons（body 只含两个选中 id）；
+// 成功后按需 GET 两份材料的 blocks（左右分栏靠 document_id 判侧，引用点开 Drawer，位置按 locatorLabel）；
+// 结果主视觉是每侧全部不同说法 sideVariants；空 findings 是合法结果，走共享 EmptyState。
 // 合成数据只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-compare.mjs
 import { readFileSync } from 'node:fs'
-import { createSSRApp } from 'vue'
+import { createSSRApp, ref } from 'vue'
 import { ssrContextKey } from '@vue/runtime-core'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { renderToString } from '@vue/server-renderer'
@@ -18,23 +19,35 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 const jsonResponse = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
 
-const viewSource = readFileSync(new URL('../src/views/CompareView.vue', import.meta.url), 'utf8')
+const viewSource = readFileSync(new URL('../src/views/review/ReviewConsistencyView.vue', import.meta.url), 'utf8')
 const templateSource = viewSource.slice(viewSource.indexOf('<template>'))
 const routerSource = readFileSync(new URL('../src/router/index.ts', import.meta.url), 'utf8')
-const workbenchSource = readFileSync(new URL('../src/views/WorkbenchView.vue', import.meta.url), 'utf8')
+const workspaceSource = readFileSync(new URL('../src/views/review/ReviewWorkspaceView.vue', import.meta.url), 'utf8')
 
-const materialsFixture = [
+const membersFixture = [
   { id: 'mat_a', filename: 'alpha.md', created_at: '2026-09-16T06:00:00+00:00', block_count: 2 },
   { id: 'mat_b', filename: 'beta.md', created_at: '2026-09-16T05:00:00+00:00', block_count: 2 },
 ]
+const reviewFixture = {
+  id: 'rev_1',
+  title: '春季申报',
+  rubric_id: 'rub_x',
+  rubric_revision: 1,
+  created_at: '2026-09-16T06:00:00+00:00',
+  updated_at: '2026-09-16T07:00:00+00:00',
+  materials: [
+    { material_id: 'mat_a', label: 'Alpha', position: 0 },
+    { material_id: 'mat_b', label: 'Beta', position: 1 },
+  ],
+}
 const blocksA = [
   { id: 'blk_a1', document_id: 'mat_a', ordinal: 1, text: '实验组准确率 90%。', locator: { kind: 'line', index: 3, block_index: 1 } },
 ]
 const blocksB = [
   { id: 'blk_b1', document_id: 'mat_b', ordinal: 1, text: '实验组准确率 85%。', locator: { kind: 'line', index: 5, block_index: 1 } },
 ]
-const citationA = { block_id: 'blk_a1', line_number: 3, quote: '准确率 90%', start: 4, end: 11, value: '90%', unit: '%' }
-const citationB = { block_id: 'blk_b1', line_number: 5, quote: '准确率 85%', start: 4, end: 11, value: '85%', unit: '%' }
+const citationA = { block_id: 'blk_a1', line_number: 3, quote: '准确率 90%', start: 4, end: 11, value: '90', unit: '%' }
+const citationB = { block_id: 'blk_b1', line_number: 5, quote: '准确率 85%', start: 4, end: 11, value: '85', unit: '%' }
 const finding = {
   material_id: 'mat_a',
   kind: 'numeric_inconsistency',
@@ -84,7 +97,7 @@ function stubFetch() {
     }
     if (url.endsWith('/api/v1/materials/mat_a')) return jsonResponse(detailResponse('mat_a', 'alpha.md', blocksA))
     if (url.endsWith('/api/v1/materials/mat_b')) return jsonResponse(detailResponse('mat_b', 'beta.md', blocksB))
-    if (url.endsWith('/api/v1/materials')) return jsonResponse(materialsFixture)
+    if (url.endsWith('/api/v1/materials')) return jsonResponse(membersFixture)
     return jsonResponse([], 200)
   }
 }
@@ -93,20 +106,27 @@ const detailCalls = () => state.calls.filter((call) => /\/api\/v1\/materials\/ma
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' })
 
 try {
+  const piniaModule = await server.ssrLoadModule('pinia')
+  const contextModule = await server.ssrLoadModule('/src/views/review/reviewContext.ts')
+  const reviewContextKey = contextModule.reviewContextKey
   const routes = [
-    { path: '/compare', component: { template: '<div />' } },
+    { path: '/reviews/:reviewId/consistency', component: { template: '<div />' } },
     { path: '/materials', component: { template: '<div />' } },
     { path: '/', component: { template: '<div />' } },
   ]
   async function context() {
-    const module = await server.ssrLoadModule('/src/views/CompareView.vue')
+    const module = await server.ssrLoadModule('/src/views/review/ReviewConsistencyView.vue')
     const router = createRouter({ history: createMemoryHistory(), routes })
-    await router.push('/compare')
+    await router.push('/reviews/rev_1/consistency')
     await router.isReady()
+    const pinia = piniaModule.createPinia()
     const app = createSSRApp(module.default)
     app.use(router)
+    app.use(pinia)
+    piniaModule.setActivePinia(pinia)
+    app.provide(reviewContextKey, { review: ref({ ...reviewFixture }), rubricTitle: ref('标准X'), refresh: async () => {} })
     app.provide(ssrContextKey, { modules: new Set() })
-    return { module, app }
+    return { module, app, pinia }
   }
   const locatorModule = await server.ssrLoadModule('/src/utils/locatorLabel.ts')
 
@@ -116,11 +136,9 @@ try {
   const initial = await context()
   const initialHtml = await renderToString(initial.app)
   check(
-    'SSR 画出 /compare 正式名称与两个出口',
+    'SSR 画出一致性正式名称与成员入口',
     initialHtml.includes('一致性检查') &&
-      initialHtml.includes('检查两份材料是否对同一指标使用了不同数值') &&
-      initialHtml.includes('href="/materials"') &&
-      initialHtml.includes('href="/"'),
+      initialHtml.includes('检查本次审查中两份材料是否对同一指标使用了不同数值'),
   )
   check(
     '打开页面零 POST（不自动检查）',
@@ -130,11 +148,11 @@ try {
   check('打开页面从不请求 /api/v1/comparisons', state.calls.every((call) => !call.url.includes('/api/v1/comparisons')))
   check('打开页面不取任何材料原文', detailCalls().length === 0, detailCalls().map((call) => call.url).join(' | '))
   check(
-    '两个材料下拉绑定两个 id ref，选项来自材料列表',
+    '两个材料下拉绑定两个 id ref，选项来自审查成员',
     (viewSource.match(/<select/g) || []).length === 2 &&
       viewSource.includes('v-model="materialIdA"') &&
       viewSource.includes('v-model="materialIdB"') &&
-      viewSource.includes('<option v-for="item in materials"'),
+      viewSource.includes('<option v-for="member in members"'),
   )
   check(
     '下拉标签与 aria-label 用 主材料 / 对照材料',
@@ -145,19 +163,19 @@ try {
   )
   check('按钮文案 检查一致性（加载中 检查中…）', viewSource.includes('检查一致性') && viewSource.includes('检查中…'))
 
-  // B. setup 行为：装载材料列表；同一份材料不发；两份不同才 POST 一次，body 只含两个选中 id。
+  // B. setup 行为：成员不足两份走空态；同一份材料不发；两份不同才 POST 一次，body 只含两个选中 id。
   resetState()
   globalThis.fetch = stubFetch()
   const view = await context()
   const bindings = view.app.runWithContext(() => view.module.default.setup({}, { expose() {} }))
   await flush()
   check(
-    '材料下拉来自 GET /api/v1/materials（2 条）',
-    bindings.materials.value.length === 2 &&
-      bindings.materials.value[0].id === 'mat_a' &&
-      bindings.materials.value[1].filename === 'beta.md' &&
+    '成员来自 Review 上下文（2 名），材料库只读装载',
+    bindings.library.value.length === 2 &&
+      bindings.library.value[0].id === 'mat_a' &&
+      bindings.library.value[1].filename === 'beta.md' &&
       bindings.loading.value === false,
-    bindings.materials.value.length,
+    bindings.library.value.length,
   )
   check('装载后仍零 POST', state.posts.length === 0, `posts=${state.posts.length}`)
 
@@ -202,8 +220,8 @@ try {
   const firstDetailIndex = state.calls.findIndex((call) => /\/api\/v1\/materials\/mat_[ab]$/.test(call.url))
   check('先 POST 检查、后取原文', postIndex >= 0 && firstDetailIndex > postIndex)
   check(
-    'finding 措辞只有数值不一致 / 待人工判断',
-    bindings.findingLabel('numeric_inconsistency') === '数值不一致' && bindings.findingLabel('needs_review') === '待人工判断',
+    'finding 措辞只有数值集合不同 / 待人工判断',
+    bindings.findingLabel('numeric_inconsistency') === '数值集合不同' && bindings.findingLabel('needs_review') === '待人工判断',
   )
   check(
     '分栏按 Block.document_id 判侧：左 = 主材料、右 = 对照材料',
@@ -213,6 +231,17 @@ try {
       bindings.sideCitations(finding, 'b')[0].block_id === 'blk_b1' &&
       bindings.unsidedCitations(finding).length === 0,
     JSON.stringify(bindings.sideCitations(finding, 'a').map((citation) => citation.block_id)),
+  )
+  check(
+    '主视觉是每侧全部不同说法（sideVariants），不同集合才判不一致',
+    JSON.stringify(bindings.sideVariants(finding, 'a')) === JSON.stringify(['90%']) &&
+      JSON.stringify(bindings.sideVariants(finding, 'b')) === JSON.stringify(['85%']) &&
+      bindings.sameVariantSets(finding) === false,
+  )
+  check(
+    '选择与结果写入会话快照（切页返回可恢复）',
+    view.pinia.state.value.session?.capabilitySnapshots?.['rev_1:consistency']?.materialIdA === 'mat_a' &&
+      view.pinia.state.value.session?.capabilitySnapshots?.['rev_1:consistency']?.result?.findings?.length === 1,
   )
 
   // C. 空 findings 是合法结果：不报错、给出空态说明。
@@ -261,61 +290,60 @@ try {
     drawerBindings.rowLocation('blk_b1', 5),
   )
 
-  // E. 源码层：单一 POST 入口、路由、导航入口、措辞纪律。
+  // E. 源码层：单一 POST 入口、路由、Workspace 入口、措辞纪律。
   check(
-    'CompareView 只 POST /api/v1/comparisons',
+    'ReviewConsistencyView 只 POST /api/v1/comparisons',
     viewSource.includes("method: 'POST'") && viewSource.includes("'/api/v1/comparisons'") && !viewSource.includes('repair-suggestions'),
   )
   const bannedWords = ['已满足', '分数', '笛卡尔积', '参赛', '提交前', '材料 A', '材料 B', 'COMPARE']
   check(
-    'CompareView 源码不含禁用词',
+    'ReviewConsistencyView 源码不含禁用词',
     bannedWords.every((word) => !viewSource.includes(word)),
     bannedWords.filter((word) => viewSource.includes(word)).join('、'),
   )
   check(
-    'hero 不再出现 COMPARE 眉题，标题用正式名称、副标题说真实能力',
+    '标题用正式名称、副标题说真实能力',
     !viewSource.includes('COMPARE') &&
       viewSource.includes('一致性检查') &&
-      viewSource.includes('检查两份材料是否对同一指标使用了不同数值'),
+      viewSource.includes('检查本次审查中两份材料是否对同一指标使用了不同数值'),
   )
   check(
-    '页头消费共享 PageHeader（标题/副标题走 props，右侧出口走插槽）',
-    viewSource.includes("import PageHeader from '../components/review/PageHeader.vue'") &&
-      templateSource.includes('<PageHeader') &&
-      templateSource.includes('title="一致性检查"') &&
-      templateSource.includes('subtitle="检查两份材料是否对同一指标使用了不同数值。"') &&
-      !templateSource.includes('<h1'),
-  )
-  check(
-    '空结果走共享 EmptyState（review/EmptyState）',
-    viewSource.includes("import EmptyState from '../components/review/EmptyState.vue'") &&
-      templateSource.includes('v-if="emptyResult"') &&
+    '成员不足走共享 EmptyState（review/EmptyState）',
+    viewSource.includes("from '../../components/review/EmptyState.vue'") &&
+      templateSource.includes('本次审查的材料不足两份') &&
       templateSource.includes('<EmptyState'),
   )
   check(
-    '页面宽度 max-w-6xl，返回 审查 到 /',
-    viewSource.includes('mx-auto max-w-6xl') &&
-      !viewSource.includes('max-w-4xl') &&
-      templateSource.includes('to="/"') &&
-      templateSource.includes('审查'),
+    '空结果走共享 EmptyState',
+    templateSource.includes('v-if="emptyResult"') && templateSource.includes('<EmptyState'),
   )
   check(
     '分栏保留：左右两栏各放一份材料的引用',
-    (templateSource.match(/sm:grid-cols-2/g) || []).length >= 2 &&
+    (templateSource.match(/sm:grid-cols-2/g) || []).length >= 1 &&
       templateSource.includes('主材料 · ') &&
       templateSource.includes('对照材料 · '),
   )
   check(
-    '每条问题先给人话结论，再左右摊开两边数值与引用（split 对照主视觉）',
+    '每条问题先给人话结论，再摊开两边数值与引用',
     viewSource.includes('findingHeadline') &&
-      viewSource.includes("sideValue(finding, 'a')") &&
-      viewSource.includes("sideValue(finding, 'b')") &&
-      templateSource.includes('↔'),
+      viewSource.includes("sideVariants(finding, 'a')") &&
+      viewSource.includes("sideVariants(finding, 'b')"),
   )
   check('结果头部说 发现 N 处待核对项', viewSource.includes('处待核对项') && !viewSource.includes('处需要核对'))
-  check('不扫描材料库只留在注释里，不进页面文案', viewSource.includes('自动扫描材料库') && !templateSource.includes('自动扫描材料库'))
-  check('路由新增一条 /compare', routerSource.includes("path: '/compare'") && routerSource.includes('CompareView'))
-  check('Workbench 有指向 /compare 的低权重入口', workbenchSource.includes('to="/compare"'))
+  check(
+    '范围只说已选两份材料与前 20 条信号，不承诺全库',
+    viewSource.includes('仅比较每份材料前 20 条关键陈述信号') && !templateSource.includes('自动扫描材料库'),
+  )
+  check(
+    '路由挂载 Review 一致性子视角，旧 /compare 重定向到 Home',
+    routerSource.includes("path: 'consistency'") &&
+      routerSource.includes('review-consistency') &&
+      routerSource.includes("path: '/compare', redirect: '/'"),
+  )
+  check(
+    'Workspace rail 有一致性入口（同一次审查的视角）',
+    workspaceSource.includes("key: 'consistency'") && workspaceSource.includes('一致性'),
+  )
 } finally {
   await server.close()
 }

@@ -1,7 +1,7 @@
-// Materials 导航 invariant 检查（真实 SSR 渲染 + 数据状态 + 行为级 setup，不引入测试框架）：
-// 二级工作区必须有显式回 Workbench 的入口；并核对 Golden Journey 的关键链接与数据。
+// Home/Review/Materials 导航 invariant 检查（真实 SSR 渲染 + 数据状态 + 行为级 setup，不引入测试框架）：
+// 新 IA：Home（/）是审查入口与延续，Review Workspace（/reviews/:id）承载一致性/修改效果/质询视角，
+// Materials（/materials）是事实源库；二级工作区必须有显式回审查首页（/）的入口。
 // 本轮追加：行内「已确认依据 k / n 项」（只来自 preflight-summaries）、未绑定、UModal 删除确认。
-// 本轮修订：首页主 CTA 改为「开始审查」大卡 → /materials/new；新增 AppShell 一级导航检查（品牌 Preflight）。
 // 运行：cd frontend && node scripts/check-materials-nav.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp } from 'vue'
@@ -28,13 +28,13 @@ const jsonResponse = (data, status = 200) =>
 
 const routes = [
   { path: '/', component: { template: '<div />' } },
+  { path: '/reviews/new', component: { template: '<div />' } },
+  { path: '/reviews/:reviewId', component: { template: '<div />' } },
+  { path: '/reviews/:reviewId/consistency', component: { template: '<div />' } },
   { path: '/report', component: { template: '<div />' } },
   { path: '/materials', component: { template: '<div />' } },
   { path: '/materials/new', component: { template: '<div />' } },
   { path: '/materials/:materialId', component: { template: '<div />' } },
-  { path: '/compare', component: { template: '<div />' } },
-  { path: '/diff', component: { template: '<div />' } },
-  { path: '/grill', component: { template: '<div />' } },
 ]
 
 const summary = {
@@ -108,79 +108,123 @@ try {
     return { module, app, router }
   }
 
-  // A. 渲染层：显式回 Workbench 出口 + 页内导航目标。
-  // 首页会 fetch 预审摘要列表：stub 必须按 URL 返回数组，不能给 `{}`。
-  const workbench = await context('/src/views/WorkbenchView.vue', '/', async (input) => {
-    const url = String(input)
-    if (url.includes('/api/v1/preflight-summaries')) return jsonResponse([])
-    return jsonResponse([])
-  })
-  const workbenchHtml = await renderToString(workbench.app)
+  // A. 渲染层：Home 审查入口 + Review Workspace 入口 + 页内导航目标。
+  // Home 会 fetch 审查列表与材料列表：stub 必须按 URL 返回数组，不能给 `{}`。
+  const reviewFixture = {
+    id: 'rev_1',
+    title: '春季申报',
+    rubric_id: 'rub_x',
+    rubric_revision: 1,
+    created_at: '2026-09-16T06:00:00+00:00',
+    updated_at: '2026-09-16T07:00:00+00:00',
+  }
+  function homeFetch(reviewBody, materialsBody) {
+    return async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/reviews')) return jsonResponse(reviewBody)
+      if (url.includes('/api/v1/materials')) return jsonResponse(materialsBody)
+      return jsonResponse([])
+    }
+  }
+  const home = await context('/src/views/HomeView.vue', '/', homeFetch([], [summary, draftSummary]))
+  const homeHtml = await renderToString(home.app)
   check(
-    'Workbench 渲染开始审查 CTA → /materials/new',
-    workbenchHtml.includes('href="/materials/new"') && workbenchHtml.includes('开始审查'),
-  )
-  check('Workbench 渲染「最近材料」区块', workbenchHtml.includes('最近材料'))
-  const workbenchSource = readFileSync(new URL('../src/views/WorkbenchView.vue', import.meta.url), 'utf8')
-  check(
-    'Workbench 源码不含禁用词',
-    bannedWords.every((word) => !workbenchSource.includes(word)),
-    bannedWords.filter((word) => workbenchSource.includes(word)).join('、'),
-  )
-  check(
-    'Workbench 模板含「已确认依据 k / n 项」与范围句',
-    workbenchSource.includes('已确认依据') && workbenchSource.includes('当前范围尚未发现引用'),
-  )
-  check(
-    'Workbench 不再使用「条要求已有关联」旧措辞',
-    !workbenchSource.includes('条要求已有关联'),
+    'Home 渲染开始新审查 CTA → /reviews/new',
+    homeHtml.includes('href="/reviews/new"') && homeHtml.includes('开始新审查'),
   )
   check(
-    'Workbench 未绑定行显示未绑定',
-    workbenchSource.includes('未绑定') && workbenchSource.includes('criteriaLabel'),
+    'Home 渲染添加材料 → /materials/new',
+    homeHtml.includes('href="/materials/new"') && homeHtml.includes('添加材料'),
   )
-  // 主 CTA：一张大卡承担「开始审查」→ /materials/new；旧主按钮「添加材料」退役。
+  check('Home 渲染「继续审查」与材料库区块', homeHtml.includes('继续审查') && homeHtml.includes('材料库'))
   check(
-    '主 CTA「开始审查」固定指向 /materials/new',
-    near(workbenchSource, '上传材料并按标准检查').includes('to="/materials/new"') &&
-      near(workbenchSource, '上传材料并按标准检查').includes('开始审查'),
+    'Home 材料库出口指向 /materials',
+    homeHtml.includes('href="/materials"') && homeHtml.includes('打开材料库'),
   )
+  const homeSource = readFileSync(new URL('../src/views/HomeView.vue', import.meta.url), 'utf8')
   check(
-    '空态 CTA 为「开始审查」→ /materials/new',
-    near(workbenchSource, '还没有材料').includes('to="/materials/new"') &&
-      near(workbenchSource, '还没有材料').includes('开始审查'),
-  )
-  check(
-    '旧主按钮「添加材料」与 startTarget 已退役',
-    !workbenchSource.includes('添加材料') && !workbenchSource.includes('startTarget'),
+    'Home 源码不含禁用词',
+    bannedWords.every((word) => !homeSource.includes(word)),
+    bannedWords.filter((word) => homeSource.includes(word)).join('、'),
   )
   check(
-    'Workbench 不再出现旧标题与旧副标题',
-    !workbenchSource.includes('WORKBENCH') &&
-      !workbenchSource.includes('让关键结论回到原文') &&
-      !workbenchSource.includes('不是打分'),
+    'Home 审查行链入 Review Workspace（/reviews/:id）',
+    homeSource.includes('`/reviews/${review.id}`'),
   )
-  check('Workbench 新标题为「让重要结论有据可查」', workbenchSource.includes('让重要结论有据可查'))
   check(
-    '行链接：已绑定进报告页、未绑定进详情',
-    workbenchSource.includes('item.bound ? `/materials/${item.material_id}/report` : `/materials/${item.material_id}`'),
+    'Home 空态 CTA 为开始第一次审查 → /reviews/new',
+    near(homeSource, '还没有进行中的审查').includes('to="/reviews/new"') &&
+      near(homeSource, '还没有进行中的审查').includes('开始第一次审查'),
   )
 
-  // AppShell：品牌 Preflight、五项一级入口、按 useRoute().path 高亮（含子路由归属）。
-  const shell = await context('/src/components/AppShell.vue', '/compare', async () => jsonResponse([]))
+  // ReviewNew：普通用户进入 Review Workspace 的入口（创建成功 replace 到 /reviews/:id）。
+  const reviewNew = await context('/src/views/review/ReviewNewView.vue', '/reviews/new', async (input) => {
+    const url = String(input)
+    if (url.includes('/api/v1/rubrics')) return jsonResponse([])
+    if (url.includes('/api/v1/materials')) return jsonResponse([])
+    return jsonResponse([])
+  })
+  const reviewNewHtml = await renderToString(reviewNew.app)
+  check('ReviewNew 渲染开始新审查页头与步骤条', reviewNewHtml.includes('开始新审查') && reviewNewHtml.includes('审哪些材料'))
+  check('ReviewNew 渲染回审查首页出口', reviewNewHtml.includes('href="/"'))
+  const reviewNewSource = readFileSync(new URL('../src/views/review/ReviewNewView.vue', import.meta.url), 'utf8')
+  check(
+    'ReviewNew 创建成功进入 Review Workspace',
+    reviewNewSource.includes('router.replace(`/reviews/${reviewId}`)'),
+  )
+
+  // Router：Review Workspace 子视角挂载 + 旧独立工具路由重定向到 Home。
+  const routerSource = readFileSync(new URL('../src/router/index.ts', import.meta.url), 'utf8')
+  check(
+    '路由挂载 Review Workspace（/reviews/new + /reviews/:reviewId 子视角）',
+    routerSource.includes("path: '/reviews/new'") &&
+      routerSource.includes("path: '/reviews/:reviewId'") &&
+      routerSource.includes("path: 'consistency'") &&
+      routerSource.includes("path: 'diff'") &&
+      routerSource.includes("path: 'grill'") &&
+      routerSource.includes("path: 'members'"),
+  )
+  check(
+    '旧独立工具路由重定向到 Home（/compare /diff /grill）',
+    routerSource.includes("path: '/compare', redirect: '/'") &&
+      routerSource.includes("path: '/diff', redirect: '/'") &&
+      routerSource.includes("path: '/grill', redirect: '/'"),
+  )
+  check(
+    '不再引用已删除的 standalone views（Review* 子视角不算）',
+    !routerSource.includes('views/CompareView.vue') &&
+      !routerSource.includes('views/DiffView.vue') &&
+      !routerSource.includes('views/GrillView.vue') &&
+      !routerSource.includes('views/WorkbenchView.vue'),
+  )
+
+  // AppShell：品牌 Preflight、两项一级入口（审查/材料）、按 useRoute().path 高亮（含子路由归属）。
+  const shell = await context('/src/components/AppShell.vue', '/', async () => jsonResponse([]))
   const shellHtml = await renderToString(shell.app)
   check(
-    'AppShell 渲染品牌 Preflight 与五个一级入口',
+    'AppShell 渲染品牌 Preflight 与两个一级入口（审查/材料），旧工具入口已退役',
     shellHtml.includes('Preflight') &&
-      ['/', '/compare', '/diff', '/grill', '/materials'].every((path) => shellHtml.includes(`href="${path}"`)),
+      shellHtml.includes('href="/"') &&
+      shellHtml.includes('href="/materials"') &&
+      !shellHtml.includes('href="/compare"') &&
+      !shellHtml.includes('href="/diff"') &&
+      !shellHtml.includes('href="/grill"'),
   )
   check('AppShell 不出现 WORKBENCH 品牌', !shellHtml.includes('WORKBENCH'))
   const shellBindings = shell.app.runWithContext(() => shell.module.default.setup({}, { expose() {} }))
   check(
-    'AppShell 按 useRoute().path 高亮当前项',
-    shellBindings.isActive('/compare') === true &&
-      shellBindings.isActive('/') === false &&
-      shellBindings.isActive('/materials') === false,
+    'AppShell 首页高亮审查入口',
+    shellBindings.isActive('/') === true && shellBindings.isActive('/materials') === false,
+  )
+  const shellReview = await context('/src/components/AppShell.vue', '/reviews/rev_1/consistency', async () =>
+    jsonResponse([]),
+  )
+  const shellReviewBindings = shellReview.app.runWithContext(() =>
+    shellReview.module.default.setup({}, { expose() {} }),
+  )
+  check(
+    'AppShell Review 工作区归属审查入口（/reviews/* → 审查）',
+    shellReviewBindings.isActive('/') === true && shellReviewBindings.isActive('/materials') === false,
   )
   const shellMaterials = await context('/src/components/AppShell.vue', '/materials/mat_demo_1', async () => jsonResponse([]))
   const shellMaterialsBindings = shellMaterials.app.runWithContext(() =>
@@ -188,7 +232,7 @@ try {
   )
   check(
     'AppShell 子路由归属一级入口（/materials/:id → 材料）',
-    shellMaterialsBindings.isActive('/materials') === true && shellMaterialsBindings.isActive('/diff') === false,
+    shellMaterialsBindings.isActive('/materials') === true && shellMaterialsBindings.isActive('/') === false,
   )
 
   const materials = await context(
@@ -236,32 +280,21 @@ try {
     materialsBindings.relationshipLabel({ id: 'mat_demo_1' }),
   )
 
-  // 首页数据层：装载一条已绑定摘要（另一次 mount，stub 返回真实形状）。
-  const workbenchData = await context('/src/views/WorkbenchView.vue', '/', async (input) => {
-    const url = String(input)
-    if (url.includes('/api/v1/preflight-summaries')) return jsonResponse([boundSummary])
-    return jsonResponse([])
-  })
-  const workbenchBindings = workbenchData.app.runWithContext(() =>
-    workbenchData.module.default.setup({}, { expose() {} }),
-  )
+  // Home 数据层：装载审查列表与材料列表（另一次 setup，stub 返回真实形状）。
+  globalThis.fetch = homeFetch([reviewFixture], [summary, draftSummary])
+  const homeBindings = home.app.runWithContext(() => home.module.default.setup({}, { expose() {} }))
   await flush()
   check(
-    '首页装载已绑定摘要并显示计数',
-    workbenchBindings.summaries.value.length === 1 &&
-      workbenchBindings.summaries.value[0].filename === 'ev.md' &&
-      workbenchBindings.summaries.value[0].verified_citation_count === 2,
-    workbenchBindings.summaries.value.length,
+    'Home 数据装载：1 条审查 + 2 条材料且 loading=false',
+    homeBindings.reviews.value.length === 1 &&
+      homeBindings.reviews.value[0].id === 'rev_1' &&
+      homeBindings.materials.value.length === 2 &&
+      homeBindings.loading.value === false,
+    homeBindings.reviews.value.length,
   )
   check(
-    '首页行标签为「已确认依据 k / n 项」，标准不可用时为未评估',
-    workbenchBindings.criteriaLabel(boundSummary) === '已确认依据 1 / 2 项' &&
-      workbenchBindings.criteriaLabel({ ...boundSummary, criteria_total: null, criteria_with_citations: null }) === '未评估',
-    workbenchBindings.criteriaLabel(boundSummary),
-  )
-  check(
-    '首页 setup 暴露 loadSummaries 与 criteriaLabel（行为级可测）',
-    typeof workbenchBindings.loadSummaries === 'function' && typeof workbenchBindings.criteriaLabel === 'function',
+    'Home setup 暴露 reviews 与 materials（行为级可测）',
+    Array.isArray(homeBindings.reviews.value) && Array.isArray(homeBindings.materials.value),
   )
 
   globalThis.fetch = async () => jsonResponse(detail)

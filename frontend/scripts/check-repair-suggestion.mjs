@@ -5,6 +5,7 @@
 // 运行：cd frontend && node scripts/check-repair-suggestion.mjs
 import { readFileSync } from 'node:fs'
 import { createSSRApp, toRaw } from 'vue'
+import { createPinia as createNativePinia, setActivePinia as setNativeActivePinia } from 'pinia'
 import { ssrContextKey } from '@vue/runtime-core'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { renderToString } from '@vue/server-renderer'
@@ -88,6 +89,13 @@ check('面板展示建议文本与动作', panelSource.includes('{{ suggestion.s
 check('失败可见 + 重试按钮在面板源码中', panelSource.includes('生成失败：') && panelSource.includes('重试'))
 check('面板说明不改材料', panelSource.includes('不会改动材料原文'))
 check('面板引用行点回原文（emit open-citation）', panelSource.includes("emit('open-citation', citation)"))
+check(
+  '面板提供「按此建议编辑」入口（带建议上下文进修订稿，材料原文不动）',
+  panelSource.includes('按此建议编辑') &&
+    panelSource.includes('setRevisionAdvice') &&
+    panelSource.includes('/revise') &&
+    panelSource.includes('建议不是补丁'),
+)
 const FORBIDDEN = ['已满足', '已支撑', '覆盖率', 'Trust Layer', '准备答辩', '矛盾', '分数']
 check(
   '报告页与面板不含禁用措辞',
@@ -150,11 +158,24 @@ try {
     return app
   }
 
+  // 产品组件合理使用 session store：mount 前安装真实 Pinia（与项目运行时一致），
+  // 绝不为 checker 简单而移除产品里的 store 使用。
+  // 注意：面板经由原生 pinia 副本解析 store，必须用同一副本创建/安装/激活，
+  // 否则 inject key 与全局 active 分属两个副本，setup 必抛 getActivePinia。
   function mountPanel(fetchImpl, props) {
     globalThis.fetch = fetchImpl
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/materials/:materialId/revise', component: { template: '<div />' } }],
+    })
+    const pinia = createNativePinia()
     const app = createSSRApp(panelModule.default, props)
+    app.use(router)
+    app.use(pinia)
+    setNativeActivePinia(pinia)
     app.provide(ssrContextKey, { modules: new Set() })
-    return app.runWithContext(() => panelModule.default.setup(props, { expose() {} }))
+    const bindings = app.runWithContext(() => panelModule.default.setup(props, { expose() {} }))
+    return { bindings, router, pinia }
   }
 
   async function renderPanel(fetchImpl, props) {
@@ -162,8 +183,11 @@ try {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] })
     await router.push('/')
     await router.isReady()
+    const pinia = createNativePinia()
     const app = createSSRApp(panelModule.default, props)
     app.use(router)
+    app.use(pinia)
+    setNativeActivePinia(pinia)
     app.provide(ssrContextKey, { modules: new Set() })
     return renderToString(app)
   }
@@ -183,7 +207,7 @@ try {
   // 面板挂载（= 点击后的实际效果）：POST 一次，body 为该条问题原文。
   {
     resetState()
-    const panelBindings = mountPanel(stubFetch({}), { materialId: 'mat_x', finding })
+    const { bindings: panelBindings } = mountPanel(stubFetch({}), { materialId: 'mat_x', finding })
     await flush()
     check('点击后面板发一次 repair-suggestions POST', state.repairPosts === 1, `repairPosts=${state.repairPosts}`)
     const repairCall = state.calls.find((call) => call.method === 'POST' && call.url.includes('/repair-suggestions'))
@@ -209,10 +233,36 @@ try {
     )
   }
 
+  // 「按此建议编辑」：建议不是补丁——面板只把建议上下文写进 session 并推到修订稿路由。
+  {
+    resetState()
+    const { bindings: editing, router: editRouter, pinia: editPinia } = mountPanel(stubFetch({}), {
+      materialId: 'mat_x',
+      finding,
+    })
+    await flush()
+    check('有建议后才可进入编辑（前置：建议已生成）', editing.suggestion.value?.action === '统一数值')
+    editing.startEditing()
+    await flush()
+    const advice = editPinia.state.value.session?.revisionAdvice
+    check(
+      '按此建议编辑把建议上下文带进修订稿（session 一次性消费）',
+      advice?.materialId === 'mat_x' &&
+        advice?.suggestion === SUCCESS_BODY.suggestion &&
+        advice?.action === '统一数值',
+      JSON.stringify(advice),
+    )
+    check(
+      '按此建议编辑推到该材料的修订稿路由',
+      editRouter.currentRoute.value.fullPath === '/materials/mat_x/revise',
+      editRouter.currentRoute.value.fullPath,
+    )
+  }
+
   // 面板未选中问题（页面初始态）：不发请求。
   {
     resetState()
-    const idle = mountPanel(stubFetch({}), { materialId: 'mat_x', finding: null })
+    const { bindings: idle } = mountPanel(stubFetch({}), { materialId: 'mat_x', finding: null })
     await flush()
     check('未选中问题时面板不发请求', state.repairPosts === 0 && idle.suggestion.value === null && idle.error.value === '')
   }
@@ -222,7 +272,7 @@ try {
     resetState()
     state.repairStatus = 502
     state.repairBody = { code: 'llm_unavailable', message: 'LLM 上游不可用', details: [] }
-    const failing = mountPanel(stubFetch({}), { materialId: 'mat_x', finding })
+    const { bindings: failing } = mountPanel(stubFetch({}), { materialId: 'mat_x', finding })
     await flush()
     check(
       '失败可见：显示错误且不给建议',
@@ -245,7 +295,7 @@ try {
     resetState()
     state.repairStatus = 503
     state.repairBody = { code: 'llm_unconfigured', message: '未配置 LLM（PREFLIGHT_LLM_BASE_URL/API_KEY/MODEL）', details: [] }
-    const unconfigured = mountPanel(stubFetch({}), { materialId: 'mat_x', finding })
+    const { bindings: unconfigured } = mountPanel(stubFetch({}), { materialId: 'mat_x', finding })
     await flush()
     check(
       '未配置 LLM 时给出可操作文案',
