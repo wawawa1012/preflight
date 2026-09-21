@@ -65,6 +65,8 @@ def _provenance_problems(draft: RubricPublish) -> list[str]:
     """
     if draft.source_type not in ("plain_text", "markdown"):
         return []
+    if draft.scoring_aggregation or any(c.scoring_definition_version for c in draft.criteria):
+        return ["执行评分规则只允许由 manual/rubric_json 显式定义；文本转录不能推导执行规则"]
     problems = validate_aggregation_rule(draft.aggregation_rule, draft.aggregation_rule_source, draft.source_text)
     for criterion in draft.criteria:
         problems.extend(validate_imported_scoring(criterion, draft.source_text))
@@ -95,6 +97,7 @@ def publish(draft: RubricPublish, directory: Path | None = None) -> Rubric:
         aggregation_rule=draft.aggregation_rule,
         aggregation_rule_source=draft.aggregation_rule_source if draft.aggregation_rule else None,
         model_assisted=draft.model_assisted,
+        scoring_aggregation=draft.scoring_aggregation,
     )
     with _publish_lock:
         target_dir.mkdir(parents=True, exist_ok=True)

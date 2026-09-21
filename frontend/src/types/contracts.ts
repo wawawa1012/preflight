@@ -5,23 +5,13 @@
  * and run json-schema-to-typescript to regenerate this file.
  */
 
-export type Text = string;
-export type SourceType = "plain_text" | "markdown" | "rubric_json";
-export type SourceName = string | null;
+export type Id = string;
+export type ReviewId = string;
+export type Id1 = string;
+export type Revision = number;
 export type Title = string;
 export type SourceNote = string;
-export type SourceType1 = "plain_text" | "markdown" | "rubric_json" | "manual";
-export type SourceName1 = string | null;
-export type SourceText = string;
-export type AggregationRule = string | null;
-export type AggregationRuleSource = string | null;
-export type ModelAssisted = boolean;
-/**
- * @minItems 1
- * @maxItems 50
- */
-export type Criteria = [CriterionDraft, ...CriterionDraft[]];
-export type Id = string;
+export type Id2 = string;
 export type Title1 = string;
 export type Requirement = string;
 export type RequiredEvidence = string[];
@@ -31,9 +21,131 @@ export type RubricLevels = RubricLevel[] | null;
 export type Label = string;
 export type Description = string | null;
 export type Score = number | null;
+export type AnchorId = string | null;
+export type MinScore = number | null;
+export type MaxScore1 = number | null;
 export type ScoringAnchors = string[] | null;
 export type ScoringSources = string[] | null;
-export type Order = number;
+export type ScoringDefinitionVersion = "anchors-v1" | null;
+export type Criteria = Criterion[];
+export type SourceText = string | null;
+export type SourceType = ("plain_text" | "markdown" | "rubric_json" | "manual") | null;
+export type SourceName = string | null;
+export type AggregationRule = string | null;
+export type AggregationRuleSource = string | null;
+export type ModelAssisted = boolean | null;
+export type ScoringAggregation = "sum_points_v1" | null;
+export type ScoringDefinitionHash = string;
+export type CriterionIds = string[];
+export type MaterialId = string;
+export type Sha256 = string;
+export type Label1 = string;
+export type Position = number;
+export type AncestorIds = string[];
+export type Materials = AssessmentMaterial[];
+export type Id3 = string;
+export type MaterialId1 = string;
+export type AnnotationId = string;
+export type RubricId = string;
+export type RubricRevision = number;
+export type CriterionId = string;
+export type Rationale = string;
+export type ProposedBy = "human" | "agent";
+export type CreatedAt = string;
+export type Id4 = string;
+export type MaterialId2 = string;
+export type BlockId = string;
+export type BlockId1 = string;
+export type Start = number;
+export type End = number;
+export type Quote = string;
+export type Note = string | null;
+export type ProposedBy1 = "human" | "agent";
+export type CreatedAt1 = string;
+export type MaterialId3 = string;
+export type BlockId2 = string;
+export type Start1 = number;
+export type End1 = number;
+export type Quote1 = string;
+export type Sources = AssessmentSource[];
+export type Id5 = string;
+export type DocumentId = string;
+export type Ordinal = number;
+export type Text = string;
+export type Kind = "page" | "slide" | "paragraph" | "line" | "table_cell";
+export type Index = number;
+export type EndIndex = number | null;
+export type BlockIndex = number;
+export type RowIndex = number | null;
+export type CellIndex = number | null;
+export type ParagraphIndex = number | null;
+export type Blocks = Block[];
+export type SourcePolicyVersion = string;
+export type AssessmentMethodVersion = string;
+export type CriterionId1 = string;
+export type Status = "assessed" | "insufficient_evidence" | "abstain" | "execution_failed" | "not_scorable";
+export type SelectedAnchorId = string | null;
+export type SourceIds = string[];
+export type Rationale1 = string;
+export type MissingConditions = string[];
+export type Caveats = string[];
+export type Kind1 = "exact" | "range";
+export type Minimum = number;
+export type Maximum = number;
+export type ErrorCode = string | null;
+export type Results = AssessmentResult[];
+export type Status1 = "available" | "unavailable";
+export type ReasonCodes = string[];
+export type AssessedCriterionCount = number;
+export type ScorableCriterionCount = number;
+export type TotalCriterionCount = number;
+export type MissingCriterionIds = string[];
+export type CreatedAt2 = string;
+export type ModelIdentifier = string | null;
+export type PromptVersion = string;
+export type Id6 = string;
+export type ReviewId1 = string;
+export type CreatedAt3 = string;
+export type AssessmentMethodVersion1 = string;
+export type BeforeId = string;
+export type AfterId = string;
+export type Status2 = "comparable" | "not_comparable";
+export type ReasonCodes1 = string[];
+export type EvidenceScopeChanged = boolean;
+export type CriterionId2 = string;
+export type Observation =
+  | "identical"
+  | "anchor_changed"
+  | "reason_changed"
+  | "status_changed"
+  | "newly_assessable"
+  | "became_insufficient"
+  | "range_overlaps"
+  | "range_shifted_upward"
+  | "range_shifted_downward";
+export type ScoreChanged = boolean;
+export type AnchorChanged = boolean;
+export type ReasonChanged = boolean;
+export type Criteria1 = AssessmentCriterionChange[];
+export type CriterionId3 = string;
+export type Status3 = "assessed" | "insufficient_evidence" | "abstain" | "not_scorable";
+export type SelectedAnchorId1 = string | null;
+/**
+ * @maxItems 200
+ */
+export type SourceIds1 = string[];
+export type Rationale2 = string;
+/**
+ * @maxItems 50
+ */
+export type MissingConditions1 = string[];
+/**
+ * @maxItems 50
+ */
+export type Caveats1 = string[];
+export type Text1 = string;
+export type SourceType1 = "plain_text" | "markdown" | "rubric_json";
+export type SourceName1 = string | null;
 export type Title2 = string;
 export type SourceNote1 = string;
 export type SourceType2 = "plain_text" | "markdown" | "rubric_json" | "manual";
@@ -46,106 +158,97 @@ export type ModelAssisted1 = boolean;
  * @minItems 1
  * @maxItems 50
  */
-export type Criteria1 = [CriterionDraft, ...CriterionDraft[]];
-export type Confirmed = true;
-export type Id1 = string;
+export type Criteria2 = [CriterionDraft, ...CriterionDraft[]];
+export type Id7 = string;
 export type Title3 = string;
-export type RubricId = string;
-export type RubricRevision = number;
-export type CreatedAt = string;
-export type UpdatedAt = string;
-export type Title4 = string;
-export type RubricId1 = string;
-export type RubricRevision1 = number;
-export type Id2 = string;
-export type Title5 = string;
-export type RubricId2 = string;
-export type RubricRevision2 = number;
-export type CreatedAt1 = string;
-export type UpdatedAt1 = string;
-export type MaterialId = string;
-export type Label1 = string;
-export type Position = number;
-export type Materials = ReviewMaterialEntry[];
-export type ContractVersion = "0.1.0";
-export type Id3 = string;
-export type Name = string;
-export type Id4 = string;
-export type ProjectId = string;
-export type Label2 = string;
-export type DocumentIds = string[];
-export type Id5 = string;
-export type Revision = number;
-export type Title6 = string;
-export type SourceNote2 = string;
-export type Id6 = string;
-export type Title7 = string;
 export type Requirement1 = string;
 export type RequiredEvidence1 = string[];
-export type MaxScore1 = number | null;
+export type MaxScore2 = number | null;
 export type Weight1 = number | null;
 export type RubricLevels1 = RubricLevel[] | null;
 export type ScoringAnchors1 = string[] | null;
 export type ScoringSources1 = string[] | null;
-export type Criteria2 = Criterion[];
-export type SourceText2 = string | null;
-export type SourceType3 = ("plain_text" | "markdown" | "rubric_json" | "manual") | null;
+export type ScoringDefinitionVersion1 = "anchors-v1" | null;
+export type Order = number;
+export type ScoringAggregation1 = "sum_points_v1" | null;
+export type Title4 = string;
+export type SourceNote2 = string;
+export type SourceType3 = "plain_text" | "markdown" | "rubric_json" | "manual";
 export type SourceName3 = string | null;
+export type SourceText2 = string;
 export type AggregationRule2 = string | null;
 export type AggregationRuleSource2 = string | null;
-export type ModelAssisted2 = boolean | null;
-export type Id7 = string;
-export type ProjectId1 = string;
-export type MaterialVersionId = string;
+export type ModelAssisted2 = boolean;
+/**
+ * @minItems 1
+ * @maxItems 50
+ */
+export type Criteria3 = [CriterionDraft, ...CriterionDraft[]];
+export type ScoringAggregation2 = "sum_points_v1" | null;
+export type Confirmed = true;
+export type Id8 = string;
+export type Title5 = string;
+export type RubricId1 = string;
+export type RubricRevision1 = number;
+export type CreatedAt4 = string;
+export type UpdatedAt = string;
+export type Title6 = string;
+export type RubricId2 = string;
+export type RubricRevision2 = number;
+export type Id9 = string;
+export type Title7 = string;
 export type RubricId3 = string;
 export type RubricRevision3 = number;
+export type CreatedAt5 = string;
+export type UpdatedAt1 = string;
+export type MaterialId4 = string;
+export type Label2 = string;
+export type Position1 = number;
+export type Materials1 = ReviewMaterialEntry[];
+export type ContractVersion = "0.1.0";
+export type Id10 = string;
+export type Name = string;
+export type Id11 = string;
+export type ProjectId = string;
+export type Label3 = string;
+export type DocumentIds = string[];
+export type Id12 = string;
+export type ProjectId1 = string;
+export type MaterialVersionId = string;
+export type RubricId4 = string;
+export type RubricRevision4 = number;
 export type Mode = "mock" | "live" | "replay";
-export type Status = "queued" | "running" | "completed" | "failed";
+export type Status4 = "queued" | "running" | "completed" | "failed";
 export type Stage = "pending" | "extract" | "retrieve" | "adjudicate" | "verify" | "aggregate" | "done";
 export type Provider = string | null;
 export type Model = string | null;
-export type PromptVersion = string;
+export type PromptVersion1 = string;
 export type Error = string | null;
-export type Id8 = string;
+export type Id13 = string;
 export type MaterialVersionId1 = string;
 export type LogicalKey = string;
 export type Filename = string;
 export type Format = "pdf" | "pptx" | "docx" | "md" | "txt";
-export type Sha256 = string;
+export type Sha2561 = string;
 export type ParseStatus = "pending" | "ready" | "rejected" | "failed";
 export type Documents = Document[];
-export type Id9 = string;
-export type DocumentId = string;
-export type Ordinal = number;
-export type Text1 = string;
-export type Kind = "page" | "slide" | "paragraph" | "line" | "table_cell";
-export type Index = number;
-export type EndIndex = number | null;
-export type BlockIndex = number;
-export type RowIndex = number | null;
-export type CellIndex = number | null;
-export type ParagraphIndex = number | null;
-export type Blocks = Block[];
-export type Id10 = string;
-export type CriterionIds = string[];
+export type Blocks1 = Block[];
+export type Id14 = string;
+export type CriterionIds1 = string[];
 export type Text2 = string;
-export type BlockId = string;
-export type Start = number;
-export type End = number;
-export type Quote = string;
 export type ComparisonKey = string | null;
 export type Claims = Claim[];
-export type Id11 = string;
-export type CriterionId = string;
+export type Id15 = string;
+export type CriterionId4 = string;
 export type ClaimId = string | null;
 export type Relation = "supports" | "contradicts" | "context";
 export type CitationValid = boolean;
 export type ValidationError = string | null;
 export type Evidence = Evidence1[];
-export type Id12 = string;
+export type Id16 = string;
 export type Fingerprint = string;
-export type CriterionId1 = string;
-export type Kind1 =
+export type CriterionId5 = string;
+export type Kind2 =
   "missing_evidence" | "weak_evidence" | "unsupported_claim" | "cross_document_conflict" | "overclaim";
 export type Severity = "critical" | "warning" | "info";
 export type Title8 = string;
@@ -154,13 +257,13 @@ export type ClaimIds = string[];
 export type EvidenceIds = string[];
 export type SearchedDocumentIds = string[];
 export type Findings = Finding[];
-export type Id13 = string;
+export type Id17 = string;
 export type FindingId = string;
 export type Instruction = string;
-export type Status1 = "todo" | "done";
+export type Status5 = "todo" | "done";
 export type Repairs = Repair[];
-export type CriterionId2 = string;
-export type Status2 = "supported" | "weak" | "missing" | "critical" | "conflict" | "not_evaluated";
+export type CriterionId6 = string;
+export type Status6 = "supported" | "weak" | "missing" | "critical" | "conflict" | "not_evaluated";
 export type EvidenceIds1 = string[];
 export type FindingIds = string[];
 export type Assessments = CriterionAssessment[];
@@ -169,7 +272,7 @@ export type RubricCoverage = number | null;
 export type VerifiedEvidence = number;
 export type CriticalRisks = number;
 export type ResolvedRisks = number | null;
-export type Id14 = string;
+export type Id18 = string;
 export type FindingId1 = string;
 export type Question = string;
 export type Why = string;
@@ -181,7 +284,7 @@ export type AfterRunId = string;
 export type Comparable = boolean;
 export type Reason = string | null;
 export type Fingerprint1 = string;
-export type Status3 = "resolved" | "new" | "unchanged";
+export type Status7 = "resolved" | "new" | "unchanged";
 export type BeforeFindingId = string | null;
 export type AfterFindingId = string | null;
 export type Entries = DiffEntry[];
@@ -191,9 +294,9 @@ export type MaterialIdBefore1 = string;
 export type MaterialIdAfter1 = string;
 export type FilenameBefore = string;
 export type FilenameAfter = string;
-export type Note = string;
-export type MaterialId1 = string;
-export type Kind2 = "numeric_inconsistency" | "needs_review";
+export type Note1 = string;
+export type MaterialId5 = string;
+export type Kind3 = "numeric_inconsistency" | "needs_review";
 export type Measure = string;
 /**
  * @minItems 2
@@ -207,89 +310,69 @@ export type Explanation1 = string;
  * @minItems 2
  */
 export type Citations = [ConsistencyCitation, ConsistencyCitation, ...ConsistencyCitation[]];
-export type BlockId1 = string;
+export type BlockId3 = string;
 export type LineNumber = number | null;
-export type Quote1 = string;
-export type Start1 = number;
-export type End1 = number;
+export type Quote2 = string;
+export type Start2 = number;
+export type End2 = number;
 export type Value = string;
 export type Unit = string;
 export type Resolved = ConsistencyFinding[];
 export type Unchanged = ConsistencyFinding[];
 export type New = ConsistencyFinding[];
 export type MaterialVersionId2 = string;
-export type RubricId4 = string;
-export type RubricRevision4 = number;
+export type RubricId5 = string;
+export type RubricRevision5 = number;
 export type Mode1 = "live" | "replay";
 export type DocumentId1 = string;
 export type Filename1 = string;
 export type SizeBytes = number;
-export type Sha2561 = string;
+export type Sha2562 = string;
 export type LineCount = number;
-export type Blocks1 = Block[];
+export type Blocks2 = Block[];
 export type DocumentId2 = string;
 export type Filename2 = string;
 export type Format1 = "md" | "txt" | "docx";
 export type SizeBytes1 = number;
-export type Sha2562 = string;
+export type Sha2563 = string;
 export type LineCount1 = number | null;
 export type ParserVersion = string | null;
-export type Blocks2 = Block[];
-export type Id15 = string;
+export type Blocks3 = Block[];
+export type Id19 = string;
 export type Filename3 = string;
 export type Format2 = "md" | "txt" | "docx";
 export type ParserVersion1 = string | null;
 export type SizeBytes2 = number;
-export type Sha2563 = string;
+export type Sha2564 = string;
 export type LineCount2 = number | null;
-export type CreatedAt2 = string;
-export type Blocks3 = Block[];
-export type Id16 = string;
+export type CreatedAt6 = string;
+export type Blocks4 = Block[];
+export type Id20 = string;
 export type Filename4 = string;
 export type Format3 = "md" | "txt" | "docx";
-export type CreatedAt3 = string;
+export type CreatedAt7 = string;
 export type BlockCount = number;
-export type MaterialId2 = string;
-export type BlockId2 = string;
-export type Start2 = number;
-export type End2 = number;
-export type Quote2 = string;
-export type Id17 = string;
-export type MaterialId3 = string;
-export type BlockId3 = string;
-export type Note1 = string | null;
-export type ProposedBy = "human" | "agent";
-export type CreatedAt4 = string;
 export type BlockId4 = string;
 export type Quote3 = string;
 export type Note2 = string | null;
-export type MaterialId4 = string | null;
+export type MaterialId6 = string | null;
 export type Start3 = number | null;
 export type End3 = number | null;
-export type MaterialId5 = string;
-export type RubricId5 = string;
-export type RubricRevision5 = number;
-export type CreatedAt5 = string;
+export type MaterialId7 = string;
 export type RubricId6 = string;
 export type RubricRevision6 = number;
-export type Id18 = string;
-export type MaterialId6 = string;
-export type AnnotationId = string;
+export type CreatedAt8 = string;
 export type RubricId7 = string;
 export type RubricRevision7 = number;
-export type CriterionId3 = string;
-export type Rationale = string;
-export type ProposedBy1 = "human" | "agent";
-export type CreatedAt6 = string;
 export type AnnotationId1 = string;
-export type CriterionId4 = string;
-export type Rationale1 = string;
-export type Id19 = string;
+export type CriterionId7 = string;
+export type Rationale3 = string;
+export type Id21 = string;
 export type ProposalId = string;
 export type Ordinal1 = number;
 export type BlockId5 = string;
 export type Quote4 = string;
-export type Rationale2 = string;
+export type Rationale4 = string;
 export type RiskNote = string | null;
 export type ValidationStatus = "pending" | "passed" | "invalid";
 export type ValidationCode = string | null;
@@ -297,39 +380,39 @@ export type ReviewStatus = "unreviewed" | "accepted" | "rejected";
 export type RejectReason = string | null;
 export type CreatedAnnotationId = string | null;
 export type CreatedLinkId = string | null;
-export type CreatedAt7 = string;
-export type Id20 = string;
-export type MaterialId7 = string;
-export type CriterionId5 = string;
+export type CreatedAt9 = string;
+export type Id22 = string;
+export type MaterialId8 = string;
+export type CriterionId8 = string;
 export type RubricId8 = string;
 export type RubricRevision8 = number;
 export type Provider1 = string;
 export type Model1 = string;
-export type PromptVersion1 = string;
-export type Status4 = "completed" | "failed";
+export type PromptVersion2 = string;
+export type Status8 = "completed" | "failed";
 export type Error1 = string | null;
-export type CreatedAt8 = string;
+export type CreatedAt10 = string;
 export type Candidates = ProposalCandidate[];
-export type CriterionId6 = string;
+export type CriterionId9 = string;
 export type Reason1 = string | null;
-export type MaterialId8 = string;
+export type MaterialId9 = string;
 export type Filename5 = string;
 export type BlockCount1 = number;
 export type RubricId9 = string;
 export type RubricRevision9 = number;
 export type RubricTitle = string;
-export type CriterionId7 = string;
+export type CriterionId10 = string;
 export type Title9 = string;
 export type Requirement2 = string;
 export type VerifiedCitationCount = number;
-export type Status5 = "has_verified_citations" | "no_verified_citations_in_scope";
+export type Status9 = "has_verified_citations" | "no_verified_citations_in_scope";
 export type LinkId = string;
 export type AnnotationId2 = string;
-export type CriterionId8 = string;
+export type CriterionId11 = string;
 export type BlockId6 = string;
 export type LineNumber1 = number | null;
 export type Quote5 = string;
-export type Rationale3 = string;
+export type Rationale5 = string;
 export type ProposedBy2 = "human" | "agent";
 export type Start4 = number;
 export type End4 = number;
@@ -337,11 +420,11 @@ export type Citations1 = MaterialPreflightCitation[];
 export type SearchedBlockCount1 = number;
 export type SearchedFilename = string;
 export type Explanation2 = string;
-export type Criteria3 = MaterialPreflightCriterionRow[];
-export type Blocks4 = Block[];
-export type MaterialId9 = string;
+export type Criteria4 = MaterialPreflightCriterionRow[];
+export type Blocks5 = Block[];
+export type MaterialId10 = string;
 export type Filename6 = string;
-export type CreatedAt9 = string;
+export type CreatedAt11 = string;
 export type BlockCount2 = number;
 export type Bound = boolean;
 export type RubricRevision10 = number | null;
@@ -364,7 +447,7 @@ export type MaterialIdB1 = string;
 export type FilenameA = string;
 export type FilenameB = string;
 export type Findings1 = ConsistencyFinding[];
-export type MaterialId10 = string;
+export type MaterialId11 = string;
 export type Prompt = string;
 export type Quote7 = string;
 export type BlockId8 = string;
@@ -387,7 +470,7 @@ export type BlockId9 = string;
 export type Quote8 = string;
 export type Start7 = number | null;
 export type End7 = number | null;
-export type MaterialId11 = string;
+export type MaterialId12 = string;
 export type Question1 = string;
 export type UserAnswer = string;
 /**
@@ -412,9 +495,9 @@ export type SourceRefs =
       CoachSourceRef,
       CoachSourceRef
     ];
-export type ReviewId = string | null;
-export type MaterialId12 = string;
-export type Status6 = "coached" | "abstain" | "insufficient_context";
+export type ReviewId2 = string | null;
+export type MaterialId13 = string;
+export type Status10 = "coached" | "abstain" | "insufficient_context";
 export type AbstainReason = string | null;
 /**
  * @maxItems 6
@@ -443,7 +526,7 @@ export type Note3 = string | null;
 /**
  * @maxItems 8
  */
-export type SourceIds =
+export type SourceIds2 =
   | []
   | [string]
   | [string, string]
@@ -467,7 +550,7 @@ export type UnsupportedClaims =
 /**
  * @maxItems 8
  */
-export type MissingConditions =
+export type MissingConditions2 =
   | []
   | [string]
   | [string, string]
@@ -487,7 +570,7 @@ export type FollowUpQuestions =
   | [string, string, string]
   | [string, string, string, string]
   | [string, string, string, string, string];
-export type SourceIds1 = string[];
+export type SourceIds3 = string[];
 export type SourceId = string;
 export type BlockId10 = string;
 export type LineNumber3 = number | null;
@@ -495,23 +578,23 @@ export type Quote9 = string;
 export type Start8 = number;
 export type End8 = number;
 export type Basis = string;
-export type Sources = CoachSource[];
+export type Sources1 = CoachSource[];
 export type OverallNote = string;
 export type ChildMaterialId = string;
 export type ParentMaterialId = string;
-export type CreatedAt10 = string;
+export type CreatedAt12 = string;
 export type Text4 = string;
 export type Filename7 = string;
-export type ReviewId1 = string | null;
-export type Label3 = string | null;
-export type MaterialId13 = string;
-export type ParentAvailable = boolean;
+export type ReviewId3 = string | null;
+export type Label4 = string | null;
 export type MaterialId14 = string;
-export type Available = boolean;
-export type CreatedAt11 = string;
+export type ParentAvailable = boolean;
 export type MaterialId15 = string;
-export type Children = RevisionChild[];
+export type Available = boolean;
+export type CreatedAt13 = string;
 export type MaterialId16 = string;
+export type Children = RevisionChild[];
+export type MaterialId17 = string;
 export type Format4 = "md" | "txt";
 export type Text5 = string;
 export type Normalization = "lf";
@@ -520,6 +603,11 @@ export type Message = string;
 export type Details = string[];
 
 export interface ContractBundle {
+  assessment_create: AssessmentCreate;
+  assessment_snapshot: AssessmentSnapshot;
+  assessment_summary: AssessmentSummary;
+  assessment_comparison: AssessmentComparison;
+  assessor_proposal: AssessorProposal;
   rubric_draft_request: RubricDraftRequest;
   rubric_draft: RubricDraft;
   rubric_publish: RubricPublish;
@@ -577,27 +665,46 @@ export interface ContractBundle {
   editable_source: EditableSource;
   error: ApiError;
 }
-export interface RubricDraftRequest {
-  text: Text;
-  source_type?: SourceType;
-  source_name?: SourceName;
+/**
+ * Empty request: scope and execution rules are resolved exclusively by the server.
+ */
+export interface AssessmentCreate {}
+export interface AssessmentSnapshot {
+  id: Id;
+  scope: EvaluationScope;
+  results: Results;
+  aggregation: AssessmentAggregation;
+  created_at: CreatedAt2;
+  model_identifier?: ModelIdentifier;
+  prompt_version: PromptVersion;
 }
-export interface RubricDraft {
+export interface EvaluationScope {
+  review_id: ReviewId;
+  rubric: Rubric;
+  scoring_definition_hash: ScoringDefinitionHash;
+  criterion_ids: CriterionIds;
+  materials: Materials;
+  sources: Sources;
+  blocks: Blocks;
+  source_policy_version: SourcePolicyVersion;
+  assessment_method_version: AssessmentMethodVersion;
+}
+export interface Rubric {
+  id: Id1;
+  revision: Revision;
   title: Title;
   source_note: SourceNote;
-  source_type: SourceType1;
-  source_name?: SourceName1;
-  source_text: SourceText;
+  criteria: Criteria;
+  source_text?: SourceText;
+  source_type?: SourceType;
+  source_name?: SourceName;
   aggregation_rule?: AggregationRule;
   aggregation_rule_source?: AggregationRuleSource;
   model_assisted?: ModelAssisted;
-  criteria: Criteria;
+  scoring_aggregation?: ScoringAggregation;
 }
-/**
- * 草稿项：order 只存在于发布前；publish 校验 id/order 后按 order 排序。
- */
-export interface CriterionDraft {
-  id: Id;
+export interface Criterion {
+  id: Id2;
   title: Title1;
   requirement: Requirement;
   required_evidence: RequiredEvidence;
@@ -606,7 +713,7 @@ export interface CriterionDraft {
   rubric_levels?: RubricLevels;
   scoring_anchors?: ScoringAnchors;
   scoring_sources?: ScoringSources;
-  order: Order;
+  scoring_definition_version?: ScoringDefinitionVersion;
 }
 /**
  * 源标准里真实写出过的评分档位；label 必须能在源文本中定位，缺失一律不填。
@@ -615,124 +722,69 @@ export interface RubricLevel {
   label: Label;
   description?: Description;
   score?: Score;
+  anchor_id?: AnchorId;
+  min_score?: MinScore;
+  max_score?: MaxScore1;
 }
-export interface RubricPublish {
-  title: Title2;
-  source_note: SourceNote1;
-  source_type: SourceType2;
-  source_name?: SourceName2;
-  source_text: SourceText1;
-  aggregation_rule?: AggregationRule1;
-  aggregation_rule_source?: AggregationRuleSource1;
-  model_assisted?: ModelAssisted1;
-  criteria: Criteria1;
-  confirmed: Confirmed;
-}
-export interface Review {
-  id: Id1;
-  title: Title3;
-  rubric_id: RubricId;
-  rubric_revision: RubricRevision;
-  created_at: CreatedAt;
-  updated_at: UpdatedAt;
-}
-export interface ReviewCreate {
-  title: Title4;
-  rubric_id: RubricId1;
-  rubric_revision: RubricRevision1;
-}
-export interface ReviewDetail {
-  id: Id2;
-  title: Title5;
-  rubric_id: RubricId2;
-  rubric_revision: RubricRevision2;
-  created_at: CreatedAt1;
-  updated_at: UpdatedAt1;
-  materials: Materials;
-}
-export interface ReviewMaterialEntry {
+export interface AssessmentMaterial {
   material_id: MaterialId;
+  sha256: Sha256;
   label: Label1;
   position: Position;
+  ancestor_ids: AncestorIds;
 }
-export interface RunReport {
-  contract_version: ContractVersion;
-  project: Project;
-  material_version: MaterialVersion;
-  rubric: Rubric;
-  run: Run;
-  documents: Documents;
-  blocks: Blocks;
-  claims: Claims;
-  evidence: Evidence;
-  findings: Findings;
-  repairs: Repairs;
-  assessments: Assessments;
-  metrics: Metrics;
-  review_questions: ReviewQuestions;
+/**
+ * Source ID is the accepted link ID; provenance is frozen, never model-authored.
+ */
+export interface AssessmentSource {
+  link: CriterionEvidenceLink;
+  annotation: EvidenceAnnotation;
+  source: SourceRef;
 }
-export interface Project {
+export interface CriterionEvidenceLink {
   id: Id3;
-  name: Name;
+  material_id: MaterialId1;
+  annotation_id: AnnotationId;
+  rubric_id: RubricId;
+  rubric_revision: RubricRevision;
+  criterion_id: CriterionId;
+  rationale: Rationale;
+  proposed_by?: ProposedBy;
+  created_at: CreatedAt;
 }
-export interface MaterialVersion {
+export interface EvidenceAnnotation {
   id: Id4;
-  project_id: ProjectId;
-  label: Label2;
-  document_ids: DocumentIds;
+  material_id: MaterialId2;
+  block_id: BlockId;
+  source: Span;
+  note?: Note;
+  proposed_by?: ProposedBy1;
+  created_at: CreatedAt1;
 }
-export interface Rubric {
-  id: Id5;
-  revision: Revision;
-  title: Title6;
-  source_note: SourceNote2;
-  criteria: Criteria2;
-  source_text?: SourceText2;
-  source_type?: SourceType3;
-  source_name?: SourceName3;
-  aggregation_rule?: AggregationRule2;
-  aggregation_rule_source?: AggregationRuleSource2;
-  model_assisted?: ModelAssisted2;
+export interface Span {
+  block_id: BlockId1;
+  start: Start;
+  end: End;
+  quote: Quote;
 }
-export interface Criterion {
-  id: Id6;
-  title: Title7;
-  requirement: Requirement1;
-  required_evidence: RequiredEvidence1;
-  max_score?: MaxScore1;
-  weight?: Weight1;
-  rubric_levels?: RubricLevels1;
-  scoring_anchors?: ScoringAnchors1;
-  scoring_sources?: ScoringSources1;
-}
-export interface Run {
-  id: Id7;
-  project_id: ProjectId1;
-  material_version_id: MaterialVersionId;
-  rubric_id: RubricId3;
-  rubric_revision: RubricRevision3;
-  mode: Mode;
-  status: Status;
-  stage: Stage;
-  provider?: Provider;
-  model?: Model;
-  prompt_version: PromptVersion;
-  error?: Error;
-}
-export interface Document {
-  id: Id8;
-  material_version_id: MaterialVersionId1;
-  logical_key: LogicalKey;
-  filename: Filename;
-  format: Format;
-  sha256: Sha256;
-  parse_status: ParseStatus;
+/**
+ * 统一来源引用：material/block 身份 + 半开 code-point span；位置由服务端解析并逐字复验。
+ *
+ * 客户端与模型只能选择 block 与 quote（可选显式 start/end 精确选中某次 occurrence），
+ * 不得把 locator/行号当权威提交。
+ */
+export interface SourceRef {
+  material_id: MaterialId3;
+  block_id: BlockId2;
+  start: Start1;
+  end: End1;
+  quote: Quote1;
 }
 export interface Block {
-  id: Id9;
+  id: Id5;
   document_id: DocumentId;
   ordinal: Ordinal;
-  text: Text1;
+  text: Text;
   locator: Locator;
 }
 export interface Locator {
@@ -744,22 +796,207 @@ export interface Locator {
   cell_index?: CellIndex;
   paragraph_index?: ParagraphIndex;
 }
-export interface Claim {
+export interface AssessmentResult {
+  criterion_id: CriterionId1;
+  status: Status;
+  selected_anchor_id?: SelectedAnchorId;
+  source_ids?: SourceIds;
+  rationale: Rationale1;
+  missing_conditions?: MissingConditions;
+  caveats?: Caveats;
+  score?: AssessmentScore | null;
+  error_code?: ErrorCode;
+}
+export interface AssessmentScore {
+  kind: Kind1;
+  minimum: Minimum;
+  maximum: Maximum;
+}
+export interface AssessmentAggregation {
+  status: Status1;
+  score?: AssessmentScore | null;
+  reason_codes: ReasonCodes;
+  assessed_criterion_count: AssessedCriterionCount;
+  scorable_criterion_count: ScorableCriterionCount;
+  total_criterion_count: TotalCriterionCount;
+  missing_criterion_ids: MissingCriterionIds;
+}
+export interface AssessmentSummary {
+  id: Id6;
+  review_id: ReviewId1;
+  created_at: CreatedAt3;
+  aggregation: AssessmentAggregation;
+  assessment_method_version: AssessmentMethodVersion1;
+}
+export interface AssessmentComparison {
+  before_id: BeforeId;
+  after_id: AfterId;
+  status: Status2;
+  reason_codes: ReasonCodes1;
+  evidence_scope_changed: EvidenceScopeChanged;
+  criteria: Criteria1;
+  aggregation_before: AssessmentAggregation;
+  aggregation_after: AssessmentAggregation;
+}
+/**
+ * observation 只声明本条目哪个维度变化；identical 仅当 status/anchor/score/reason 全等。
+ *
+ * reason 指 error_code、missing_conditions、caveats 与 rationale 的组合；引用来源的增减
+ * 仍以 before/after 原文与 comparison.evidence_scope_changed 呈现，不折叠进本枚举。
+ */
+export interface AssessmentCriterionChange {
+  criterion_id: CriterionId2;
+  before: AssessmentResult;
+  after: AssessmentResult;
+  observation: Observation;
+  score_changed: ScoreChanged;
+  anchor_changed: AnchorChanged;
+  reason_changed: ReasonChanged;
+}
+/**
+ * Only this narrow shape is accepted from the LLM; no scores or SourceRefs.
+ */
+export interface AssessorProposal {
+  criterion_id: CriterionId3;
+  status: Status3;
+  selected_anchor_id?: SelectedAnchorId1;
+  source_ids?: SourceIds1;
+  rationale: Rationale2;
+  missing_conditions?: MissingConditions1;
+  caveats?: Caveats1;
+}
+export interface RubricDraftRequest {
+  text: Text1;
+  source_type?: SourceType1;
+  source_name?: SourceName1;
+}
+export interface RubricDraft {
+  title: Title2;
+  source_note: SourceNote1;
+  source_type: SourceType2;
+  source_name?: SourceName2;
+  source_text: SourceText1;
+  aggregation_rule?: AggregationRule1;
+  aggregation_rule_source?: AggregationRuleSource1;
+  model_assisted?: ModelAssisted1;
+  criteria: Criteria2;
+  scoring_aggregation?: ScoringAggregation1;
+}
+/**
+ * 草稿项：order 只存在于发布前；publish 校验 id/order 后按 order 排序。
+ */
+export interface CriterionDraft {
+  id: Id7;
+  title: Title3;
+  requirement: Requirement1;
+  required_evidence: RequiredEvidence1;
+  max_score?: MaxScore2;
+  weight?: Weight1;
+  rubric_levels?: RubricLevels1;
+  scoring_anchors?: ScoringAnchors1;
+  scoring_sources?: ScoringSources1;
+  scoring_definition_version?: ScoringDefinitionVersion1;
+  order: Order;
+}
+export interface RubricPublish {
+  title: Title4;
+  source_note: SourceNote2;
+  source_type: SourceType3;
+  source_name?: SourceName3;
+  source_text: SourceText2;
+  aggregation_rule?: AggregationRule2;
+  aggregation_rule_source?: AggregationRuleSource2;
+  model_assisted?: ModelAssisted2;
+  criteria: Criteria3;
+  scoring_aggregation?: ScoringAggregation2;
+  confirmed: Confirmed;
+}
+export interface Review {
+  id: Id8;
+  title: Title5;
+  rubric_id: RubricId1;
+  rubric_revision: RubricRevision1;
+  created_at: CreatedAt4;
+  updated_at: UpdatedAt;
+}
+export interface ReviewCreate {
+  title: Title6;
+  rubric_id: RubricId2;
+  rubric_revision: RubricRevision2;
+}
+export interface ReviewDetail {
+  id: Id9;
+  title: Title7;
+  rubric_id: RubricId3;
+  rubric_revision: RubricRevision3;
+  created_at: CreatedAt5;
+  updated_at: UpdatedAt1;
+  materials: Materials1;
+}
+export interface ReviewMaterialEntry {
+  material_id: MaterialId4;
+  label: Label2;
+  position: Position1;
+}
+export interface RunReport {
+  contract_version: ContractVersion;
+  project: Project;
+  material_version: MaterialVersion;
+  rubric: Rubric;
+  run: Run;
+  documents: Documents;
+  blocks: Blocks1;
+  claims: Claims;
+  evidence: Evidence;
+  findings: Findings;
+  repairs: Repairs;
+  assessments: Assessments;
+  metrics: Metrics;
+  review_questions: ReviewQuestions;
+}
+export interface Project {
   id: Id10;
-  criterion_ids: CriterionIds;
+  name: Name;
+}
+export interface MaterialVersion {
+  id: Id11;
+  project_id: ProjectId;
+  label: Label3;
+  document_ids: DocumentIds;
+}
+export interface Run {
+  id: Id12;
+  project_id: ProjectId1;
+  material_version_id: MaterialVersionId;
+  rubric_id: RubricId4;
+  rubric_revision: RubricRevision4;
+  mode: Mode;
+  status: Status4;
+  stage: Stage;
+  provider?: Provider;
+  model?: Model;
+  prompt_version: PromptVersion1;
+  error?: Error;
+}
+export interface Document {
+  id: Id13;
+  material_version_id: MaterialVersionId1;
+  logical_key: LogicalKey;
+  filename: Filename;
+  format: Format;
+  sha256: Sha2561;
+  parse_status: ParseStatus;
+}
+export interface Claim {
+  id: Id14;
+  criterion_ids: CriterionIds1;
   text: Text2;
   source: Span;
   comparison_key?: ComparisonKey;
 }
-export interface Span {
-  block_id: BlockId;
-  start: Start;
-  end: End;
-  quote: Quote;
-}
 export interface Evidence1 {
-  id: Id11;
-  criterion_id: CriterionId;
+  id: Id15;
+  criterion_id: CriterionId4;
   claim_id?: ClaimId;
   source: Span;
   relation: Relation;
@@ -767,10 +1004,10 @@ export interface Evidence1 {
   validation_error?: ValidationError;
 }
 export interface Finding {
-  id: Id12;
+  id: Id16;
   fingerprint: Fingerprint;
-  criterion_id: CriterionId1;
-  kind: Kind1;
+  criterion_id: CriterionId5;
+  kind: Kind2;
   severity: Severity;
   title: Title8;
   explanation: Explanation;
@@ -779,14 +1016,14 @@ export interface Finding {
   searched_document_ids: SearchedDocumentIds;
 }
 export interface Repair {
-  id: Id13;
+  id: Id17;
   finding_id: FindingId;
   instruction: Instruction;
-  status: Status1;
+  status: Status5;
 }
 export interface CriterionAssessment {
-  criterion_id: CriterionId2;
-  status: Status2;
+  criterion_id: CriterionId6;
+  status: Status6;
   evidence_ids: EvidenceIds1;
   finding_ids: FindingIds;
 }
@@ -798,7 +1035,7 @@ export interface Metrics {
   resolved_risks: ResolvedRisks;
 }
 export interface ReviewQuestion {
-  id: Id14;
+  id: Id18;
   finding_id: FindingId1;
   question: Question;
   why: Why;
@@ -817,7 +1054,7 @@ export interface VersionDiff {
 }
 export interface DiffEntry {
   fingerprint: Fingerprint1;
-  status: Status3;
+  status: Status7;
   before_finding_id: BeforeFindingId;
   after_finding_id: AfterFindingId;
 }
@@ -839,7 +1076,7 @@ export interface FindingSetDiffResponse {
   material_id_after: MaterialIdAfter1;
   filename_before: FilenameBefore;
   filename_after: FilenameAfter;
-  note: Note;
+  note: Note1;
   resolved: Resolved;
   unchanged: Unchanged;
   new: New;
@@ -853,8 +1090,8 @@ export interface FindingSetDiffResponse {
  * 材料可能还有未提取信号，绝不表示已检查全文。
  */
 export interface ConsistencyFinding {
-  material_id: MaterialId1;
-  kind: Kind2;
+  material_id: MaterialId5;
+  kind: Kind3;
   measure: Measure;
   values: Values;
   searched_block_count: SearchedBlockCount;
@@ -869,120 +1106,87 @@ export interface ConsistencyFinding {
  * line_number 只对行格式是真实行号，其余为 null；非行来源不得展示为行。
  */
 export interface ConsistencyCitation {
-  block_id: BlockId1;
+  block_id: BlockId3;
   line_number?: LineNumber;
   locator: Locator;
-  quote: Quote1;
-  start: Start1;
-  end: End1;
+  quote: Quote2;
+  start: Start2;
+  end: End2;
   value: Value;
   unit: Unit;
 }
 export interface RunRequest {
   material_version_id: MaterialVersionId2;
-  rubric_id: RubricId4;
-  rubric_revision: RubricRevision4;
+  rubric_id: RubricId5;
+  rubric_revision: RubricRevision5;
   mode: Mode1;
 }
 export interface MarkdownPreview {
   document_id: DocumentId1;
   filename: Filename1;
   size_bytes: SizeBytes;
-  sha256: Sha2561;
+  sha256: Sha2562;
   line_count: LineCount;
-  blocks: Blocks1;
+  blocks: Blocks2;
 }
 export interface SourcePreview {
   document_id: DocumentId2;
   filename: Filename2;
   format: Format1;
   size_bytes: SizeBytes1;
-  sha256: Sha2562;
+  sha256: Sha2563;
   line_count?: LineCount1;
   parser_version?: ParserVersion;
-  blocks: Blocks2;
+  blocks: Blocks3;
 }
 export interface SavedMaterial {
-  id: Id15;
+  id: Id19;
   filename: Filename3;
   format: Format2;
   parser_version?: ParserVersion1;
   size_bytes: SizeBytes2;
-  sha256: Sha2563;
+  sha256: Sha2564;
   line_count?: LineCount2;
-  created_at: CreatedAt2;
-  blocks: Blocks3;
+  created_at: CreatedAt6;
+  blocks: Blocks4;
 }
 export interface MaterialSummary {
-  id: Id16;
+  id: Id20;
   filename: Filename4;
   format: Format3;
-  created_at: CreatedAt3;
+  created_at: CreatedAt7;
   block_count: BlockCount;
-}
-/**
- * 统一来源引用：material/block 身份 + 半开 code-point span；位置由服务端解析并逐字复验。
- *
- * 客户端与模型只能选择 block 与 quote（可选显式 start/end 精确选中某次 occurrence），
- * 不得把 locator/行号当权威提交。
- */
-export interface SourceRef {
-  material_id: MaterialId2;
-  block_id: BlockId2;
-  start: Start2;
-  end: End2;
-  quote: Quote2;
-}
-export interface EvidenceAnnotation {
-  id: Id17;
-  material_id: MaterialId3;
-  block_id: BlockId3;
-  source: Span;
-  note?: Note1;
-  proposed_by?: ProposedBy;
-  created_at: CreatedAt4;
 }
 export interface EvidenceAnnotationCreate {
   block_id: BlockId4;
   quote: Quote3;
   note?: Note2;
-  material_id?: MaterialId4;
+  material_id?: MaterialId6;
   start?: Start3;
   end?: End3;
 }
 export interface RubricBinding {
-  material_id: MaterialId5;
-  rubric_id: RubricId5;
-  rubric_revision: RubricRevision5;
-  created_at: CreatedAt5;
-}
-export interface RubricBindingCreate {
+  material_id: MaterialId7;
   rubric_id: RubricId6;
   rubric_revision: RubricRevision6;
+  created_at: CreatedAt8;
 }
-export interface CriterionEvidenceLink {
-  id: Id18;
-  material_id: MaterialId6;
-  annotation_id: AnnotationId;
+export interface RubricBindingCreate {
   rubric_id: RubricId7;
   rubric_revision: RubricRevision7;
-  criterion_id: CriterionId3;
-  rationale: Rationale;
-  proposed_by?: ProposedBy1;
-  created_at: CreatedAt6;
 }
 export interface CriterionEvidenceLinkCreate {
   annotation_id: AnnotationId1;
-  criterion_id: CriterionId4;
-  rationale: Rationale1;
+  criterion_id: CriterionId7;
+  rationale: Rationale3;
 }
 export interface ProposalCandidate {
-  id: Id19;
+  id: Id21;
   proposal_id: ProposalId;
   ordinal: Ordinal1;
   block_id: BlockId5;
   quote: Quote4;
-  rationale: Rationale2;
+  rationale: Rationale4;
   risk_note?: RiskNote;
   validation_status: ValidationStatus;
   validation_code?: ValidationCode;
@@ -990,24 +1194,24 @@ export interface ProposalCandidate {
   reject_reason?: RejectReason;
   created_annotation_id?: CreatedAnnotationId;
   created_link_id?: CreatedLinkId;
-  created_at: CreatedAt7;
+  created_at: CreatedAt9;
 }
 export interface AgentProposal {
-  id: Id20;
-  material_id: MaterialId7;
-  criterion_id: CriterionId5;
+  id: Id22;
+  material_id: MaterialId8;
+  criterion_id: CriterionId8;
   rubric_id: RubricId8;
   rubric_revision: RubricRevision8;
   provider: Provider1;
   model: Model1;
-  prompt_version: PromptVersion1;
-  status: Status4;
+  prompt_version: PromptVersion2;
+  status: Status8;
   error?: Error1;
-  created_at: CreatedAt8;
+  created_at: CreatedAt10;
   candidates: Candidates;
 }
 export interface AgentProposalCreate {
-  criterion_id: CriterionId6;
+  criterion_id: CriterionId9;
 }
 export interface ProposalCandidateReject {
   reason?: Reason1;
@@ -1017,33 +1221,33 @@ export interface ProposalAcceptance {
   link: CriterionEvidenceLink;
 }
 export interface MaterialPreflightReport {
-  material_id: MaterialId8;
+  material_id: MaterialId9;
   filename: Filename5;
   block_count: BlockCount1;
   rubric_id: RubricId9;
   rubric_revision: RubricRevision9;
   rubric_title: RubricTitle;
-  criteria: Criteria3;
-  blocks: Blocks4;
+  criteria: Criteria4;
+  blocks: Blocks5;
 }
 export interface MaterialPreflightCriterionRow {
-  criterion_id: CriterionId7;
+  criterion_id: CriterionId10;
   title: Title9;
   requirement: Requirement2;
   verified_citation_count: VerifiedCitationCount;
-  status: Status5;
+  status: Status9;
   citations: Citations1;
   missing?: MaterialPreflightMissing | null;
 }
 export interface MaterialPreflightCitation {
   link_id: LinkId;
   annotation_id: AnnotationId2;
-  criterion_id: CriterionId8;
+  criterion_id: CriterionId11;
   block_id: BlockId6;
   line_number?: LineNumber1;
   locator: Locator;
   quote: Quote5;
-  rationale: Rationale3;
+  rationale: Rationale5;
   proposed_by: ProposedBy2;
   start: Start4;
   end: End4;
@@ -1054,9 +1258,9 @@ export interface MaterialPreflightMissing {
   explanation: Explanation2;
 }
 export interface MaterialPreflightSummary {
-  material_id: MaterialId9;
+  material_id: MaterialId10;
   filename: Filename6;
-  created_at: CreatedAt9;
+  created_at: CreatedAt11;
   block_count: BlockCount2;
   bound: Bound;
   rubric_revision?: RubricRevision10;
@@ -1107,7 +1311,7 @@ export interface CrossCompareResponse {
  * 答辩追问请求：只接受用户显式选中的一份材料。
  */
 export interface GrillRequest {
-  material_id: MaterialId10;
+  material_id: MaterialId11;
 }
 /**
  * 答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。
@@ -1141,26 +1345,26 @@ export interface CoachSourceRef {
  * 答辩教练请求：用户已经写出回答，教练只检查这条回答能否由给定来源支持。
  */
 export interface ResponseCoachRequest {
-  material_id: MaterialId11;
+  material_id: MaterialId12;
   question: Question1;
   user_answer: UserAnswer;
   source_refs?: SourceRefs;
-  review_id?: ReviewId;
+  review_id?: ReviewId2;
 }
 /**
  * 答辩教练输出：只评价用户已写出的回答；不给分、不代写答案、不判定现实真假。
  */
 export interface ResponseCoachResponse {
-  material_id: MaterialId12;
-  status: Status6;
+  material_id: MaterialId13;
+  status: Status10;
   abstain_reason: AbstainReason;
   answered_aspects: AnsweredAspects;
   supported_claims: SupportedClaims;
   unsupported_claims: UnsupportedClaims;
-  missing_conditions: MissingConditions;
+  missing_conditions: MissingConditions2;
   follow_up_questions: FollowUpQuestions;
-  source_ids: SourceIds1;
-  sources: Sources;
+  source_ids: SourceIds3;
+  sources: Sources1;
   overall_note: OverallNote;
 }
 /**
@@ -1169,7 +1373,7 @@ export interface ResponseCoachResponse {
 export interface CoachClaim {
   text: Text3;
   note?: Note3;
-  source_ids: SourceIds;
+  source_ids: SourceIds2;
 }
 /**
  * 程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。
@@ -1189,34 +1393,34 @@ export interface CoachSource {
 export interface MaterialRevision {
   child_material_id: ChildMaterialId;
   parent_material_id: ParentMaterialId;
-  created_at: CreatedAt10;
+  created_at: CreatedAt12;
 }
 export interface MaterialRevisionCreate {
   text: Text4;
   filename: Filename7;
-  review_id?: ReviewId1;
-  label?: Label3;
+  review_id?: ReviewId3;
+  label?: Label4;
 }
 export interface MaterialRevisionCreated {
   material: SavedMaterial;
   revision: MaterialRevision;
 }
 export interface RevisionParent {
-  material_id: MaterialId13;
+  material_id: MaterialId14;
   parent_available: ParentAvailable;
 }
 export interface RevisionChild {
-  material_id: MaterialId14;
+  material_id: MaterialId15;
   available: Available;
-  created_at: CreatedAt11;
+  created_at: CreatedAt13;
 }
 export interface RevisionContext {
-  material_id: MaterialId15;
+  material_id: MaterialId16;
   parent?: RevisionParent | null;
   children: Children;
 }
 export interface EditableSource {
-  material_id: MaterialId16;
+  material_id: MaterialId17;
   format: Format4;
   text: Text5;
   normalization: Normalization;

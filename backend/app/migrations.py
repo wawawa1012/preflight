@@ -11,7 +11,7 @@
 """
 import sqlite3
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # 每条语句单独执行：executescript 会先隐式 COMMIT，破坏 bootstrap 的原子边界。
 _SCHEMA_STATEMENTS = (
@@ -252,6 +252,15 @@ def _migrate_to_v1(connection: sqlite3.Connection) -> None:
         _rebuild_blocks_legacy(connection)
 
 
+def _migrate_to_v2(connection: sqlite3.Connection) -> None:
+    # Historical identities intentionally have no live FK; snapshots survive source deletion.
+    connection.execute("CREATE TABLE assessment_snapshots ("
+                       "id TEXT PRIMARY KEY, review_id TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL)")
+    connection.execute("CREATE INDEX idx_assessment_review ON assessment_snapshots(review_id, created_at)")
+    connection.execute("CREATE TRIGGER assessment_no_update BEFORE UPDATE ON assessment_snapshots "
+                       "BEGIN SELECT RAISE(ABORT, 'assessment snapshot is immutable'); END")
+
+
 def _check_foreign_keys(connection: sqlite3.Connection) -> None:
     violations = connection.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
@@ -278,8 +287,10 @@ def bootstrap(connection: sqlite3.Connection) -> None:
             if version < 1:
                 _create_schema(connection)
                 _migrate_to_v1(connection)
-                _check_foreign_keys(connection)
-                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            if version < 2:
+                _migrate_to_v2(connection)
+            _check_foreign_keys(connection)
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         except BaseException:
             connection.rollback()
             raise

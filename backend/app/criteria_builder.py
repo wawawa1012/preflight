@@ -201,6 +201,9 @@ def _draft_from_structured_json(request: RubricDraftRequest) -> RubricDraft:
     if len(set(orders)) != len(orders):
         raise DraftRejected("结构化标准含重复的 criterion order")
     aggregation = raw.get("aggregation_rule")
+    executable_aggregation = raw.get("scoring_aggregation")
+    if executable_aggregation not in (None, "sum_points_v1"):
+        raise DraftRejected("未知的 scoring_aggregation")
     if aggregation is not None and not isinstance(aggregation, str):
         raise DraftRejected("aggregation_rule 必须是字符串或 null")
     aggregation_source = raw.get("aggregation_rule_source")
@@ -219,6 +222,7 @@ def _draft_from_structured_json(request: RubricDraftRequest) -> RubricDraft:
         source_name=request.source_name,
         source_text=request.text,
         aggregation_rule=aggregation.strip() if aggregation and aggregation.strip() else None,
+        scoring_aggregation=executable_aggregation,
         aggregation_rule_source=(
             aggregation_source.strip() if aggregation_source and aggregation_source.strip() else None
         ),
