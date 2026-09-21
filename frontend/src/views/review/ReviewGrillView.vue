@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { Block, DetectedStatement, MaterialSummary } from '../../types/contracts'
+import type { Block, CoachSource, DetectedStatement, GrillQuestion, MaterialSummary } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
 import { useSessionStore, type ReaderTarget } from '../../stores/session'
 import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
@@ -12,16 +12,11 @@ import { identityLine } from '../../utils/materialIdentity'
 import { createAsyncGuard } from '../../utils/asyncGuard'
 
 // 模拟评审 / 答辩演练（后台角色：Challenge Examiner）：对选中材料生成可回到原文的针对性追问。
+// GrillQuestion 直接使用 generated 契约类型：trigger / why / preparation 由后端程序确定性生成，
+// 前端只呈现，不自行推断「为什么可能被问」。
 // 延迟体验：模型生成期间先展示确定性准备材料（关键陈述信号），不是只有 spinner。
 // stale guard：换材料/重新生成后，迟到的旧响应直接丢弃。
-// 快照 key = `${reviewId}:grill`；coach 回答草稿 session-only（session.coachDrafts）。
-interface GrillQuestion {
-  prompt: string
-  quote: string
-  block_id: string
-  start: number
-  end: number
-}
+// 快照 key = `${reviewId}:grill`；coach 练习状态 session-only（session.coachDrafts）。
 interface GrillSnapshot {
   materialId: string
   questions: GrillQuestion[]
@@ -111,6 +106,8 @@ function filenameOf(id: string) {
 
 const blocks = ref<Block[]>([])
 const blocksUnavailable = ref(false)
+// blocks 拉取独立代次：换材料后迟到的旧材料 blocks 不得落地。
+const blockGuard = createAsyncGuard()
 
 // 恢复/保存都等 review.id 就绪：review 由 inject 异步加载，setup 时可能为空，
 // 用 watch(review.id, ..., { immediate: true }) 在 id 到达后恢复，避免空 reviewId key 恢复 miss。
@@ -215,6 +212,7 @@ function retry() {
 // 换材料后旧追问与旧原文一并作废；恢复快照时由 skipMaterialClear 跳过本次清空。
 watch(materialId, (id, previousId) => {
   guard.invalidate()
+  blockGuard.invalidate()
   coachOpenFor.value = ''
   signals.value = []
   signalsUnavailable.value = false
@@ -260,8 +258,11 @@ const drawerFilename = computed(() => filenameOf(materialId.value))
 
 async function ensureBlocks() {
   if (blocks.value.length > 0 || blocksUnavailable.value || materialId.value === '') return
+  const token = blockGuard.next()
+  const requestedMaterialId = materialId.value
   try {
-    const response = await fetch(`/api/v1/materials/${encodeURIComponent(materialId.value)}`)
+    const response = await fetch(`/api/v1/materials/${encodeURIComponent(requestedMaterialId)}`)
+    if (!blockGuard.isCurrent(token) || materialId.value !== requestedMaterialId) return
     const body = await response.json().catch(() => null)
     if (!response.ok) {
       blocksUnavailable.value = true
@@ -269,7 +270,7 @@ async function ensureBlocks() {
     }
     blocks.value = Array.isArray(body?.blocks) ? (body.blocks as Block[]) : []
   } catch {
-    blocksUnavailable.value = true
+    if (blockGuard.isCurrent(token) && materialId.value === requestedMaterialId) blocksUnavailable.value = true
   }
 }
 
@@ -311,6 +312,29 @@ async function openInReader(question: GrillQuestion) {
   })
   await router.push(
     `/reviews/${reviewId.value}/reader/${clickedBlock.document_id}?b=${question.block_id}&s=${question.start}&e=${question.end}`,
+  )
+}
+
+// Coach「查看原文」：来源统一进入现有 Reader 上下文，返回后回到本题。
+async function openCoachSource(source: CoachSource) {
+  await ensureBlocks()
+  const block = blockById(source.block_id)
+  if (!block) {
+    blocksUnavailable.value = true
+    return
+  }
+  session.openReader({
+    reviewId: reviewId.value,
+    reviewTitle: reviewTitle.value,
+    materialId: block.document_id,
+    materialLabel: labelOf(block.document_id),
+    materialFilename: filenameOf(block.document_id),
+    targets: [{ materialId: block.document_id, blockId: source.block_id, start: source.start, end: source.end, quote: source.quote }],
+    index: 0,
+    origin: { fullPath: route.fullPath, label: '模拟评审' },
+  })
+  await router.push(
+    `/reviews/${reviewId.value}/reader/${block.document_id}?b=${source.block_id}&s=${source.start}&e=${source.end}`,
   )
 }
 
@@ -398,6 +422,11 @@ loadLibrary()
             <div class="min-w-0 flex-1">
               <p class="text-lg font-medium leading-relaxed text-slate-100">{{ question.prompt }}</p>
 
+              <!-- 为什么可能被问：后端程序按来源特征确定性生成的人话映射，前端只呈现。 -->
+              <p v-if="question.why" class="mt-2 text-sm leading-relaxed text-slate-400">
+                <span class="text-xs tracking-widest text-slate-500">为什么可能被问　</span>{{ question.why }}
+              </p>
+
               <p class="mt-5 text-xs tracking-widest text-slate-500">触发依据</p>
               <div class="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2.5">
                 <button type="button" class="group flex min-w-0 flex-1 items-center justify-between gap-4 text-left" @click="openQuestion(question)">
@@ -410,7 +439,18 @@ loadLibrary()
                 <button type="button" class="shrink-0 text-[11px] text-slate-500 transition hover:text-violet-300" @click="openInReader(question)">在材料中打开</button>
               </div>
 
-              <!-- 你需要准备什么：回到触发依据确认出处，必要时改稿，或直接练习回答。 -->
+              <!-- 你需要准备什么：确定性 checklist，是准备方向，不是答案。 -->
+              <div v-if="question.preparation.length > 0" class="mt-3">
+                <p class="text-xs tracking-widest text-slate-500">你需要准备什么</p>
+                <ul class="mt-1.5 space-y-1">
+                  <li v-for="(item, itemIndex) in question.preparation" :key="itemIndex" class="flex items-baseline gap-2 text-sm text-slate-300">
+                    <span aria-hidden="true" class="shrink-0 text-slate-600">·</span>
+                    <span class="min-w-0">{{ item }}</span>
+                  </li>
+                </ul>
+              </div>
+
+              <!-- 动作：回到触发依据确认出处，必要时改稿，或直接练习回答。 -->
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-book-open" @click="openInReader(question)">查看原文</UButton>
                 <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-pencil-line" :to="`${basePath}/reader/${materialId}/revise`">开始修改</UButton>
@@ -429,6 +469,9 @@ loadLibrary()
                 :storage-key="coachStorageKey(question)"
                 :question="question.prompt"
                 :material-id="materialId"
+                :review-id="reviewId"
+                :source-ref="{ block_id: question.block_id, quote: question.quote }"
+                @open-source="openCoachSource"
               />
             </div>
           </div>

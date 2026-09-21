@@ -35,7 +35,11 @@ const loadError = ref('')
 const selected = ref<Set<string>>(new Set())
 const queue = ref<RunItem[]>([])
 const running = ref(false)
+// 读（初始加载）与跑（运行队列）使用独立代次：重新加载不取消在飞运行，重新运行不取消加载。
 const guard = createAsyncGuard()
+const loadGuard = createAsyncGuard()
+// 历史提案加载失败的材料：状态必须呈现为「未知」，不得当作「未运行」。
+const proposalLoadFailed = ref<Set<string>>(new Set())
 
 const reviewId = computed(() => review.value?.id ?? '')
 const members = computed(() => review.value?.materials ?? [])
@@ -77,6 +81,8 @@ function stateOf(materialId: string, criterionId: string): { label: string; tone
     }
     return map[item.state]
   }
+  // 历史提案拉取失败 ≠ 未运行：如实告知状态未知。
+  if (proposalLoadFailed.value.has(materialId)) return { label: '历史状态未知', tone: 'waiting' }
   const proposal = latestProposal(materialId, criterionId)
   if (!proposal) return { label: '未运行', tone: 'idle' }
   if (proposal.status === 'failed') return { label: '上次运行失败', tone: 'failed' }
@@ -86,15 +92,18 @@ function stateOf(materialId: string, criterionId: string): { label: string; tone
 }
 
 async function load() {
+  const token = loadGuard.next()
   loading.value = true
   loadError.value = ''
   queue.value = []
   selected.value = new Set()
+  proposalLoadFailed.value = new Set()
   try {
     const [rubricsResponse, summariesResponse] = await Promise.all([
       fetch('/api/v1/rubrics'),
       fetch('/api/v1/preflight-summaries'),
     ])
+    if (!loadGuard.isCurrent(token)) return
     const rubricsBody = await rubricsResponse.json().catch(() => null)
     const summariesBody = await summariesResponse.json().catch(() => null)
     if (!rubricsResponse.ok) throw new Error(rubricsBody?.message ?? `HTTP ${rubricsResponse.status}`)
@@ -106,20 +115,22 @@ async function load() {
       ) ?? null
     summaries.value = Array.isArray(summariesBody) ? (summariesBody as MaterialPreflightSummary[]) : []
 
-    // 每个已绑定成员的历史提案并行拉取（确定性 GET）。
+    // 每个已绑定成员的历史提案并行拉取（确定性 GET）；单份失败只标记该材料，不拖垮整页。
     const bound = members.value.filter((member) => summaryOf(member.material_id)?.bound)
     const settled = await Promise.all(
       bound.map(async (member) => {
         try {
           const proposals = await evidenceApi.listProposals(member.material_id)
-          return [member.material_id, proposals] as const
+          return [member.material_id, proposals, true] as const
         } catch {
-          return [member.material_id, []] as const
+          return [member.material_id, [] as AgentProposal[], false] as const
         }
       }),
     )
-    proposalsByMaterial.value = Object.fromEntries(settled)
-    // 默认勾选：尚无 completed 提案的 criterion。
+    if (!loadGuard.isCurrent(token)) return
+    proposalsByMaterial.value = Object.fromEntries(settled.map(([materialId, proposals]) => [materialId, proposals]))
+    proposalLoadFailed.value = new Set(settled.filter(([, , ok]) => !ok).map(([materialId]) => materialId))
+    // 默认勾选：尚无 completed 提案的 criterion（历史未知的也勾选，运行后才有真相）。
     const defaults = new Set<string>()
     for (const member of bound) {
       for (const criterion of criteria.value) {
@@ -128,9 +139,10 @@ async function load() {
     }
     selected.value = defaults
   } catch (cause) {
+    if (!loadGuard.isCurrent(token)) return
     loadError.value = cause instanceof Error ? cause.message : '未知错误'
   } finally {
-    loading.value = false
+    if (loadGuard.isCurrent(token)) loading.value = false
   }
 }
 
@@ -143,6 +155,50 @@ function toggle(materialId: string, criterionId: string) {
 }
 
 const selectedCount = computed(() => selected.value.size)
+
+// 逐项提交：不可变替换 queue 中的项，完成一项立即进入响应式状态，不依赖原对象突变。
+function patchItem(target: RunItem, patch: Partial<RunItem>) {
+  queue.value = queue.value.map((item) => (item === target || (item.materialId === target.materialId && item.criterionId === target.criterionId) ? { ...item, ...patch } : item))
+}
+
+// 单项重试：只执行目标项，不动其他结果；独立代次 + 主代次捕获，换 Review/重跑后旧响应不落地。
+const itemGuards = new Map<string, ReturnType<typeof createAsyncGuard>>()
+async function retryItem(materialId: string, criterionId: string) {
+  if (running.value) return
+  const item = queueItem(materialId, criterionId)
+  if (!item || item.state !== 'failed') return
+  const key = itemKey(materialId, criterionId)
+  let itemGuard = itemGuards.get(key)
+  if (!itemGuard) {
+    itemGuard = createAsyncGuard()
+    itemGuards.set(key, itemGuard)
+  }
+  const token = itemGuard.next()
+  const mainGeneration = guard.current()
+  patchItem(item, { state: 'running', detail: '' })
+  try {
+    const proposal = await evidenceApi.runCriterion(materialId, criterionId)
+    if (!itemGuard.isCurrent(token) || guard.current() !== mainGeneration) return
+    if (proposal.status === 'failed') {
+      patchItem(item, { state: 'failed', detail: proposal.error ?? '运行失败' })
+    } else if (proposal.candidates.length > 0) {
+      patchItem(item, { state: 'success', detail: `候选 ${proposal.candidates.length} 条` })
+    } else {
+      patchItem(item, { state: 'empty', detail: '' })
+    }
+    // 刷新该材料历史提案，让裁决入口看到最新状态。
+    try {
+      const proposals = await evidenceApi.listProposals(materialId)
+      if (!itemGuard.isCurrent(token) || guard.current() !== mainGeneration) return
+      proposalsByMaterial.value = { ...proposalsByMaterial.value, [materialId]: proposals }
+    } catch {
+      // 列表刷新失败不影响已展示的该项结果。
+    }
+  } catch (cause) {
+    if (!itemGuard.isCurrent(token) || guard.current() !== mainGeneration) return
+    patchItem(item, { state: 'failed', detail: cause instanceof Error ? cause.message : '未知错误' })
+  }
+}
 
 // 渐进执行：3 个 worker 持续消费整个队列；每项完成立即落态；迟到响应由 guard 丢弃。
 async function runSelected() {
@@ -164,49 +220,59 @@ async function runSelected() {
       const item = items[cursor]
       cursor += 1
       if (!guard.isCurrent(token)) return
-      item.state = 'running'
+      patchItem(item, { state: 'running' })
       try {
         const proposal = await evidenceApi.runCriterion(item.materialId, item.criterionId)
         if (!guard.isCurrent(token)) return
         if (proposal.status === 'failed') {
-          item.state = 'failed'
-          item.detail = proposal.error ?? '运行失败'
+          patchItem(item, { state: 'failed', detail: proposal.error ?? '运行失败' })
         } else if (proposal.candidates.length > 0) {
-          item.state = 'success'
-          item.detail = `候选 ${proposal.candidates.length} 条`
+          patchItem(item, { state: 'success', detail: `候选 ${proposal.candidates.length} 条` })
         } else {
-          item.state = 'empty'
+          patchItem(item, { state: 'empty', detail: '' })
         }
       } catch (cause) {
         if (!guard.isCurrent(token)) return
-        item.state = 'failed'
-        item.detail = cause instanceof Error ? cause.message : '未知错误'
+        patchItem(item, { state: 'failed', detail: cause instanceof Error ? cause.message : '未知错误' })
       }
     }
   }
   await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENCY, items.length) }, () => worker()))
+  // 只有本代次仍是当前代才收尾：旧任务不得清掉新任务的 running，也不得覆盖新上下文的历史提案。
   if (guard.isCurrent(token)) {
-    // 运行结束：把新提案并入历史列表，让「裁决入口」看到最新状态。
-    for (const item of items) {
-      if (item.state === 'success' || item.state === 'empty' || item.state === 'failed') {
+    // 运行结束：按材料批量刷新历史提案（每份材料一次），让「裁决入口」看到最新状态。
+    const affected = [...new Set(items.filter((item) => item.state !== 'waiting' && item.state !== 'running').map((item) => item.materialId))]
+    const refreshed = await Promise.all(
+      affected.map(async (materialId) => {
         try {
-          const proposals = await evidenceApi.listProposals(item.materialId)
-          if (!guard.isCurrent(token)) return
-          proposalsByMaterial.value = { ...proposalsByMaterial.value, [item.materialId]: proposals }
+          return [materialId, await evidenceApi.listProposals(materialId), true] as const
         } catch {
-          // 列表刷新失败不影响已展示的逐项结果。
+          return [materialId, [] as AgentProposal[], false] as const
+        }
+      }),
+    )
+    if (guard.isCurrent(token)) {
+      const next = { ...proposalsByMaterial.value }
+      const failed = new Set(proposalLoadFailed.value)
+      for (const [materialId, proposals, ok] of refreshed) {
+        if (ok) {
+          next[materialId] = proposals
+          failed.delete(materialId)
         }
       }
+      proposalsByMaterial.value = next
+      proposalLoadFailed.value = failed
     }
+    running.value = false
   }
-  running.value = false
 }
 
-// 切换 Review：作废在飞响应，清空本视图全部运行态。
+// 切换 Review：作废在飞响应（读与跑都作废），清空本视图全部运行态。
 watch(
   () => review.value?.id,
   (id) => {
     guard.invalidate()
+    loadGuard.invalidate()
     running.value = false
     if (id) void load()
   },
@@ -288,6 +354,18 @@ watch(
                   idle: 'text-slate-600',
                 }[stateOf(member.material_id, criterion.id).tone]"
               >{{ stateOf(member.material_id, criterion.id).label }}</span>
+              <!-- 单项重试：只重跑这一条，不影响其他项的结果。 -->
+              <UButton
+                v-if="queueItem(member.material_id, criterion.id)?.state === 'failed'"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                icon="i-lucide-refresh-cw"
+                :disabled="running"
+                @click="retryItem(member.material_id, criterion.id)"
+              >
+                重试
+              </UButton>
             </li>
           </ul>
         </div>

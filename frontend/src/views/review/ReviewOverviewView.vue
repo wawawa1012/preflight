@@ -6,6 +6,7 @@ import { reviewContextKey } from './reviewContext'
 import { useSessionStore } from '../../stores/session'
 import { reviewsApi } from '../../services/reviews'
 import { materialIdentity } from '../../utils/materialIdentity'
+import { createAsyncGuard } from '../../utils/asyncGuard'
 import type { ActionItemModel } from '../../types/action'
 import ActionItem from '../../components/action/ActionItem.vue'
 import EmptyState from '../../components/review/EmptyState.vue'
@@ -41,6 +42,8 @@ async function deleteReview() {
 const materials = ref<MaterialSummary[]>([])
 const summaries = ref<MaterialPreflightSummary[]>([])
 const factsError = ref('')
+// 事实加载独立代次：切换 Review 后旧事实不得覆盖新上下文。
+const factsGuard = createAsyncGuard()
 
 // 关键陈述信号：按成员并行拉取（确定性 GET），总数是真实状态；失败记为未运行。
 const signalCounts = ref<Record<string, number> | null>(null)
@@ -58,6 +61,7 @@ interface DiffSnapshot {
 }
 
 async function loadFacts() {
+  const token = factsGuard.next()
   factsError.value = ''
   signalCounts.value = null
   try {
@@ -65,6 +69,7 @@ async function loadFacts() {
       fetch('/api/v1/materials'),
       fetch('/api/v1/preflight-summaries'),
     ])
+    if (!factsGuard.isCurrent(token)) return
     const materialsBody = await materialsResponse.json().catch(() => null)
     const summariesBody = await summariesResponse.json().catch(() => null)
     if (!materialsResponse.ok) throw new Error(materialsBody?.message ?? `HTTP ${materialsResponse.status}`)
@@ -72,6 +77,7 @@ async function loadFacts() {
     materials.value = Array.isArray(materialsBody) ? materialsBody : []
     summaries.value = Array.isArray(summariesBody) ? summariesBody : []
   } catch (cause) {
+    if (!factsGuard.isCurrent(token)) return
     factsError.value = cause instanceof Error ? cause.message : '未知错误'
   }
 
@@ -91,6 +97,7 @@ async function loadFacts() {
       }
     }),
   )
+  if (!factsGuard.isCurrent(token)) return
   // 任一成员拉取失败都不展示部分总数（那不是真实状态），保持「尚未运行」。
   if (settled.every(Boolean)) signalCounts.value = counts
 }
@@ -265,21 +272,33 @@ interface InboxEntry {
   item: ActionItemModel
   tone: 'amber' | 'emerald' | 'violet'
 }
+// 事项统一携带的轻量上下文：所属审查 + 标准版本，不含内部 ID。
+const itemContext = computed(() => `${review.value?.title ?? ''} · 标准 v${review.value?.rubric_revision ?? ''}`)
+
+function sourceOf(materialId: string, label: string) {
+  return [{ materialId, label: identityOf(materialId, label).primary }]
+}
+
 const inboxEntries = computed<InboxEntry[]>(() => {
   const entries: InboxEntry[] = []
 
   // 待核对数值：来自本会话真实跑过的一致性结果，逐条列出（最多 5 条）。
+  // key = 稳定来源身份（材料 + 度量 + 类别），不用条数或序号代表事项身份。
   const consistency = consistencySnapshot.value?.result
   if (consistency) {
     for (const finding of consistency.findings.slice(0, 5)) {
+      const member = members.value.find((item) => item.material_id === finding.material_id)
       entries.push({
         tone: 'amber',
         item: {
-          key: `${reviewId.value}:consistency:${finding.kind}:${finding.measure}`,
+          key: `${reviewId.value}:consistency:${finding.material_id}:${finding.kind}:${finding.measure}`,
+          category: 'numeric_inconsistency',
           what: `待核对数值：${finding.measure}`,
           detail: finding.values.join(' / '),
           why: finding.explanation,
-          where: review.value?.title ?? '',
+          where: member ? identityOf(member.material_id, member.label).primary : (review.value?.title ?? ''),
+          sources: member ? sourceOf(member.material_id, member.label) : [],
+          context: itemContext.value,
           actions: [{ key: 'view', label: '查看一致性检查', to: `${basePath.value}/consistency`, primary: true }],
           meta: '由：一致性检查（程序）',
         },
@@ -287,7 +306,7 @@ const inboxEntries = computed<InboxEntry[]>(() => {
     }
   }
 
-  // 待确认依据：来自装配摘要（确定性）。
+  // 待确认依据：来自装配摘要（确定性）。「当前范围尚未发现引用」不等于已证明没有依据。
   for (const member of members.value) {
     const summary = summaryOf(member.material_id)
     const missing = summary?.bound ? (summary.criteria_without_citations ?? 0) : 0
@@ -296,9 +315,12 @@ const inboxEntries = computed<InboxEntry[]>(() => {
         tone: 'amber',
         item: {
           key: `${reviewId.value}:evidence:${member.material_id}`,
+          category: 'evidence_gap',
           what: `待确认依据：当前范围尚未发现引用 ${missing} 项`,
-          why: '没有原文依据支撑的要求，评审时无法自证。',
+          why: '这些要求在当前已检查的范围内还没有可引用的原文，评审时可能无法自证。',
           where: identityOf(member.material_id, member.label).primary,
+          sources: sourceOf(member.material_id, member.label),
+          context: itemContext.value,
           actions: [
             { key: 'run', label: '运行依据审计', to: `${basePath.value}/evidence`, primary: true },
             { key: 'open', label: '打开材料', to: `/materials/${member.material_id}` },
@@ -317,10 +339,13 @@ const inboxEntries = computed<InboxEntry[]>(() => {
         entries.push({
           tone: 'amber',
           item: {
-            key: `${reviewId.value}:signals:${member.material_id}:${count}`,
+            key: `${reviewId.value}:signals:${member.material_id}`,
+            category: 'statement_signal',
             what: `值得核对的关键陈述 ${count} 条`,
             why: '数字、比例、比较级与绝对化表述最容易被评审追问，提前确认出处。',
             where: identityOf(member.material_id, member.label).primary,
+            sources: sourceOf(member.material_id, member.label),
+            context: itemContext.value,
             actions: [{ key: 'view', label: '查看信号', to: `/materials/${member.material_id}/report`, primary: true }],
             meta: '由：关键陈述检查（程序）',
           },
@@ -329,16 +354,20 @@ const inboxEntries = computed<InboxEntry[]>(() => {
     }
   }
 
-  // 答辩准备：来自本会话真实生成的模拟评审问题。
+  // 答辩准备：来自本会话真实生成的模拟评审问题；key 绑定材料身份，不用问题条数。
   const grill = grillSnapshot.value
   if (grill?.generated && grill.questions.length > 0) {
+    const member = members.value.find((item) => item.material_id === grill.materialId)
     entries.push({
       tone: 'violet',
       item: {
-        key: `${reviewId.value}:grill:${grill.questions.length}`,
+        key: `${reviewId.value}:grill:${grill.materialId}`,
+        category: 'defense_prep',
         what: `答辩准备：${grill.questions.length} 条可能的评审追问`,
         why: '这些问题由材料原文触发，提前准备回答或修改材料。',
-        where: review.value?.title ?? '',
+        where: member ? identityOf(member.material_id, member.label).primary : (review.value?.title ?? ''),
+        sources: member ? sourceOf(member.material_id, member.label) : [],
+        context: itemContext.value,
         actions: [{ key: 'view', label: '查看模拟评审', to: `${basePath.value}/grill`, primary: true }],
         meta: '由：质询官（按需模型）',
       },

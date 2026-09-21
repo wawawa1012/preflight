@@ -5,6 +5,8 @@
 export interface AsyncGuard {
   next: () => number
   isCurrent: (token: number) => boolean
+  // 只读当前代次，不推进：用于「捕获主代次 → 稍后比对是否被切换」的场景（如单项重试）。
+  current: () => number
   invalidate: () => void
 }
 
@@ -13,6 +15,7 @@ export function createAsyncGuard(): AsyncGuard {
   return {
     next: () => ++generation,
     isCurrent: (token: number) => token === generation,
+    current: () => generation,
     invalidate: () => {
       generation += 1
     },
