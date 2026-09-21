@@ -108,6 +108,9 @@ function openSource(source: CoachSource) {
   <div class="mt-4 rounded-lg border border-violet-800/40 bg-slate-950/40 p-4">
     <p class="text-xs font-medium text-violet-300">练习回答</p>
     <p class="mt-1 text-[11px] text-slate-600">回答只保留在本次会话，不会被长期保存；系统不会替你写答案。</p>
+    <p class="mt-1 text-[11px] text-slate-600">
+      本次仅核对系统选取的相关材料片段、附近上下文，以及你额外带入的引用；不代表已检索整份材料。
+    </p>
 
     <textarea
       v-model="answer"
@@ -121,7 +124,7 @@ function openSource(source: CoachSource) {
         <div class="min-w-0 flex-1">
           <p class="text-[11px] tracking-widest text-slate-500">带入的来源</p>
           <p v-if="!sourceExcluded" class="mt-1 line-clamp-2 text-sm leading-relaxed text-slate-300">“{{ sourceRef.quote }}”</p>
-          <p v-else class="mt-1 text-sm text-slate-400">已取消带入当前问题的触发来源。</p>
+          <p v-else class="mt-1 text-sm text-slate-400">已取消额外带入本题引用；系统仍可能使用相关材料片段。</p>
         </div>
         <button
           type="button"
@@ -131,7 +134,7 @@ function openSource(source: CoachSource) {
           {{ sourceExcluded ? '重新带入' : '取消带入' }}
         </button>
       </div>
-      <p v-if="sourceRefs.length === 0" class="mt-1.5 text-[11px] text-amber-300/90">不带来源检查时，教练可能无法判断。</p>
+      <p v-if="sourceRefs.length === 0" class="mt-1.5 text-[11px] text-amber-300/90">取消后系统仍会使用相关材料片段，但核对范围更小，教练可能无法判断。</p>
     </div>
 
     <div class="mt-3 flex flex-wrap items-center gap-3">
@@ -216,10 +219,13 @@ function openSource(source: CoachSource) {
             </li>
           </ul>
           <p v-else class="mt-1.5 text-sm text-slate-500">本次没有找到有材料支持的陈述。</p>
+          <p class="mt-1.5 text-[11px] text-slate-600">
+            「有材料支持」只表示在本次核对范围内找到了出处，不等于事实已经核实。
+          </p>
         </section>
 
         <section>
-          <p class="text-xs font-medium text-slate-300">当前找不到依据的陈述</p>
+          <p class="text-xs font-medium text-slate-300">本次核对范围内尚未找到支持的陈述</p>
           <template v-if="currentFeedback.unsupported_claims.length > 0">
             <ul class="mt-1.5 space-y-2">
               <li
@@ -231,7 +237,7 @@ function openSource(source: CoachSource) {
                 <p v-if="claim.note" class="mt-1 text-xs text-slate-500">{{ claim.note }}</p>
               </li>
             </ul>
-            <p class="mt-1.5 text-[11px] text-slate-600">这些说法在带入的来源里暂时找不到对应，可以补充出处或调整表述。</p>
+            <p class="mt-1.5 text-[11px] text-slate-600">这些说法在本次核对范围内暂时没有出处，不代表它们为假；可以补充出处或调整表述。</p>
           </template>
           <p v-else class="mt-1.5 text-sm text-slate-500">没有发现需要补充出处的陈述。</p>
         </section>

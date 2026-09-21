@@ -520,7 +520,7 @@ loadProposals()
                 <span class="ml-2 text-xs text-emerald-400">原文已校验</span>
                 <span class="ml-2 inline-flex">
                   <UBadge :color="citation.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
-                    {{ citation.proposed_by === 'human' ? '人工' : '程序' }}
+                    {{ citation.proposed_by === 'human' ? '人工' : 'AI 建议' }}
                   </UBadge>
                 </span>
                 <span class="mt-1 block text-xs text-slate-500">用途：{{ citation.rationale }}</span>

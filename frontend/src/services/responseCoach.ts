@@ -36,7 +36,8 @@ export async function checkAnswer(request: CoachCheckRequest): Promise<ResponseC
     material_id: request.materialId,
     question: request.question,
     user_answer: request.answer,
-    // 空数组也要显式发送：后端据此走确定性 insufficient_context，而不是退回默认来源池。
+    // 空数组只是不增加用户额外带入的来源；服务端的确定性来源池（相关材料片段与附近上下文）
+    // 始终参与核对。是否 insufficient_context 由后端按真实来源池决定。
     source_refs: request.sourceRefs as ResponseCoachRequest['source_refs'],
     review_id: request.reviewId === '' ? null : request.reviewId,
   }

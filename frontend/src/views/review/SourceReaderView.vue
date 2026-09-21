@@ -212,6 +212,13 @@ onUnmounted(() => session.closeReader())
           <UButton color="neutral" variant="subtle" size="xs" icon="i-lucide-chevron-up" :disabled="activeIndex === 0" aria-label="上一个引用" @click="goToCitation(-1)" />
           <UButton color="neutral" variant="subtle" size="xs" icon="i-lucide-chevron-down" :disabled="activeIndex >= targets.length - 1" aria-label="下一个引用" @click="goToCitation(1)" />
         </div>
+        <!-- DOCX 编辑限制不依赖 hover：给键盘/触屏也始终可见的说明。 -->
+        <p
+          v-if="material && material.format === 'docx'"
+          class="w-full text-[11px] leading-relaxed text-slate-500"
+        >
+          Word 材料可以审查和查看来源，暂不支持在此创建修改版。请在原编辑器中修改后重新上传；重新上传的文件不会自动建立修改前后的关系。
+        </p>
       </div>
     </div>
 

@@ -620,7 +620,7 @@ function batchAcceptNotice(accepted: number, skipped: number) {
   if (accepted === 0) {
     return skipped > 0 ? `${skipped} 条候选的原文已关联此审查要求，未重复建立关联` : '没有可接受的候选'
   }
-  return `已接受 ${accepted} 条候选并物化为引用（agent）${skipped > 0 ? `；${skipped} 条原文已关联，已跳过` : ''}`
+  return `已接受 ${accepted} 条候选并物化为引用（AI 建议）${skipped > 0 ? `；${skipped} 条原文已关联，已跳过` : ''}`
 }
 
 async function acceptCandidate(candidate: ProposalCandidate) {
@@ -646,7 +646,7 @@ async function acceptCandidate(candidate: ProposalCandidate) {
     annotations.value = [...annotations.value, acceptance.annotation]
     links.value = [...links.value, acceptance.link]
     await loadProposals()
-    proposalNotice.value = '已接受候选并物化为引用（agent）'
+    proposalNotice.value = '已接受候选并物化为引用（AI 建议）'
   } catch (cause) {
     const raw = cause instanceof Error ? cause.message : '未知错误'
     if (isDuplicateLinkError(raw)) {
@@ -798,7 +798,7 @@ init()
     <template v-if="loading || notFound || error">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p class="text-sm font-medium text-violet-400">MATERIALS</p>
+          <p class="text-sm font-medium text-violet-400">材料</p>
           <h1 class="mt-2 text-3xl font-semibold tracking-tight">{{ notFound ? '找不到该材料' : 'Material' }}</h1>
         </div>
         <div class="flex flex-wrap items-center gap-3">
@@ -824,7 +824,7 @@ init()
     <template v-else-if="material">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="text-sm text-slate-500">
-          <RouterLink to="/materials" class="text-slate-400 hover:text-violet-300">Materials</RouterLink>
+          <RouterLink to="/materials" class="text-slate-400 hover:text-violet-300">材料</RouterLink>
           <span class="mx-1">/</span>
           <span class="text-slate-300">{{ material.filename }}</span>
         </p>
@@ -949,7 +949,7 @@ init()
                     <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span>用途：{{ link.rationale }}</span>
                       <UBadge :color="link.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
-                        {{ link.proposed_by }}
+                        {{ link.proposed_by === 'human' ? '人工' : 'AI 建议' }}
                       </UBadge>
                     </p>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -1159,7 +1159,7 @@ init()
               <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <span>{{ blockLocation(item.block_id) }}</span>
                 <UBadge :color="item.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
-                  {{ item.proposed_by }}
+                  {{ item.proposed_by === 'human' ? '人工' : 'AI 建议' }}
                 </UBadge>
                 <span v-if="item.note">{{ item.note }}</span>
               </p>

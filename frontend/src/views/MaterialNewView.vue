@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { SourcePreview } from '../types/contracts'
 import BlockList from '../components/BlockList.vue'
 import MaterialHeader from '../components/MaterialHeader.vue'
@@ -8,7 +8,12 @@ import { formatLabel } from '../utils/formatLabel'
 
 // /materials/new 是添加材料工作台：选择文件 → 校验并预览 → 保存；
 // 保存成功后 router.replace 到稳定的 /materials/:id/report，本页不保留持久身份。
+// 从「开始新审查」来时（?return=review-new）：本页只消费 return 并上报新 material id，
+// 不携带也不解释任何审查/绑定规则。
 const router = useRouter()
+const route = useRoute()
+
+const returnTo = computed(() => (route.query.return === 'review-new' ? '/reviews/new' : null))
 
 const selectedFile = ref<File | null>(null)
 const previewedFile = ref<File | null>(null)
@@ -60,7 +65,6 @@ const previewMeta = computed(() => {
   // docx 无真实行号：line_count 为 null 时不显示，绝不伪造「null 行」。
   if (typeof current.line_count === 'number') parts.push(`${current.line_count} 行`)
   parts.push(`${current.blocks.length} 段原文`)
-  parts.push(`sha256 ${current.sha256.slice(0, 12)}…`)
   return parts.join(' · ')
 })
 
@@ -168,8 +172,12 @@ async function saveMaterial() {
       throw new Error(body && body.message ? body.message : `HTTP ${response.status}`)
     }
     const saved = body as { id: string }
-    // 保存成功：离开临时工作台，进入该材料的报告页（/materials/:id/report）。
-    router.replace(`/materials/${saved.id}/report`)
+    // 保存成功：来自 Wizard 时带新 id 返回（由 Wizard 自动选中）；否则进材料报告页。
+    if (returnTo.value) {
+      router.replace(`${returnTo.value}?added=${saved.id}`)
+    } else {
+      router.replace(`/materials/${saved.id}/report`)
+    }
   } catch (cause) {
     // 保存失败：保持未保存状态，不能显示“已保存”。
     error.value = cause instanceof Error ? cause.message : '未知错误'
@@ -181,18 +189,23 @@ async function saveMaterial() {
 
 <template>
   <main class="mx-auto max-w-6xl px-6 py-10">
+    <p v-if="returnTo" class="mb-4 rounded-md bg-slate-900/60 px-3 py-2 text-xs text-slate-400">
+      从「开始新审查」来到此处；保存后将返回并自动选中这份材料。
+    </p>
+
     <!-- 状态一：选择文件。上传区是当前唯一任务区。 -->
     <template v-if="!preview">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p class="text-sm font-medium text-violet-400">MATERIALS / ADD</p>
+          <p class="text-sm font-medium text-violet-400">材料 · 添加</p>
           <h1 class="mt-2 text-3xl font-semibold tracking-tight">添加材料</h1>
           <p class="mt-2 text-sm text-slate-400">
-            保存材料后按原文块切开，进入核验页；位置随格式显示为行 / 段 / 表格单元格。
+            保存后即可开始审查，每个结论都能定位到原文（行 / 段 / 表格单元格）。
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
+          <UButton v-if="returnTo" :to="returnTo" color="neutral" variant="subtle" icon="i-lucide-arrow-left">返回创建审查</UButton>
+          <UButton v-else to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
           <UButton to="/materials" color="neutral" variant="subtle" icon="i-lucide-folder-open">全部材料</UButton>
         </div>
       </div>
@@ -258,12 +271,13 @@ async function saveMaterial() {
     <template v-else>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="text-sm text-slate-500">
-          <RouterLink to="/materials" class="text-slate-400 hover:text-violet-300">Materials</RouterLink>
+          <RouterLink to="/materials" class="text-slate-400 hover:text-violet-300">材料</RouterLink>
           <span class="mx-1">/</span>
           <span class="text-slate-300">添加材料</span>
         </p>
         <div class="flex flex-wrap items-center gap-3">
-          <UButton to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
+          <UButton v-if="returnTo" :to="returnTo" color="neutral" variant="subtle" icon="i-lucide-arrow-left">返回创建审查</UButton>
+          <UButton v-else to="/" color="neutral" variant="subtle" icon="i-lucide-arrow-left">审查</UButton>
           <UButton color="neutral" variant="subtle" icon="i-lucide-refresh-cw" :disabled="busy" @click="resetFile">
             更换文件
           </UButton>
@@ -276,7 +290,7 @@ async function saveMaterial() {
         :meta="previewMeta"
         badge-label="临时 · 未保存"
         badge-color="warning"
-        hint="临时预览，刷新后丢失；保存后获得稳定 Material ID"
+        hint="临时预览，刷新后丢失；保存后即可审查，并能定位到原文。"
       >
         <UButton icon="i-lucide-save" :loading="saving" :disabled="!previewedFile || busy" @click="saveMaterial">
           {{ saving ? '正在保存…' : '保存材料' }}

@@ -16,7 +16,7 @@ function annotatedCount(blockId: string) {
 
 <template>
   <p v-if="blocks.length === 0" class="text-sm text-slate-400">
-    没有 Block：只有长度为 0 的空行不生成 Block（仍计入行号）。
+    暂无可显示的原文段落；空行不参与审查，但仍计入行号。
   </p>
   <div v-else class="divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-800">
     <div
@@ -31,7 +31,6 @@ function annotatedCount(blockId: string) {
     >
       <span class="w-24 shrink-0 whitespace-nowrap pt-0.5 font-mono text-xs">
         <span class="text-slate-300">{{ locatorLabel(block.locator) }}</span>
-        <span class="ml-1 text-slate-600">#{{ block.ordinal }}</span>
       </span>
       <p class="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-sm text-slate-200">{{ block.text }}</p>
       <UBadge v-if="annotatedCount(block.id) > 0" color="neutral" variant="subtle" size="sm">

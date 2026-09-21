@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { MaterialSummary, Rubric, RubricDraft } from '../../types/contracts'
 import { ApiFailure, reviewsApi } from '../../services/reviews'
 import { criteriaBuilderApi, emptyManualDraft, preparePublish, RUBRIC_JSON_EXAMPLE } from '../../services/criteriaSource'
+import { useSessionStore, type WizardDraft } from '../../stores/session'
 import { failureFromResponse, toUserFacingError } from '../../utils/userFacingError'
 import PageHeader from '../../components/review/PageHeader.vue'
 import RubricDraftEditor from '../../components/review/RubricDraftEditor.vue'
@@ -12,6 +13,11 @@ import RubricDraftEditor from '../../components/review/RubricDraftEditor.vue'
 // 用户只理解「材料 + 要求」；draft/publish/binding 都由这里按冻结契约接线，文案不出现内部术语。
 // 模型不可用时草稿路径失败不卡死：随时可改走「手工创建」。
 const router = useRouter()
+const route = useRoute()
+const session = useSessionStore()
+
+// 从 /materials/new 返回时消费一次草稿；取走即清空，纯内存，不做刷新恢复。
+const pendingDraft = session.takeWizardDraft()
 
 interface Seat {
   materialId: string
@@ -79,11 +85,66 @@ async function load() {
       checked: false,
       label: '',
     }))
+    // 加载成功后才恢复草稿：seats 以新加载的材料库为准，只写回用户的选择。
+    restoreWizardDraft()
+    applyAddedQuery()
   } catch (cause) {
     loadError.value = toUserFacingError(cause, '无法加载表单数据，请重试').message
   } finally {
     loading.value = false
   }
+}
+
+// 从 /materials/new 回来后逐项写回；seats 按 materialId 匹配到重建的列表，
+// 只恢复 checked/label，filename 以新材料库为准。
+function restoreWizardDraft() {
+  const snapshot = pendingDraft
+  if (!snapshot) return
+  title.value = snapshot.title
+  step.value = snapshot.step
+  criteriaKind.value = snapshot.criteriaKind
+  rubricKey.value = snapshot.rubricKey
+  pastedText.value = snapshot.pastedText
+  uploadFile.value = snapshot.uploadFile
+  draft.value = snapshot.draft
+  publishedRubric.value = snapshot.publishedRubric
+  createdReviewId.value = snapshot.createdReviewId
+  createdRubric.value = snapshot.createdRubric
+  addedSeatIds.value = [...snapshot.addedSeatIds]
+  const saved = new Map(snapshot.seats.map((seat) => [seat.materialId, seat]))
+  seats.value = seats.value.map((seat) => {
+    const previous = saved.get(seat.materialId)
+    return previous ? { ...seat, checked: previous.checked, label: previous.label } : seat
+  })
+}
+
+// MaterialNew 保存后带 ?added=<materialId> 返回：自动勾选新材料，然后清掉 query 避免重复选中。
+function applyAddedQuery() {
+  const added = route.query.added
+  if (typeof added !== 'string' || added === '') return
+  const seat = seats.value.find((item) => item.materialId === added)
+  if (seat) seat.checked = true
+  router.replace('/reviews/new')
+}
+
+// 去添加材料前写入当前全部表单状态快照；MaterialNew 只消费 return 并上报新 id。
+function goAddMaterial() {
+  const snapshot: WizardDraft = {
+    title: title.value,
+    step: step.value,
+    seats: seats.value.map((seat) => ({ ...seat })),
+    criteriaKind: criteriaKind.value,
+    rubricKey: rubricKey.value,
+    pastedText: pastedText.value,
+    uploadFile: uploadFile.value,
+    draft: draft.value,
+    publishedRubric: publishedRubric.value,
+    createdReviewId: createdReviewId.value,
+    createdRubric: createdRubric.value,
+    addedSeatIds: [...addedSeatIds.value],
+  }
+  session.saveWizardDraft(snapshot)
+  router.push('/materials/new?return=review-new')
 }
 
 const needsDraftStep = computed(() => criteriaKind.value !== 'existing')
@@ -282,13 +343,26 @@ load()
     <template v-else>
       <!-- 第一步：审哪些材料 -->
       <section v-if="step === 0" class="mt-8">
-        <div class="flex items-baseline justify-between gap-3">
+        <div class="flex flex-wrap items-baseline justify-between gap-3">
           <h2 class="text-sm font-medium text-slate-200">这次审哪些材料？</h2>
-          <span class="text-[11px] text-slate-600">可不选；创建后也能在审查里添加</span>
+          <div class="flex items-center gap-3">
+            <span class="text-[11px] text-slate-600">可不选；创建后也能在审查里添加</span>
+            <UButton
+              v-if="materials.length > 0"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-plus"
+              @click="goAddMaterial"
+            >
+              添加新材料
+            </UButton>
+          </div>
         </div>
-        <p v-if="materials.length === 0" class="mt-3 text-xs text-slate-500">
-          材料库还没有材料，可以先创建审查，稍后在「材料」页上传并加入。
-        </p>
+        <p v-if="materials.length === 0" class="mt-3 text-xs text-slate-500">材料库还没有材料。</p>
+        <UButton v-if="materials.length === 0" class="mt-3" size="sm" icon="i-lucide-plus" @click="goAddMaterial">
+          去添加材料
+        </UButton>
         <ul v-else class="mt-3 divide-y divide-slate-800 overflow-hidden rounded-xl border border-slate-800">
           <li v-for="seat in seats" :key="seat.materialId" class="flex flex-wrap items-start gap-3 px-4 py-3">
             <input
