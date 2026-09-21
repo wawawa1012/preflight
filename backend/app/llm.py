@@ -16,6 +16,7 @@ from pathlib import Path
 
 from openai import APIConnectionError, APITimeoutError, OpenAI, OpenAIError
 
+from .claim_inspector import locator_label
 from .contracts import Block, Criterion
 
 PROMPT_VERSION = "p5-criterion-preflight-v2.6"
@@ -169,7 +170,7 @@ def build_messages(criterion: Criterion, blocks: list[Block]) -> list[dict[str, 
         "材料 blocks（完整原文；block_id 必须原样返回）：",
     ]
     for block in blocks:
-        lines.append(f"[{block.id}] line {block.locator.index}: {block.text}")
+        lines.append(f"[{block.id}] {locator_label(block.locator)}: {block.text}")
     data = untrusted_data("\n".join(lines))
     lines = []
     lines.extend(

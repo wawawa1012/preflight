@@ -16,7 +16,7 @@ from typing import Annotated, Literal
 from pydantic import Field, ValidationError
 
 from . import grill, llm
-from .claim_inspector import inspect_statements
+from .claim_inspector import inspect_statements, line_number_of
 from .consistency import find_numeric_findings
 from .contracts import (
     COACH_CLAIM_MAX_CHARS,
@@ -29,7 +29,7 @@ from .contracts import (
     ResponseCoachResponse,
     SavedMaterial,
 )
-from .evidence import QuoteNotFound, resolve_span
+from .evidence import QuoteNotFound, SpanMismatch, resolve_source_ref
 
 MAX_SERVER_SOURCES = 12
 MAX_ASPECTS = 6
@@ -136,8 +136,8 @@ def build_source_pool(material: SavedMaterial, refs) -> list[grill.Source]:
                 "source_ref_mismatch", "选择的来源不在该材料中", [f"block_id={ref.block_id}"]
             )
         try:
-            start, end = resolve_span(block.text, ref.quote)
-        except QuoteNotFound as exc:
+            start, end = resolve_source_ref(block.text, ref.quote, ref.start, ref.end)
+        except (QuoteNotFound, SpanMismatch) as exc:
             raise CoachRequestRejected(
                 "source_ref_mismatch",
                 "选择的来源 quote 与材料原文不一致",
@@ -158,7 +158,8 @@ def build_source_pool(material: SavedMaterial, refs) -> list[grill.Source]:
                 "用户选择的来源",
                 context,
                 "generic",
-                block.locator.index,
+                line_number_of(block),
+                block.locator,
             )
         )
     return pool
@@ -247,6 +248,7 @@ def disposition(
             source_id=by_id[sid].source_id,
             block_id=by_id[sid].block_id,
             line_number=by_id[sid].line_number,
+            locator=by_id[sid].locator,
             quote=by_id[sid].quote,
             start=by_id[sid].start,
             end=by_id[sid].end,

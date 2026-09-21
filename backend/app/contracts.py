@@ -3,7 +3,7 @@
 Edit here, export JSON Schema, then regenerate frontend types. IDs are opaque.
 """
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Contract(BaseModel):
@@ -96,17 +96,23 @@ class Document(Contract):
     material_version_id: str
     logical_key: str
     filename: str
-    format: Literal["pdf", "pptx", "docx", "md"]
+    format: Literal["pdf", "pptx", "docx", "md", "txt"]
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     parse_status: Literal["pending", "ready", "rejected", "failed"]
 
 
 class Locator(Contract):
     # One-based source position. DOCX has paragraph positions, never invented pages.
-    kind: Literal["page", "slide", "paragraph", "line"]
+    # table_cell: index = 一基 table 序号；row_index/cell_index/paragraph_index 是表内一基结构序号；
+    # block_index 保留既有含义（同一来源单位内的块分组序号），不承载表格结构。
+    # 非行格式的 line_number/line_count 为 null：调用方不得用 index 冒充行号。
+    kind: Literal["page", "slide", "paragraph", "line", "table_cell"]
     index: int = Field(ge=1)
     end_index: int | None = Field(default=None, ge=1)
     block_index: int = Field(ge=1)
+    row_index: int | None = Field(default=None, ge=1)
+    cell_index: int | None = Field(default=None, ge=1)
+    paragraph_index: int | None = Field(default=None, ge=1)
 
 
 class Block(Contract):
@@ -122,6 +128,26 @@ class Span(Contract):
     start: int = Field(ge=0)
     end: int = Field(ge=1)
     quote: str = Field(min_length=1)
+
+
+class SourceRef(Contract):
+    """统一来源引用：material/block 身份 + 半开 code-point span；位置由服务端解析并逐字复验。
+
+    客户端与模型只能选择 block 与 quote（可选显式 start/end 精确选中某次 occurrence），
+    不得把 locator/行号当权威提交。
+    """
+
+    material_id: str
+    block_id: str
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+    quote: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def end_after_start(self) -> "SourceRef":
+        if self.end <= self.start:
+            raise ValueError("end 必须大于 start（半开区间）")
+        return self
 
 
 class Claim(Contract):
@@ -245,7 +271,7 @@ class RunRequest(Contract):
 
 
 class MarkdownPreview(Contract):
-    # 临时预览响应：documents 尚未入库，因此只有文件身份和只读 blocks。
+    # 临时预览响应（旧 Markdown 入口兼容）：documents 尚未入库，因此只有文件身份和只读 blocks。
     document_id: str
     filename: str = Field(min_length=1)
     size_bytes: int = Field(ge=0)
@@ -254,22 +280,38 @@ class MarkdownPreview(Contract):
     blocks: list[Block]
 
 
+class SourcePreview(Contract):
+    # 通用预览响应：不写入存储；line_count 只对行格式（md/txt）是真实行数，非行格式为 null。
+    document_id: str
+    filename: str = Field(min_length=1)
+    format: Literal["md", "txt", "docx"]
+    size_bytes: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    line_count: int | None = Field(default=None, ge=0)
+    parser_version: str | None = None
+    blocks: list[Block]
+
+
 class SavedMaterial(Contract):
     # 2B 最小持久化实体：一份材料 + 全部 Blocks；不是 RunReport 的 Document/MaterialVersion。
     # blocks[].document_id 指向本材料 id（当前只有 Material → Block 两级）。
+    # line_count 只对行格式真实；DOCX 为 null（不伪造行号）。
     id: str
     filename: str = Field(min_length=1)
+    format: Literal["md", "txt", "docx"]
+    parser_version: str | None = None
     size_bytes: int = Field(ge=0)
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-    line_count: int = Field(ge=0)
+    line_count: int | None = Field(default=None, ge=0)
     created_at: str
     blocks: list[Block]
 
 
 class MaterialSummary(Contract):
-    # 列表专用：不含 blocks，避免列表接口返回全量内容；文件类型由 filename 后缀展示。
+    # 列表专用：不含 blocks，避免列表接口返回全量内容。
     id: str
     filename: str = Field(min_length=1)
+    format: Literal["md", "txt", "docx"]
     created_at: str
     block_count: int = Field(ge=0)
 
@@ -287,11 +329,20 @@ class EvidenceAnnotation(Contract):
 
 
 class EvidenceAnnotationCreate(Contract):
-    # 请求体：只提交 block 与 quote；proposed_by 不出现在 Create，防止客户端伪造溯源。
+    # 请求体：只提交 block 与 quote（可选精确 start/end）；proposed_by 不出现在 Create，防止客户端伪造溯源。
     # HTTP 路径固定写入 "human"；agent 物化路径由服务端设置。
+    # 显式 start/end 必须同时出现并逐字复验，失败 400 span_mismatch，不静默退回第一次匹配。
     block_id: str
     quote: str = Field(min_length=1)
     note: str | None = None
+    start: int | None = Field(default=None, ge=0)
+    end: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def span_pair_complete(self) -> "EvidenceAnnotationCreate":
+        if (self.start is None) != (self.end is None):
+            raise ValueError("start 与 end 必须同时提供或同时省略")
+        return self
 
 
 class RubricBinding(Contract):
@@ -386,7 +437,8 @@ class MaterialPreflightCitation(Contract):
     annotation_id: str
     criterion_id: str
     block_id: str
-    line_number: int = Field(ge=1)
+    line_number: int | None = Field(default=None, ge=1)
+    locator: Locator
     quote: str = Field(min_length=1)
     rationale: str = Field(min_length=1)
     proposed_by: Literal["human", "agent"]
@@ -435,10 +487,14 @@ class MaterialPreflightSummary(Contract):
 
 
 class DetectedStatement(Contract):
-    """I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。"""
+    """I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。
+
+    line_number 只对行格式（md/txt）是真实行号，其余为 null；位置一律以 locator 为准。
+    """
 
     block_id: str
-    line_number: int = Field(ge=1)
+    line_number: int | None = Field(default=None, ge=1)
+    locator: Locator
     quote: str = Field(min_length=1)
     start: int = Field(ge=0)
     end: int = Field(ge=1)
@@ -446,10 +502,14 @@ class DetectedStatement(Contract):
 
 
 class ConsistencyCitation(Contract):
-    """I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。"""
+    """I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。
+
+    line_number 只对行格式是真实行号，其余为 null；非行来源不得展示为行。
+    """
 
     block_id: str
-    line_number: int = Field(ge=1)
+    line_number: int | None = Field(default=None, ge=1)
+    locator: Locator
     quote: str = Field(min_length=1)
     start: int = Field(ge=0)
     end: int = Field(ge=1)
@@ -545,6 +605,7 @@ class GrillQuestion(Contract):
     prompt: str = Field(min_length=1, max_length=GRILL_PROMPT_MAX_CHARS)
     quote: str = Field(min_length=1)
     block_id: str = Field(min_length=1)
+    locator: Locator
     start: int = Field(ge=0)
     end: int = Field(ge=1)
     trigger: GrillTrigger
@@ -563,10 +624,21 @@ CoachFollowUp = Annotated[str, Field(min_length=1, max_length=200)]
 
 
 class CoachSourceRef(Contract):
-    """用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。"""
+    """用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。
+
+    可选显式 start/end 用于精确选中重复文本的某次 occurrence；两者必须同时提供。
+    """
 
     block_id: str = Field(min_length=1)
     quote: str = Field(min_length=1)
+    start: int | None = Field(default=None, ge=0)
+    end: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def span_pair_complete(self) -> "CoachSourceRef":
+        if (self.start is None) != (self.end is None):
+            raise ValueError("start 与 end 必须同时提供或同时省略")
+        return self
 
 
 class ResponseCoachRequest(Contract):
@@ -587,11 +659,15 @@ class ResponseCoachRequest(Contract):
 
 
 class CoachSource(Contract):
-    """程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。"""
+    """程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。
+
+    line_number 只对行格式是真实行号，其余为 null；位置以 locator 为准。
+    """
 
     source_id: str = Field(min_length=1)
     block_id: str = Field(min_length=1)
-    line_number: int = Field(ge=1)
+    line_number: int | None = Field(default=None, ge=1)
+    locator: Locator
     quote: str = Field(min_length=1)
     start: int = Field(ge=0)
     end: int = Field(ge=1)
@@ -705,8 +781,9 @@ class RevisionContext(Contract):
 
 class EditableSource(Contract):
     # 规范化可编辑文本：LF 换行、按 line_count 补回空行；不承诺 BOM/CRLF/原始终末换行。
+    # 仅行格式（md/txt）提供；DOCX 原格式编辑明确拒绝（400 format_not_editable）。
     material_id: str
-    format: Literal["md"]
+    format: Literal["md", "txt"]
     text: str
     normalization: Literal["lf"]
 
@@ -733,8 +810,10 @@ class ContractBundle(Contract):
     finding_set_diff_response: FindingSetDiffResponse
     run_request: RunRequest
     preview: MarkdownPreview
+    source_preview: SourcePreview
     saved_material: SavedMaterial
     material_summary: MaterialSummary
+    source_ref: SourceRef
     evidence_annotation: EvidenceAnnotation
     evidence_annotation_create: EvidenceAnnotationCreate
     rubric_binding: RubricBinding

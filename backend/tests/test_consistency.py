@@ -11,7 +11,7 @@ from pathlib import Path
 from app import main, storage
 from app.claim_inspector import MAX_STATEMENTS, inspect_statements
 from app.consistency import find_numeric_findings
-from app.contracts import DetectedStatement
+from app.contracts import Block, DetectedStatement, Locator
 from app.markdown_preview import build_preview
 
 
@@ -91,6 +91,7 @@ class FindNumericFindingsTest(unittest.TestCase):
             DetectedStatement(
                 block_id=statements[0].block_id,
                 line_number=statements[0].line_number,
+                locator=statements[0].locator,
                 quote="准确率达到 95%",
                 start=statements[0].start,
                 end=statements[0].end,
@@ -100,6 +101,27 @@ class FindNumericFindingsTest(unittest.TestCase):
         ]
         # 篡改的 quote 与原文区间不符：宁漏勿错，直接跳过，不产生任何 Finding。
         self.assertEqual(find_numeric_findings(tampered, blocks), [])
+
+    def test_non_line_blocks_are_ordered_by_body_ordinal_not_line_number(self) -> None:
+        # paragraph index 故意与正文顺序相反：排序必须按 Block.ordinal，而不是 index/行号。
+        blocks = [
+            Block(
+                id="blk_ord0", document_id="mat_docx", ordinal=0, text="准确率达到 95%。",
+                locator=Locator(kind="paragraph", index=9, end_index=None, block_index=1),
+            ),
+            Block(
+                id="blk_ord1", document_id="mat_docx", ordinal=1, text="准确率达到 90%。",
+                locator=Locator(kind="paragraph", index=2, end_index=None, block_index=1),
+            ),
+        ]
+        statements = inspect_statements(blocks)
+        findings = find_numeric_findings(statements, blocks)
+        self.assertEqual(len(findings), 1)
+        citations = findings[0].citations
+        self.assertEqual([item.quote for item in citations], ["95%", "90%"])
+        self.assertEqual([item.block_id for item in citations], ["blk_ord0", "blk_ord1"])
+        self.assertEqual([item.locator.kind for item in citations], ["paragraph", "paragraph"])
+        self.assertEqual([item.line_number for item in citations], [None, None])
 
     def test_findings_are_ordered_by_first_occurrence(self) -> None:
         text = "准确率达到 95%。\n\n吞吐量达到 10 次。\n\n准确率降低到 90%。\n\n吞吐量达到 20 次。\n"

@@ -1,0 +1,13 @@
+{
+  "test_only": true,
+  "comment": "SourceRef 复验 fixture：同一 Block 内重复文本的两次 occurrence；显式 span 必须逐字命中，quote-only 取第一次。",
+  "material_id": "mat_ref_synthetic",
+  "block_id": "block_ref_synthetic",
+  "text": "重复片段出现重复片段",
+  "refs": [
+    { "material_id": "mat_ref_synthetic", "block_id": "block_ref_synthetic", "start": 0, "end": 4, "quote": "重复片段" },
+    { "material_id": "mat_ref_synthetic", "block_id": "block_ref_synthetic", "start": 6, "end": 10, "quote": "重复片段" }
+  ],
+  "quote_only_first": { "start": 0, "end": 4 },
+  "mismatch": { "quote": "出现", "start": 0, "end": 4 }
+}

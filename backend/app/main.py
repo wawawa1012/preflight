@@ -58,12 +58,22 @@ from .contracts import (
     RubricPublish,
     RunReport,
     SavedMaterial,
+    SourcePreview,
 )
 from .evidence import QuoteNotFound
 from .markdown_preview import MAX_BYTES, PreviewRejected, build_preview
 from .mock_report import MOCK_REPORT
 from .preflight_report import assemble_report, assemble_summaries
-from .storage import CandidateInput, InvalidCandidate, ParentNotInReview, RubricNotBound, SpanMismatch, StorageConflict
+from .source_ingest import build_source_preview, detect_format
+from .storage import (
+    CandidateInput,
+    FormatNotEditable,
+    InvalidCandidate,
+    ParentNotInReview,
+    RubricNotBound,
+    SpanMismatch,
+    StorageConflict,
+)
 
 
 @asynccontextmanager
@@ -114,13 +124,22 @@ async def preview_markdown(file: UploadFile = File(...)) -> MarkdownPreview:
     return build_preview(file.filename or "", data)
 
 
-# 保存材料：服务端重新校验并重新解析上传文件（不信任浏览器回传的 blocks），原子写入 SQLite。
+# 通用预览：md/txt/docx 按扩展名解析；docx 等待 B2 source adapter（400 parser_unavailable）。
+@app.post("/api/v1/preview", response_model=SourcePreview)
+async def preview_source(file: UploadFile = File(...)) -> SourcePreview:
+    data = await file.read(MAX_BYTES + 1)
+    await file.close()
+    return build_source_preview(file.filename or "", data)
+
+
+# 保存材料：服务端重新校验并重新解析上传文件（不信任浏览器回传的 blocks/locator），
+# 原文件字节、format、parser_version 与 material/blocks 同一事务写入 SQLite。
 @app.post("/api/v1/materials", response_model=SavedMaterial, status_code=201)
 async def save_material(file: UploadFile = File(...)) -> SavedMaterial:
     data = await file.read(MAX_BYTES + 1)
     await file.close()
-    preview = build_preview(file.filename or "", data)
-    return storage.save_material(preview)
+    preview = build_source_preview(file.filename or "", data)
+    return storage.save_material(preview, source_bytes=data)
 
 
 # 注意：/recent 必须先于 /{material_id} 注册，否则会被当作 ID。
@@ -134,7 +153,7 @@ def saved_materials() -> list[MaterialSummary]:
 def recent_material() -> SavedMaterial:
     material = storage.get_recent_material()
     if material is None:
-        raise LookupFailed("no_saved_material", "还没有保存过任何材料", ["先上传并保存一份 .md"])
+        raise LookupFailed("no_saved_material", "还没有保存过任何材料", ["先上传并保存一份 .md/.txt/.docx"])
     return material
 
 
@@ -154,18 +173,29 @@ def remove_material(material_id: str) -> Response:
     return Response(status_code=204)
 
 
-# —— Material Revision v1：只支持 .md；旧材料不可变，child 是全新 Material ——
+# —— Material Revision v1：行格式（.md/.txt）可编辑；旧材料不可变，child 是全新 Material ——
+# DOCX 不承诺原格式编辑：revision 明确 400 format_not_editable。
 
 
 @app.post("/api/v1/materials/{parent_id}/revisions", response_model=MaterialRevisionCreated, status_code=201)
 def create_material_revision(parent_id: str, payload: MaterialRevisionCreate) -> MaterialRevisionCreated:
-    if not storage.material_exists(parent_id):
+    parent = storage.get_material(parent_id)
+    if parent is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={parent_id}"])
+    if parent.format not in ("md", "txt"):
+        raise FormatNotEditable(
+            "该材料不是行格式，不支持原格式编辑", [f"material_id={parent_id}", f"format={parent.format}"]
+        )
+    child_format = detect_format(payload.filename)
+    if child_format == "docx":
+        raise FormatNotEditable(
+            "不支持把 DOCX 作为修订文本提交", [f"filename={payload.filename}"]
+        )
     try:
         data = payload.text.encode("utf-8")
     except UnicodeEncodeError as exc:
         raise PreviewRejected("invalid_encoding", "text 不是有效 UTF-8", [str(exc)]) from exc
-    preview = build_preview(payload.filename, data)
+    preview = build_source_preview(payload.filename, data)
 
     binding: tuple[str, int] | None = None
     if payload.review_id is not None:
@@ -191,6 +221,7 @@ def create_material_revision(parent_id: str, payload: MaterialRevisionCreate) ->
         review_id=payload.review_id,
         label=payload.label,
         inherit_binding=binding if payload.review_id is None else None,
+        source_bytes=data,
     )
     if result is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={parent_id}"])
@@ -327,10 +358,12 @@ def create_repair_suggestion(material_id: str, payload: ConsistencyFinding) -> R
     return repair_suggest.suggest_repair(payload, material.blocks)
 
 
-# 证据标注：quote 服务端校验必须来自 Block 原文；material_id/proposed_by 由服务端设定。
+# 证据标注：quote/显式 span 服务端逐字复验必须来自 Block 原文；material_id/proposed_by 由服务端设定。
 @app.post("/api/v1/evidence-annotations", response_model=EvidenceAnnotation, status_code=201)
 def create_evidence_annotation(payload: EvidenceAnnotationCreate) -> EvidenceAnnotation:
-    annotation = storage.save_evidence_annotation(payload.block_id, payload.quote, payload.note, "human")
+    annotation = storage.save_evidence_annotation(
+        payload.block_id, payload.quote, payload.note, "human", start=payload.start, end=payload.end
+    )
     if annotation is None:
         raise LookupFailed("block_not_found", "找不到该 Block", [f"block_id={payload.block_id}"])
     return annotation
@@ -696,6 +729,12 @@ async def storage_conflict(request: Request, exc: StorageConflict) -> JSONRespon
 @app.exception_handler(SpanMismatch)
 async def span_mismatch(request: Request, exc: SpanMismatch) -> JSONResponse:
     error = ApiError(code="span_mismatch", message=exc.message, details=[])
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(FormatNotEditable)
+async def format_not_editable(request: Request, exc: FormatNotEditable) -> JSONResponse:
+    error = ApiError(code=exc.code, message=exc.message, details=exc.details)
     return JSONResponse(status_code=400, content=error.model_dump())
 
 

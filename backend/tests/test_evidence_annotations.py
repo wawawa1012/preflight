@@ -118,8 +118,10 @@ class EvidenceApiErrorTest(unittest.TestCase):
             storage.list_evidence_annotations,
         )
         original_save, original_get, original_exists, original_list = self._originals
-        storage.save_evidence_annotation = lambda block_id, quote, note=None, proposed_by="human": original_save(
-            block_id, quote, note, proposed_by, self.db
+        storage.save_evidence_annotation = (
+            lambda block_id, quote, note=None, proposed_by="human", **kwargs: original_save(
+                block_id, quote, note, proposed_by, self.db, **kwargs
+            )
         )
         storage.get_evidence_annotation = lambda annotation_id: original_get(annotation_id, self.db)
         storage.material_exists = lambda material_id: original_exists(material_id, self.db)

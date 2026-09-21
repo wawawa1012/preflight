@@ -196,7 +196,7 @@ class RoleBenchmark(unittest.TestCase):
             self.assertEqual(by_id[q.block_id].text[q.start:q.end], q.quote)
             self.assertEqual(
                 set(q.model_dump()),
-                {"prompt", "quote", "block_id", "start", "end", "trigger", "why", "preparation"},
+                {"prompt", "quote", "block_id", "locator", "start", "end", "trigger", "why", "preparation"},
             )
             self.assertTrue(q.why, "程序必须给出人话的「为什么可能被问」")
             self.assertTrue(q.preparation, "程序必须给出确定性准备清单")

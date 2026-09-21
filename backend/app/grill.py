@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 
 from . import llm
-from .claim_inspector import inspect_statements
+from .claim_inspector import inspect_statements, line_number_of
 from .consistency import find_numeric_findings
 from .contracts import (
     GRILL_PROMPT_MAX_CHARS,
@@ -19,6 +19,7 @@ from .contracts import (
     DetectedStatement,
     GrillQuestion,
     GrillRequest,
+    Locator,
     SavedMaterial,
 )
 
@@ -109,7 +110,8 @@ class Source:
     basis: str
     context: str
     trigger: str = "generic"
-    line_number: int = 0
+    line_number: int | None = None
+    locator: Locator | None = None
 
 
 @dataclass(frozen=True)
@@ -138,7 +140,8 @@ def prepare_sources(
         # A numeric token alone loses its subject. Include only bounded local context.
         context = block.text[max(0, item.start - CONTEXT_RADIUS):item.end + CONTEXT_RADIUS]
         sources.append(Source(f"s{len(sources) + 1}", item.block_id, item.quote,
-                              item.start, item.end, basis, context, trigger, block.locator.index))
+                              item.start, item.end, basis, context, trigger,
+                              line_number_of(block), block.locator))
 
     for finding in findings:
         basis = f"{finding.kind}；度量词：{finding.measure}；不同数值：{'、'.join(finding.values)}"
@@ -214,6 +217,7 @@ def verify_questions(questions: list[RawQuestion], sources: list[Source], blocks
             prompt=question.prompt,
             quote=source.quote,
             block_id=source.block_id,
+            locator=block.locator,
             start=source.start,
             end=source.end,
             trigger=source.trigger,

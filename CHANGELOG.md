@@ -1,9 +1,13 @@
 # Progress log
 
-## 2026-09-21 — Locator v1 checkpoint：契约与迁移增量（定向 review，未实现完）
-工作区 `F:\project\Preflight-backend` · 分支 `codex/next-locator` · base `5f12236`。只交付可 review 的契约/迁移说明，不等 DOCX 全链完成：
-- `docs/architecture/locator-v1-contract-migration.md`：冻结最小定位协议（line/paragraph/table_cell、body_ordinal 排序、非行 `line_number`=null）、SourceRef 复验与错误语义、`user_version=1` 迁移与 FK/回滚策略、B2 SourceNode 消费边界。
-- 后续增量：contracts/evidence/storage/下游适配/生成物同步；实现前不改任何既有 wire 行为。
+## 2026-09-21 — Locator v1：完整定位持久化 + 统一 SourceRef + 下游适配（定向检查通过，未提交前跑完整套件）
+工作区 `F:\project\Preflight-backend` · 分支 `codex/next-locator` · base `5f12236` · checkpoint `eec27d4`。合同与迁移说明见 `docs/architecture/locator-v1-contract-migration.md`，Kimi/F1 消费字段差异见 `docs/architecture/locator-v1-consumer-notes.md`。
+- **契约（contracts.py + schema.json + generated TS + fixtures + CONTRACTS.md）**：`Locator.kind` 增加 `table_cell` 与 `row_index/cell_index/paragraph_index`；新增 `SourceRef`、`SourcePreview`；`SavedMaterial` 增加 `format/parser_version`、`line_count` 可空；`MaterialSummary` 增加 `format`；`EvidenceAnnotationCreate`/`CoachSourceRef` 增加可选显式 `start/end`；`DetectedStatement`/`ConsistencyCitation`/`CoachSource`/`MaterialPreflightCitation` 增加 `locator` 且 `line_number` 可空；`GrillQuestion` 增加程序回填 `locator`；`EditableSource.format` 扩为 `md|txt`。Markdown/TXT 旧 wire 值不变。
+- **统一来源复验（evidence.py）**：`resolve_source_ref(text, quote, start?, end?)` 成为唯一验证门；quote-only 保留第一次 occurrence 兼容行为，显式 span 必须逐字命中并拒绝静默回退，因此同一 Block 的第二次 occurrence 可精确选择。`SpanMismatch` 移入 evidence.py 并在 storage 再导出。
+- **持久化与迁移（storage.py）**：materials 增加 `format/parser_version/source_bytes`，blocks 保存完整 Locator（内部列 `locator_index`，`index` 是保留字）；`PRAGMA user_version=1` 版本化迁移把 legacy `line_number` 回填为 kind='line' locator，保留 Block ID/annotation span/link/binding/revision；迁移在单事务内重建、提交前 `foreign_key_check`、失败整体回滚；迁移前强制确认外键已关（防 DROP CASCADE 误删）。新上传原文件字节与 material/blocks 同事务入库；legacy Markdown `source_bytes=null` 不伪造，editable-source 仍按 LF/空行规则重建。
+- **解析边界（source_ingest.py，新增）**：md/txt 走真实逐行节点；DOCX 通过延迟导入消费 B2 `app.source_adapters.read_source_nodes(filename, data)`（缺失即 400 `parser_unavailable`，不伪造 Block）；`SourceNode` 转公共 Block/Locator（paragraph→paragraph、table→table_cell），按 body_ordinal 排序并重分配 0 起连续 ordinal。新增 `POST /api/v1/preview`；旧 `/api/v1/preview/markdown` 不动；revision/editable-source 对 DOCX 400 `format_not_editable`。
+- **下游适配**：Statement/Citation/Report/Grill/Coach/Repair/prompt 全部携带结构化 locator，`line_number` 非行来源为 null；Consistency finding/citation 一律按 Block.ordinal + span 排序（不再用 line_number）；preflight 引用展示前复验存储 span。一致性/评分算法、Proposal 验证门、Review/binding invariant 未改。
+- 验证（deterministic）：完整 backend `Ran 451 tests ... OK`；`scripts/export_contracts.py` + `scripts/check_contracts.py` PASS（新增 source_ref fixture 与负例）；TestClient HTTP smoke 覆盖 health/openapi/preview/materials/annotations/revisions/editable-source 与 400 错误码 PASS。mock：注入 fake B2 adapter 的 DOCX 转换测试 PASS。live：未调用任何真实 LLM/上游，未跑真实 DOCX 全链（等 B2 adapter 落地）。
 
 ## 2026-09-20 — Sprint 2 Actionable Review / Backend Track（待 Backend QA，未提交）
 

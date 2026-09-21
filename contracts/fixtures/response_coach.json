@@ -29,6 +29,7 @@
         "source_id": "s1",
         "block_id": "mat_fixture-blk-0",
         "line_number": 1,
+        "locator": { "kind": "line", "index": 3, "end_index": null, "block_index": 1 },
         "quote": "95%",
         "start": 9,
         "end": 12,

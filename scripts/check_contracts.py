@@ -18,8 +18,10 @@ from app.contracts import (
     RubricDraft,
     RubricPublish,
     RunReport,
+    SourceRef,
     VersionDiff,
 )
+from app.evidence import SpanMismatch, resolve_source_ref, resolve_span
 from pydantic import ValidationError
 
 
@@ -43,7 +45,13 @@ def check_report(report: RunReport) -> None:
         assert doc.material_version_id == report.material_version.id
     for block in blocks.values():
         doc = docs[block.document_id]
-        assert block.locator.kind == {"pdf": "page", "pptx": "slide", "docx": "paragraph", "md": "line"}[doc.format]
+        assert block.locator.kind == {
+            "pdf": "page",
+            "pptx": "slide",
+            "docx": "paragraph",
+            "md": "line",
+            "txt": "line",
+        }[doc.format]
 
     def check_span(span):
         text = blocks[span.block_id].text
@@ -335,8 +343,68 @@ except AssertionError:
     pass
 else:
     raise AssertionError("Coach claim outside user_answer was accepted")
+def check_source_ref_fixture(fixture: dict) -> None:
+    """Locator v1 fixture：重复文本第二次 occurrence 可用显式 span 精确选择并逐字复验。"""
+    text = fixture["text"]
+    refs = [SourceRef.model_validate(item) for item in fixture["refs"]]
+    assert len(refs) == 2 and refs[0].start < refs[1].start
+    for ref in refs:
+        assert text[ref.start:ref.end] == ref.quote
+    first = fixture["quote_only_first"]
+    assert resolve_span(text, refs[0].quote) == (first["start"], first["end"]), (
+        "quote-only 必须保持第一次 occurrence 的兼容行为"
+    )
+    assert resolve_source_ref(text, refs[1].quote, refs[1].start, refs[1].end) == (
+        refs[1].start,
+        refs[1].end,
+    ), "显式 span 必须能选中第二次 occurrence"
+    mismatch = fixture["mismatch"]
+    try:
+        resolve_source_ref(text, mismatch["quote"], mismatch["start"], mismatch["end"])
+    except SpanMismatch:
+        pass
+    else:
+        raise AssertionError("quote 与显式 span 不符时必须拒绝，不得静默退回第一次匹配")
+    try:
+        resolve_source_ref(text, refs[0].quote, 1, 5)
+    except SpanMismatch:
+        pass
+    else:
+        raise AssertionError("错位 span 必须拒绝")
+    # 非行来源的 line_number 语义：null 合法，不再是必填 integer。
+    locator_props = schema["$defs"]["Locator"]["properties"]
+    for field in ("row_index", "cell_index", "paragraph_index"):
+        assert field in locator_props, f"Locator 必须导出 {field}"
+    assert "table_cell" in locator_props["kind"]["enum"], "Locator.kind 必须包含 table_cell"
+    citation_props = schema["$defs"]["ConsistencyCitation"]["properties"]
+    assert "locator" in citation_props, "ConsistencyCitation 必须导出 locator"
+    assert any(item.get("type") == "null" for item in citation_props["line_number"]["anyOf"]), (
+        "ConsistencyCitation.line_number 必须允许 null（非行来源）"
+    )
+    assert "source_preview" in schema["properties"], "ContractBundle 必须导出 SourcePreview"
+    assert "source_ref" in schema["properties"], "ContractBundle 必须导出 SourceRef"
+    saved_props = schema["$defs"]["SavedMaterial"]["properties"]
+    for field in ("format", "parser_version"):
+        assert field in saved_props, f"SavedMaterial 必须导出 {field}"
+    preview_props = schema["$defs"]["SourcePreview"]["properties"]
+    for field in ("format", "parser_version", "line_count"):
+        assert field in preview_props, f"SourcePreview 必须导出 {field}"
+
+
+source_ref_raw = json.loads((ROOT / "contracts/fixtures/source_ref.json").read_text(encoding="utf-8"))
+assert source_ref_raw["test_only"] is True
+check_source_ref_fixture(source_ref_raw)
+tampered_ref = json.loads(json.dumps(source_ref_raw))
+tampered_ref["refs"][1]["start"] = 0
+try:
+    check_source_ref_fixture(tampered_ref)
+except (AssertionError, ValidationError):
+    pass
+else:
+    raise AssertionError("重复 occurrence 的错位显式 span 被接受")
 print(
     "PASS: schema freshness, fixture structure/references, quote checks, "
     "evidence annotation checks, criterion link checks, proposal checks, preflight report checks, "
-    "rubric draft checks, grill preparation checks, response coach checks, negative cases"
+    "rubric draft checks, grill preparation checks, response coach checks, "
+    "source ref/locator v1 checks, negative cases"
 )

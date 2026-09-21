@@ -110,7 +110,7 @@ export type Id8 = string;
 export type MaterialVersionId1 = string;
 export type LogicalKey = string;
 export type Filename = string;
-export type Format = "pdf" | "pptx" | "docx" | "md";
+export type Format = "pdf" | "pptx" | "docx" | "md" | "txt";
 export type Sha256 = string;
 export type ParseStatus = "pending" | "ready" | "rejected" | "failed";
 export type Documents = Document[];
@@ -118,10 +118,13 @@ export type Id9 = string;
 export type DocumentId = string;
 export type Ordinal = number;
 export type Text1 = string;
-export type Kind = "page" | "slide" | "paragraph" | "line";
+export type Kind = "page" | "slide" | "paragraph" | "line" | "table_cell";
 export type Index = number;
 export type EndIndex = number | null;
 export type BlockIndex = number;
+export type RowIndex = number | null;
+export type CellIndex = number | null;
+export type ParagraphIndex = number | null;
 export type Blocks = Block[];
 export type Id10 = string;
 export type CriterionIds = string[];
@@ -205,7 +208,7 @@ export type Explanation1 = string;
  */
 export type Citations = [ConsistencyCitation, ConsistencyCitation, ...ConsistencyCitation[]];
 export type BlockId1 = string;
-export type LineNumber = number;
+export type LineNumber = number | null;
 export type Quote1 = string;
 export type Start1 = number;
 export type End1 = number;
@@ -224,34 +227,52 @@ export type SizeBytes = number;
 export type Sha2561 = string;
 export type LineCount = number;
 export type Blocks1 = Block[];
-export type Id15 = string;
+export type DocumentId2 = string;
 export type Filename2 = string;
+export type Format1 = "md" | "txt" | "docx";
 export type SizeBytes1 = number;
 export type Sha2562 = string;
-export type LineCount1 = number;
-export type CreatedAt2 = string;
+export type LineCount1 = number | null;
+export type ParserVersion = string | null;
 export type Blocks2 = Block[];
-export type Id16 = string;
+export type Id15 = string;
 export type Filename3 = string;
+export type Format2 = "md" | "txt" | "docx";
+export type ParserVersion1 = string | null;
+export type SizeBytes2 = number;
+export type Sha2563 = string;
+export type LineCount2 = number | null;
+export type CreatedAt2 = string;
+export type Blocks3 = Block[];
+export type Id16 = string;
+export type Filename4 = string;
+export type Format3 = "md" | "txt" | "docx";
 export type CreatedAt3 = string;
 export type BlockCount = number;
-export type Id17 = string;
 export type MaterialId2 = string;
 export type BlockId2 = string;
+export type Start2 = number;
+export type End2 = number;
+export type Quote2 = string;
+export type Id17 = string;
+export type MaterialId3 = string;
+export type BlockId3 = string;
 export type Note1 = string | null;
 export type ProposedBy = "human" | "agent";
 export type CreatedAt4 = string;
-export type BlockId3 = string;
-export type Quote2 = string;
+export type BlockId4 = string;
+export type Quote3 = string;
 export type Note2 = string | null;
-export type MaterialId3 = string;
+export type Start3 = number | null;
+export type End3 = number | null;
+export type MaterialId4 = string;
 export type RubricId5 = string;
 export type RubricRevision5 = number;
 export type CreatedAt5 = string;
 export type RubricId6 = string;
 export type RubricRevision6 = number;
 export type Id18 = string;
-export type MaterialId4 = string;
+export type MaterialId5 = string;
 export type AnnotationId = string;
 export type RubricId7 = string;
 export type RubricRevision7 = number;
@@ -265,8 +286,8 @@ export type Rationale1 = string;
 export type Id19 = string;
 export type ProposalId = string;
 export type Ordinal1 = number;
-export type BlockId4 = string;
-export type Quote3 = string;
+export type BlockId5 = string;
+export type Quote4 = string;
 export type Rationale2 = string;
 export type RiskNote = string | null;
 export type ValidationStatus = "pending" | "passed" | "invalid";
@@ -277,7 +298,7 @@ export type CreatedAnnotationId = string | null;
 export type CreatedLinkId = string | null;
 export type CreatedAt7 = string;
 export type Id20 = string;
-export type MaterialId5 = string;
+export type MaterialId6 = string;
 export type CriterionId5 = string;
 export type RubricId8 = string;
 export type RubricRevision8 = number;
@@ -290,8 +311,8 @@ export type CreatedAt8 = string;
 export type Candidates = ProposalCandidate[];
 export type CriterionId6 = string;
 export type Reason1 = string | null;
-export type MaterialId6 = string;
-export type Filename4 = string;
+export type MaterialId7 = string;
+export type Filename5 = string;
 export type BlockCount1 = number;
 export type RubricId9 = string;
 export type RubricRevision9 = number;
@@ -304,21 +325,21 @@ export type Status5 = "has_verified_citations" | "no_verified_citations_in_scope
 export type LinkId = string;
 export type AnnotationId2 = string;
 export type CriterionId8 = string;
-export type BlockId5 = string;
-export type LineNumber1 = number;
-export type Quote4 = string;
+export type BlockId6 = string;
+export type LineNumber1 = number | null;
+export type Quote5 = string;
 export type Rationale3 = string;
 export type ProposedBy2 = "human" | "agent";
-export type Start2 = number;
-export type End2 = number;
+export type Start4 = number;
+export type End4 = number;
 export type Citations1 = MaterialPreflightCitation[];
 export type SearchedBlockCount1 = number;
 export type SearchedFilename = string;
 export type Explanation2 = string;
 export type Criteria3 = MaterialPreflightCriterionRow[];
-export type Blocks3 = Block[];
-export type MaterialId7 = string;
-export type Filename5 = string;
+export type Blocks4 = Block[];
+export type MaterialId8 = string;
+export type Filename6 = string;
 export type CreatedAt9 = string;
 export type BlockCount2 = number;
 export type Bound = boolean;
@@ -327,11 +348,11 @@ export type VerifiedCitationCount1 = number;
 export type CriteriaTotal = number | null;
 export type CriteriaWithCitations = number | null;
 export type CriteriaWithoutCitations = number | null;
-export type BlockId6 = string;
-export type LineNumber2 = number;
-export type Quote5 = string;
-export type Start3 = number;
-export type End3 = number;
+export type BlockId7 = string;
+export type LineNumber2 = number | null;
+export type Quote6 = string;
+export type Start5 = number;
+export type End5 = number;
 export type Signal = "numeric" | "percentage" | "comparative" | "absolute";
 export type Suggestion = string;
 export type Action = string;
@@ -342,12 +363,12 @@ export type MaterialIdB1 = string;
 export type FilenameA = string;
 export type FilenameB = string;
 export type Findings1 = ConsistencyFinding[];
-export type MaterialId8 = string;
+export type MaterialId9 = string;
 export type Prompt = string;
-export type Quote6 = string;
-export type BlockId7 = string;
-export type Start4 = number;
-export type End4 = number;
+export type Quote7 = string;
+export type BlockId8 = string;
+export type Start6 = number;
+export type End6 = number;
 export type Trigger = "numeric_discrepancy" | "numeric_statement" | "comparative" | "absolute" | "generic";
 export type Why1 = string;
 /**
@@ -361,9 +382,11 @@ export type Preparation =
   | [string, string, string, string]
   | [string, string, string, string, string]
   | [string, string, string, string, string, string];
-export type BlockId8 = string;
-export type Quote7 = string;
-export type MaterialId9 = string;
+export type BlockId9 = string;
+export type Quote8 = string;
+export type Start7 = number | null;
+export type End7 = number | null;
+export type MaterialId10 = string;
 export type Question1 = string;
 export type UserAnswer = string;
 /**
@@ -389,7 +412,7 @@ export type SourceRefs =
       CoachSourceRef
     ];
 export type ReviewId = string | null;
-export type MaterialId10 = string;
+export type MaterialId11 = string;
 export type Status6 = "coached" | "abstain" | "insufficient_context";
 export type AbstainReason = string | null;
 /**
@@ -465,11 +488,11 @@ export type FollowUpQuestions =
   | [string, string, string, string, string];
 export type SourceIds1 = string[];
 export type SourceId = string;
-export type BlockId9 = string;
-export type LineNumber3 = number;
-export type Quote8 = string;
-export type Start5 = number;
-export type End5 = number;
+export type BlockId10 = string;
+export type LineNumber3 = number | null;
+export type Quote9 = string;
+export type Start8 = number;
+export type End8 = number;
 export type Basis = string;
 export type Sources = CoachSource[];
 export type OverallNote = string;
@@ -477,18 +500,18 @@ export type ChildMaterialId = string;
 export type ParentMaterialId = string;
 export type CreatedAt10 = string;
 export type Text4 = string;
-export type Filename6 = string;
+export type Filename7 = string;
 export type ReviewId1 = string | null;
 export type Label3 = string | null;
-export type MaterialId11 = string;
-export type ParentAvailable = boolean;
 export type MaterialId12 = string;
+export type ParentAvailable = boolean;
+export type MaterialId13 = string;
 export type Available = boolean;
 export type CreatedAt11 = string;
-export type MaterialId13 = string;
-export type Children = RevisionChild[];
 export type MaterialId14 = string;
-export type Format1 = "md";
+export type Children = RevisionChild[];
+export type MaterialId15 = string;
+export type Format4 = "md" | "txt";
 export type Text5 = string;
 export type Normalization = "lf";
 export type Code = string;
@@ -511,8 +534,10 @@ export interface ContractBundle {
   finding_set_diff_response: FindingSetDiffResponse;
   run_request: RunRequest;
   preview: MarkdownPreview;
+  source_preview: SourcePreview;
   saved_material: SavedMaterial;
   material_summary: MaterialSummary;
+  source_ref: SourceRef;
   evidence_annotation: EvidenceAnnotation;
   evidence_annotation_create: EvidenceAnnotationCreate;
   rubric_binding: RubricBinding;
@@ -714,6 +739,9 @@ export interface Locator {
   index: Index;
   end_index?: EndIndex;
   block_index: BlockIndex;
+  row_index?: RowIndex;
+  cell_index?: CellIndex;
+  paragraph_index?: ParagraphIndex;
 }
 export interface Claim {
   id: Id10;
@@ -836,10 +864,13 @@ export interface ConsistencyFinding {
 }
 /**
  * I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。
+ *
+ * line_number 只对行格式是真实行号，其余为 null；非行来源不得展示为行。
  */
 export interface ConsistencyCitation {
   block_id: BlockId1;
-  line_number: LineNumber;
+  line_number?: LineNumber;
+  locator: Locator;
   quote: Quote1;
   start: Start1;
   end: End1;
@@ -860,37 +891,65 @@ export interface MarkdownPreview {
   line_count: LineCount;
   blocks: Blocks1;
 }
-export interface SavedMaterial {
-  id: Id15;
+export interface SourcePreview {
+  document_id: DocumentId2;
   filename: Filename2;
+  format: Format1;
   size_bytes: SizeBytes1;
   sha256: Sha2562;
-  line_count: LineCount1;
-  created_at: CreatedAt2;
+  line_count?: LineCount1;
+  parser_version?: ParserVersion;
   blocks: Blocks2;
+}
+export interface SavedMaterial {
+  id: Id15;
+  filename: Filename3;
+  format: Format2;
+  parser_version?: ParserVersion1;
+  size_bytes: SizeBytes2;
+  sha256: Sha2563;
+  line_count?: LineCount2;
+  created_at: CreatedAt2;
+  blocks: Blocks3;
 }
 export interface MaterialSummary {
   id: Id16;
-  filename: Filename3;
+  filename: Filename4;
+  format: Format3;
   created_at: CreatedAt3;
   block_count: BlockCount;
 }
-export interface EvidenceAnnotation {
-  id: Id17;
+/**
+ * 统一来源引用：material/block 身份 + 半开 code-point span；位置由服务端解析并逐字复验。
+ *
+ * 客户端与模型只能选择 block 与 quote（可选显式 start/end 精确选中某次 occurrence），
+ * 不得把 locator/行号当权威提交。
+ */
+export interface SourceRef {
   material_id: MaterialId2;
   block_id: BlockId2;
+  start: Start2;
+  end: End2;
+  quote: Quote2;
+}
+export interface EvidenceAnnotation {
+  id: Id17;
+  material_id: MaterialId3;
+  block_id: BlockId3;
   source: Span;
   note?: Note1;
   proposed_by?: ProposedBy;
   created_at: CreatedAt4;
 }
 export interface EvidenceAnnotationCreate {
-  block_id: BlockId3;
-  quote: Quote2;
+  block_id: BlockId4;
+  quote: Quote3;
   note?: Note2;
+  start?: Start3;
+  end?: End3;
 }
 export interface RubricBinding {
-  material_id: MaterialId3;
+  material_id: MaterialId4;
   rubric_id: RubricId5;
   rubric_revision: RubricRevision5;
   created_at: CreatedAt5;
@@ -901,7 +960,7 @@ export interface RubricBindingCreate {
 }
 export interface CriterionEvidenceLink {
   id: Id18;
-  material_id: MaterialId4;
+  material_id: MaterialId5;
   annotation_id: AnnotationId;
   rubric_id: RubricId7;
   rubric_revision: RubricRevision7;
@@ -919,8 +978,8 @@ export interface ProposalCandidate {
   id: Id19;
   proposal_id: ProposalId;
   ordinal: Ordinal1;
-  block_id: BlockId4;
-  quote: Quote3;
+  block_id: BlockId5;
+  quote: Quote4;
   rationale: Rationale2;
   risk_note?: RiskNote;
   validation_status: ValidationStatus;
@@ -933,7 +992,7 @@ export interface ProposalCandidate {
 }
 export interface AgentProposal {
   id: Id20;
-  material_id: MaterialId5;
+  material_id: MaterialId6;
   criterion_id: CriterionId5;
   rubric_id: RubricId8;
   rubric_revision: RubricRevision8;
@@ -956,14 +1015,14 @@ export interface ProposalAcceptance {
   link: CriterionEvidenceLink;
 }
 export interface MaterialPreflightReport {
-  material_id: MaterialId6;
-  filename: Filename4;
+  material_id: MaterialId7;
+  filename: Filename5;
   block_count: BlockCount1;
   rubric_id: RubricId9;
   rubric_revision: RubricRevision9;
   rubric_title: RubricTitle;
   criteria: Criteria3;
-  blocks: Blocks3;
+  blocks: Blocks4;
 }
 export interface MaterialPreflightCriterionRow {
   criterion_id: CriterionId7;
@@ -978,13 +1037,14 @@ export interface MaterialPreflightCitation {
   link_id: LinkId;
   annotation_id: AnnotationId2;
   criterion_id: CriterionId8;
-  block_id: BlockId5;
-  line_number: LineNumber1;
-  quote: Quote4;
+  block_id: BlockId6;
+  line_number?: LineNumber1;
+  locator: Locator;
+  quote: Quote5;
   rationale: Rationale3;
   proposed_by: ProposedBy2;
-  start: Start2;
-  end: End2;
+  start: Start4;
+  end: End4;
 }
 export interface MaterialPreflightMissing {
   searched_block_count: SearchedBlockCount1;
@@ -992,8 +1052,8 @@ export interface MaterialPreflightMissing {
   explanation: Explanation2;
 }
 export interface MaterialPreflightSummary {
-  material_id: MaterialId7;
-  filename: Filename5;
+  material_id: MaterialId8;
+  filename: Filename6;
   created_at: CreatedAt9;
   block_count: BlockCount2;
   bound: Bound;
@@ -1005,13 +1065,16 @@ export interface MaterialPreflightSummary {
 }
 /**
  * I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。
+ *
+ * line_number 只对行格式（md/txt）是真实行号，其余为 null；位置一律以 locator 为准。
  */
 export interface DetectedStatement {
-  block_id: BlockId6;
-  line_number: LineNumber2;
-  quote: Quote5;
-  start: Start3;
-  end: End3;
+  block_id: BlockId7;
+  line_number?: LineNumber2;
+  locator: Locator;
+  quote: Quote6;
+  start: Start5;
+  end: End5;
   signal: Signal;
 }
 /**
@@ -1042,7 +1105,7 @@ export interface CrossCompareResponse {
  * 答辩追问请求：只接受用户显式选中的一份材料。
  */
 export interface GrillRequest {
-  material_id: MaterialId8;
+  material_id: MaterialId9;
 }
 /**
  * 答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。
@@ -1052,26 +1115,31 @@ export interface GrillRequest {
  */
 export interface GrillQuestion {
   prompt: Prompt;
-  quote: Quote6;
-  block_id: BlockId7;
-  start: Start4;
-  end: End4;
+  quote: Quote7;
+  block_id: BlockId8;
+  locator: Locator;
+  start: Start6;
+  end: End6;
   trigger: Trigger;
   why: Why1;
   preparation: Preparation;
 }
 /**
  * 用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。
+ *
+ * 可选显式 start/end 用于精确选中重复文本的某次 occurrence；两者必须同时提供。
  */
 export interface CoachSourceRef {
-  block_id: BlockId8;
-  quote: Quote7;
+  block_id: BlockId9;
+  quote: Quote8;
+  start?: Start7;
+  end?: End7;
 }
 /**
  * 答辩教练请求：用户已经写出回答，教练只检查这条回答能否由给定来源支持。
  */
 export interface ResponseCoachRequest {
-  material_id: MaterialId9;
+  material_id: MaterialId10;
   question: Question1;
   user_answer: UserAnswer;
   source_refs?: SourceRefs;
@@ -1081,7 +1149,7 @@ export interface ResponseCoachRequest {
  * 答辩教练输出：只评价用户已写出的回答；不给分、不代写答案、不判定现实真假。
  */
 export interface ResponseCoachResponse {
-  material_id: MaterialId10;
+  material_id: MaterialId11;
   status: Status6;
   abstain_reason: AbstainReason;
   answered_aspects: AnsweredAspects;
@@ -1103,14 +1171,17 @@ export interface CoachClaim {
 }
 /**
  * 程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。
+ *
+ * line_number 只对行格式是真实行号，其余为 null；位置以 locator 为准。
  */
 export interface CoachSource {
   source_id: SourceId;
-  block_id: BlockId9;
-  line_number: LineNumber3;
-  quote: Quote8;
-  start: Start5;
-  end: End5;
+  block_id: BlockId10;
+  line_number?: LineNumber3;
+  locator: Locator;
+  quote: Quote9;
+  start: Start8;
+  end: End8;
   basis: Basis;
 }
 export interface MaterialRevision {
@@ -1120,7 +1191,7 @@ export interface MaterialRevision {
 }
 export interface MaterialRevisionCreate {
   text: Text4;
-  filename: Filename6;
+  filename: Filename7;
   review_id?: ReviewId1;
   label?: Label3;
 }
@@ -1129,22 +1200,22 @@ export interface MaterialRevisionCreated {
   revision: MaterialRevision;
 }
 export interface RevisionParent {
-  material_id: MaterialId11;
+  material_id: MaterialId12;
   parent_available: ParentAvailable;
 }
 export interface RevisionChild {
-  material_id: MaterialId12;
+  material_id: MaterialId13;
   available: Available;
   created_at: CreatedAt11;
 }
 export interface RevisionContext {
-  material_id: MaterialId13;
+  material_id: MaterialId14;
   parent?: RevisionParent | null;
   children: Children;
 }
 export interface EditableSource {
-  material_id: MaterialId14;
-  format: Format1;
+  material_id: MaterialId15;
+  format: Format4;
   text: Text5;
   normalization: Normalization;
 }

@@ -9,7 +9,7 @@
 """
 import re
 
-from .claim_inspector import MAX_STATEMENTS
+from .claim_inspector import MAX_STATEMENTS, line_number_of
 from .contracts import Block, ConsistencyCitation, ConsistencyFinding, DetectedStatement
 from .numeric_value import value_key
 
@@ -130,8 +130,11 @@ def _measurement_for(statement: DetectedStatement, block: Block) -> _Measurement
     return _Measurement(value, unit, measure)
 
 
-def _ordered(entries: list[tuple[DetectedStatement, _Measurement]]) -> list[tuple[DetectedStatement, _Measurement]]:
-    return sorted(entries, key=lambda entry: (entry[0].line_number, entry[0].start))
+def _ordered(
+    entries: list[tuple[DetectedStatement, _Measurement]], block_order: dict[str, int]
+) -> list[tuple[DetectedStatement, _Measurement]]:
+    """按 Block.ordinal（blocks 列表即正文顺序）+ span 排序；不用 line_number 排序。"""
+    return sorted(entries, key=lambda entry: (block_order[entry[0].block_id], entry[0].start))
 
 
 def _canonical_measures(measures: set[str]) -> dict[str, str]:
@@ -152,7 +155,10 @@ def _canonical_measures(measures: set[str]) -> dict[str, str]:
 
 
 def _distinct_values(
-    entries: list[tuple[DetectedStatement, _Measurement]], *, unit_aware: bool = False
+    entries: list[tuple[DetectedStatement, _Measurement]],
+    block_order: dict[str, int],
+    *,
+    unit_aware: bool = False,
 ) -> list[str]:
     """按首次出现顺序列出不同数值（展示形式，带单位）。
 
@@ -161,7 +167,7 @@ def _distinct_values(
     """
     seen_keys: set[object] = set()
     values: list[str] = []
-    for _statement, item in _ordered(entries):
+    for _statement, item in _ordered(entries, block_order):
         key: object = (item.value_key, item.unit) if unit_aware else item.value_key
         if key in seen_keys:
             continue
@@ -178,12 +184,14 @@ def _build_finding(
     block_count: int,
     statement_count: int,
     material_id: str,
+    block_order: dict[str, int],
 ) -> ConsistencyFinding:
-    ordered = _ordered(entries)
+    ordered = _ordered(entries, block_order)
     citations = [
         ConsistencyCitation(
             block_id=statement.block_id,
             line_number=statement.line_number,
+            locator=statement.locator,
             quote=statement.quote,
             start=statement.start,
             end=statement.end,
@@ -235,6 +243,8 @@ def find_numeric_findings(
     候选形成阶段就保留单位 identity（95 ms vs 95 秒 不能被裸数值去重吞掉）。
     """
     blocks_by_id = {block.id: block for block in blocks}
+    # blocks 列表即正文顺序（存储按 ordinal 读出）；排序与展示都以此为准。
+    block_order = {block.id: index for index, block in enumerate(blocks)}
     measured: list[tuple[DetectedStatement, _Measurement]] = []
     for statement in statements:
         block = blocks_by_id.get(statement.block_id)
@@ -255,7 +265,7 @@ def find_numeric_findings(
         if entry[1].measure:
             by_measure.setdefault(canonical[entry[1].measure], []).append(entry)
     for measure, entries in by_measure.items():
-        values = _distinct_values(entries, unit_aware=unit_aware)
+        values = _distinct_values(entries, block_order, unit_aware=unit_aware)
         if len(values) < 2:
             continue
         units = {item.unit for _statement, item in entries}
@@ -269,6 +279,7 @@ def find_numeric_findings(
                 block_count,
                 statement_count,
                 blocks_by_id[entries[0][0].block_id].document_id,
+                block_order,
             )
         )
 
@@ -281,7 +292,7 @@ def find_numeric_findings(
             bucket = "" if unit_aware else entry[1].unit
             by_unit.setdefault(bucket, []).append(entry)
     for _unit, entries in by_unit.items():
-        values = _distinct_values(entries, unit_aware=unit_aware)
+        values = _distinct_values(entries, block_order, unit_aware=unit_aware)
         if len(values) < 2:
             continue
         findings.append(
@@ -293,8 +304,9 @@ def find_numeric_findings(
                 block_count,
                 statement_count,
                 blocks_by_id[entries[0][0].block_id].document_id,
+                block_order,
             )
         )
 
-    findings.sort(key=lambda item: (item.citations[0].line_number, item.citations[0].start))
+    findings.sort(key=lambda item: (block_order[item.citations[0].block_id], item.citations[0].start))
     return findings

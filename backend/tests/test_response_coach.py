@@ -36,6 +36,7 @@ def material_of(text: str, material_id: str = "mat_coach") -> SavedMaterial:
     return SavedMaterial(
         id=material_id,
         filename="coach.md",
+        format="md",
         size_bytes=len(text.encode("utf-8")),
         sha256="a" * 64,
         line_count=preview.line_count,

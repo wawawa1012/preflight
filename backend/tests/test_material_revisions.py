@@ -111,7 +111,7 @@ class RevisionStorageTest(unittest.TestCase):
     def test_invalid_extension_rejected_leaves_no_child(self) -> None:
         before = count_rows(self.db, "materials")
         with self.assertRaises(PreviewRejected):
-            build_preview("draft.txt", TEXT_V2.encode("utf-8"))
+            build_preview("draft.pdf", TEXT_V2.encode("utf-8"))
         self.assertEqual(count_rows(self.db, "materials"), before)
 
     # 12: 事务中途失败必须整体回滚（用 mock 让 membership 写入抛错）
@@ -274,7 +274,7 @@ class RevisionApiTest(unittest.TestCase):
 
     def test_api_invalid_extension_rejected_and_no_child(self) -> None:
         with self.assertRaises(PreviewRejected) as caught:
-            main.create_material_revision(self.parent.id, self._payload(filename="draft.txt"))
+            main.create_material_revision(self.parent.id, self._payload(filename="draft.pdf"))
         self.assertEqual(caught.exception.code, "invalid_extension")
         self.assertEqual(len(storage.list_materials()), 1)
 

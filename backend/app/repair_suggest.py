@@ -10,7 +10,7 @@ import re
 
 from . import llm
 from .contracts import Block, ConsistencyCitation, ConsistencyFinding, RepairSuggestion
-from .claim_inspector import inspect_statements
+from .claim_inspector import inspect_statements, locator_label
 from .consistency import find_numeric_findings
 
 SUGGESTION_MAX_CHARS = 200
@@ -71,7 +71,7 @@ def canonical_finding(finding: ConsistencyFinding, blocks: list[Block]) -> Consi
     def signature(item: ConsistencyFinding) -> tuple:
         return (
             item.material_id, item.kind, item.measure, tuple(item.values),
-            tuple((c.block_id, c.line_number, c.quote, c.start, c.end, c.value, c.unit)
+            tuple((c.block_id, c.locator, c.quote, c.start, c.end, c.value, c.unit)
                   for c in item.citations),
         )
 
@@ -95,7 +95,8 @@ def build_messages(
     ]
     for index, (citation, _block) in enumerate(verified, start=1):
         lines.append(
-            f"[{index}] 「{citation.quote}」（block_id={citation.block_id}，start={citation.start}，end={citation.end}）"
+            f"[{index}] 「{citation.quote}」（block_id={citation.block_id}，"
+            f"{locator_label(citation.locator)}，start={citation.start}，end={citation.end}）"
         )
     data = llm.untrusted_data("\n".join(lines))
     lines = []

@@ -55,7 +55,7 @@
 新列：
 
 - `materials`：`format TEXT NOT NULL DEFAULT 'md'`、`parser_version TEXT NULL`、`source_bytes BLOB NULL`；`line_count` 允许 NULL（DOCX）。
-- `blocks`：`kind TEXT NOT NULL`、`index INTEGER NOT NULL`（原 `line_number` 改名）、`end_index INTEGER NULL`、`row_index/cell_index/paragraph_index INTEGER NULL`、`block_index INTEGER NOT NULL`（保留）。
+- `blocks`：`kind TEXT NOT NULL`、`locator_index INTEGER NOT NULL`（原 `line_number` 改名；`index` 是 SQLite 保留字，列名用 `locator_index`，契约字段仍是 `index`）、`end_index INTEGER NULL`、`row_index/cell_index/paragraph_index INTEGER NULL`、`block_index INTEGER NOT NULL`（保留）。
 - `source_bytes`：新上传原文件字节与 material/blocks 同一事务写入；历史 Markdown 缺失原始字节保持 NULL（不伪造）；旧 editable-source 继续按已承诺的 LF/空行规则从 blocks 重建。
 
 迁移：
@@ -69,7 +69,8 @@
 ## 5. 解析接入边界（B2 接口）
 
 - B2 交付纯 `SourceNode`（不依赖公共 contracts）：`text`、`body_ordinal`，位置三选一：`line`；`paragraph`；`table/row/cell/cell_paragraph`。
-- 由本 Pod 转换为公共 `Block` / `Locator` 并分配身份：`ordinal = body_ordinal`（必须 0 起连续，否则拒绝 parse）；line→`line`，paragraph→`paragraph`，table→`table_cell`。
+- 本 Pod 约定的消费接口（待 B2 落地对齐）：`app.source_adapters.read_source_nodes(filename: str, data: bytes) -> list[SourceNode]`，可选模块属性 `PARSER_VERSION: str`。接口缺失时 `parser_unavailable`，不猜 provider 内部函数名、不改 B2 文件。
+- 由本 Pod 转换为公共 `Block` / `Locator` 并分配身份：节点按 `body_ordinal` 排序，`Block.ordinal` 重新分配为 0 起连续；`body_ordinal` 必须唯一，空文本节点按空行规则跳过；line→`line`，paragraph→`paragraph`，table→`table_cell`。转换已用注入的 mock adapter 做确定性测试；DOCX 真实全链等 B2 adapter 落地。
 - 旧 `POST /api/v1/preview/markdown` 入口保留；`POST /api/v1/preview` 按扩展名通用预览；`POST /api/v1/materials` 按格式解析后原子保存。
 - TXT：真实逐行定位、完整 revision loop（LF 归一化 + 空行回填，格式保持 `txt`）。
 - DOCX：首版上传 → 保存 → Evidence → Reader；`editable-source` 与 revision 明确 400 `format_not_editable`（不承诺原格式编辑）。

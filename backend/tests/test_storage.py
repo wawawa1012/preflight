@@ -80,9 +80,10 @@ class StorageTest(unittest.TestCase):
         with closing(storage.connect(self.db)) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
-                    "INSERT INTO blocks (id, material_id, ordinal, line_number, text, block_index)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
-                    ("blk_orphan", "mat_missing", 0, 1, "x", 1),
+                    "INSERT INTO blocks"
+                    " (id, material_id, ordinal, kind, locator_index, end_index, row_index, cell_index, paragraph_index, text, block_index)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ("blk_orphan", "mat_missing", 0, "line", 1, None, None, None, None, "x", 1),
                 )
 
     def test_same_input_saved_twice_gets_distinct_identities(self) -> None:

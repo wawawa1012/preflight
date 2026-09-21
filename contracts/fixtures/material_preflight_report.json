@@ -22,6 +22,7 @@
             "criterion_id": "c_syn_1",
             "block_id": "block_syn_1",
             "line_number": 1,
+            "locator": { "kind": "line", "index": 1, "end_index": null, "block_index": 1 },
             "quote": "准确率达到 95%",
             "rationale": "synthetic：人工判断相关",
             "proposed_by": "human",

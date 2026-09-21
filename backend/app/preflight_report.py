@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from . import rubric_store, storage
+from .claim_inspector import line_number_of
 from .contracts import (
     MaterialPreflightCitation,
     MaterialPreflightCriterionRow,
@@ -9,6 +10,7 @@ from .contracts import (
     MaterialPreflightReport,
     MaterialPreflightSummary,
 )
+from .evidence import span_matches
 from .storage import RubricNotBound
 
 SCOPE_TMPL = (
@@ -40,14 +42,20 @@ def _assemble_criteria(material, rubric, links, annotations, blocks_by_id) -> li
             if annotation is None:
                 continue  # 关联残留不该发生（FK CASCADE）；跳过，不要崩
             block = blocks_by_id.get(annotation.block_id)
-            line = block.locator.index if block else 1
+            if block is None:
+                continue  # Block 不存在时不能伪造 locator
+            if not span_matches(
+                block.text, annotation.source.start, annotation.source.end, annotation.source.quote
+            ):
+                continue  # 原文是事实源：存储的 span 与不可变 Block 不一致时不展示为已验证引用
             citations.append(
                 MaterialPreflightCitation(
                     link_id=link.id,
                     annotation_id=annotation.id,
                     criterion_id=criterion.id,
                     block_id=annotation.block_id,
-                    line_number=line,
+                    line_number=line_number_of(block),
+                    locator=block.locator,
                     quote=annotation.source.quote,
                     rationale=link.rationale,
                     proposed_by=link.proposed_by,

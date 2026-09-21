@@ -1,14 +1,18 @@
-"""SQLite 持久化：Material 1 → N Blocks，原子保存；不用 ORM、不做迁移、不写业务外键以外的表。
+"""SQLite 持久化：Material 1 → N Blocks，原子保存；不用 ORM、只做版本化迁移。
 
 表结构只服务当前 iteration：
-- materials：材料身份与文件元信息，主键持久稳定。
-- blocks：Block 文本与 line locator；material_id 外键指向 materials。
+- materials：材料身份、format/parser_version、原文件字节（source_bytes）与文件元信息，主键持久稳定。
+- blocks：Block 文本与完整 Locator（kind/index/end_index/row/cell/paragraph + block_index）。
 - recent_material：单行指针，指向最后一次成功保存的材料。
 - evidence_annotations：引用真实 Block 的一段原文；material_id/block_id 双外键（CASCADE）。
 - material_rubric_bindings：材料 ↔ 只读评分标准绑定，每份材料最多一条。
 - criterion_evidence_links：人工判断“引用与某项评分要求相关”（adjudication 层）；双外键 CASCADE。
 - agent_proposals / proposal_candidates：单 criterion AI 预检及其候选；候选须过验证门，accept 原子物化。
 - reviews / review_materials：一次评审绑定一个评分标准版本，成员引用已保存材料（不复制内容）。
+
+迁移：`PRAGMA user_version` 单调递增；v1 把 legacy line_number 重建为 Locator 列并给 materials
+补 format/parser_version/source_bytes。重建在单事务内完成（FK 暂关、提交前 foreign_key_check），
+失败整体回滚，不留下半迁移；重复执行是 no-op。
 """
 import sqlite3
 import uuid
@@ -24,7 +28,6 @@ from .contracts import (
     EditableSource,
     EvidenceAnnotation,
     Locator,
-    MarkdownPreview,
     MaterialRevision,
     MaterialSummary,
     ProposalAcceptance,
@@ -39,9 +42,11 @@ from .contracts import (
     SavedMaterial,
     Span,
 )
-from .evidence import QuoteNotFound, resolve_span
+from .evidence import QuoteNotFound, SpanMismatch, resolve_source_ref, span_matches
+from .source_ingest import PARSER_VERSION_LINE
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "preflight.db"
+SCHEMA_VERSION = 1
 
 
 class StorageConflict(Exception):
@@ -67,11 +72,14 @@ class DuplicateLink(StorageConflict):
     code = "duplicate_link"
 
 
-class SpanMismatch(Exception):
-    """annotation 存下的 span 与 Block 原文不再一致（防篡改/失效）。"""
+class FormatNotEditable(Exception):
+    """DOCX 等非行格式不承诺原格式编辑；由 API 层转 400 format_not_editable。"""
 
-    def __init__(self, message: str = "annotation span 与原文不一致") -> None:
+    code = "format_not_editable"
+
+    def __init__(self, message: str = "该格式不支持原格式编辑", details: list[str] | None = None) -> None:
         self.message = message
+        self.details = details or []
         super().__init__(message)
 
 
@@ -118,16 +126,24 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS materials (
     id TEXT PRIMARY KEY,
     filename TEXT NOT NULL,
+    format TEXT NOT NULL DEFAULT 'md',
+    parser_version TEXT,
     size_bytes INTEGER NOT NULL,
     sha256 TEXT NOT NULL,
-    line_count INTEGER NOT NULL,
+    line_count INTEGER,
+    source_bytes BLOB,
     created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS blocks (
     id TEXT PRIMARY KEY,
     material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
     ordinal INTEGER NOT NULL,
-    line_number INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    locator_index INTEGER NOT NULL,
+    end_index INTEGER,
+    row_index INTEGER,
+    cell_index INTEGER,
+    paragraph_index INTEGER,
     text TEXT NOT NULL,
     block_index INTEGER NOT NULL,
     UNIQUE (material_id, ordinal)
@@ -232,15 +248,126 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     return connection
 
 
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone()
+    return row is not None
+
+
+def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
+def _rebuild_materials_legacy(connection: sqlite3.Connection) -> None:
+    """legacy materials → 新列（format='md'，parser_version/source_bytes=NULL，line_count 保留）。"""
+    connection.execute(
+        """
+        CREATE TABLE materials_locator_v1 (
+            id TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            format TEXT NOT NULL DEFAULT 'md',
+            parser_version TEXT,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            line_count INTEGER,
+            source_bytes BLOB,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO materials_locator_v1"
+        " (id, filename, format, parser_version, size_bytes, sha256, line_count, source_bytes, created_at)"
+        " SELECT id, filename, 'md', NULL, size_bytes, sha256, line_count, NULL, created_at FROM materials"
+    )
+    connection.execute("DROP TABLE materials")
+    connection.execute("ALTER TABLE materials_locator_v1 RENAME TO materials")
+
+
+def _rebuild_blocks_legacy(connection: sqlite3.Connection) -> None:
+    """legacy blocks.line_number → kind='line' + locator_index；Block ID 原样保留。"""
+    connection.execute(
+        """
+        CREATE TABLE blocks_locator_v1 (
+            id TEXT PRIMARY KEY,
+            material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+            ordinal INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            locator_index INTEGER NOT NULL,
+            end_index INTEGER,
+            row_index INTEGER,
+            cell_index INTEGER,
+            paragraph_index INTEGER,
+            text TEXT NOT NULL,
+            block_index INTEGER NOT NULL,
+            UNIQUE (material_id, ordinal)
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO blocks_locator_v1"
+        " (id, material_id, ordinal, kind, locator_index, end_index, row_index, cell_index, paragraph_index, text, block_index)"
+        " SELECT id, material_id, ordinal, 'line', line_number, NULL, NULL, NULL, NULL, text, block_index FROM blocks"
+    )
+    connection.execute("DROP TABLE blocks")
+    connection.execute("ALTER TABLE blocks_locator_v1 RENAME TO blocks")
+
+
+def _migrate_to_v1(connection: sqlite3.Connection) -> None:
+    if _table_exists(connection, "materials") and "format" not in _table_columns(connection, "materials"):
+        _rebuild_materials_legacy(connection)
+    if _table_exists(connection, "blocks") and "kind" not in _table_columns(connection, "blocks"):
+        _rebuild_blocks_legacy(connection)
+
+
+def migrate(connection: sqlite3.Connection) -> None:
+    """版本化迁移：已到版本即 no-op；重建 + 版本号在同一事务，失败整体回滚。"""
+    version = connection.execute("PRAGMA user_version").fetchone()[0]
+    if version >= SCHEMA_VERSION:
+        return
+    # foreign_keys 不能在事务内切换；打开的事务里该 pragma 会被静默忽略，
+    # 若此时 DROP TABLE 会按 CASCADE 清空子表 —— 必须显式确认已关闭，否则拒绝迁移。
+    connection.execute("PRAGMA foreign_keys = OFF")
+    if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 0:
+        raise RuntimeError("迁移需要关闭外键，但当前连接有未提交事务；已拒绝执行以避免级联删除")
+    try:
+        with connection:
+            if version < 1:
+                _migrate_to_v1(connection)
+            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                raise RuntimeError(f"迁移后外键完整性检查失败：{len(violations)} 处")
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    finally:
+        connection.execute("PRAGMA foreign_keys = ON")
+
+
 def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
-    with closing(connect(db_path)) as connection, connection:
-        connection.executescript(_SCHEMA)
+    with closing(connect(db_path)) as connection:
+        migrate(connection)
+        with connection:
+            connection.executescript(_SCHEMA)
+
+
+def _locator_from_row(row: sqlite3.Row) -> Locator:
+    return Locator(
+        kind=row["kind"],
+        index=row["locator_index"],
+        end_index=row["end_index"],
+        block_index=row["block_index"],
+        row_index=row["row_index"],
+        cell_index=row["cell_index"],
+        paragraph_index=row["paragraph_index"],
+    )
 
 
 def _material_from_rows(material: sqlite3.Row, blocks: list[sqlite3.Row]) -> SavedMaterial:
     return SavedMaterial(
         id=material["id"],
         filename=material["filename"],
+        format=material["format"],
+        parser_version=material["parser_version"],
         size_bytes=material["size_bytes"],
         sha256=material["sha256"],
         line_count=material["line_count"],
@@ -251,15 +378,28 @@ def _material_from_rows(material: sqlite3.Row, blocks: list[sqlite3.Row]) -> Sav
                 document_id=material["id"],
                 ordinal=row["ordinal"],
                 text=row["text"],
-                locator=Locator(kind="line", index=row["line_number"], end_index=None, block_index=row["block_index"]),
+                locator=_locator_from_row(row),
             )
             for row in blocks
         ],
     )
 
 
+def _preview_metadata(preview) -> tuple[str, str | None, int | None]:
+    """兼容旧 MarkdownPreview（md/line-v1）与 SourcePreview；不伪造 docx 行数。"""
+    fmt = getattr(preview, "format", "md")
+    parser_version = getattr(preview, "parser_version", None)
+    if parser_version is None and fmt in ("md", "txt"):
+        parser_version = PARSER_VERSION_LINE
+    return fmt, parser_version, preview.line_count
+
+
 def _insert_material_with_blocks(
-    connection: sqlite3.Connection, preview: MarkdownPreview, material_id: str, created_at: str
+    connection: sqlite3.Connection,
+    preview,
+    material_id: str,
+    created_at: str,
+    source_bytes: bytes | None = None,
 ) -> list[Block]:
     """connection-aware：material + blocks + recent 指针；调用方负责事务与提交。"""
     block_ids = [f"{material_id}-blk-{block.ordinal}" for block in preview.blocks]
@@ -267,16 +407,41 @@ def _insert_material_with_blocks(
         Block(id=block_id, document_id=material_id, ordinal=block.ordinal, text=block.text, locator=block.locator)
         for block, block_id in zip(preview.blocks, block_ids)
     ]
+    fmt, parser_version, line_count = _preview_metadata(preview)
     connection.execute(
-        "INSERT INTO materials (id, filename, size_bytes, sha256, line_count, created_at)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (material_id, preview.filename, preview.size_bytes, preview.sha256, preview.line_count, created_at),
+        "INSERT INTO materials (id, filename, format, parser_version, size_bytes, sha256, line_count, source_bytes, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            material_id,
+            preview.filename,
+            fmt,
+            parser_version,
+            preview.size_bytes,
+            preview.sha256,
+            line_count,
+            source_bytes,
+            created_at,
+        ),
     )
     for block, block_id in zip(preview.blocks, block_ids):
+        locator = block.locator
         connection.execute(
-            "INSERT INTO blocks (id, material_id, ordinal, line_number, text, block_index)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (block_id, material_id, block.ordinal, block.locator.index, block.text, block.locator.block_index),
+            "INSERT INTO blocks"
+            " (id, material_id, ordinal, kind, locator_index, end_index, row_index, cell_index, paragraph_index, text, block_index)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                block_id,
+                material_id,
+                block.ordinal,
+                locator.kind,
+                locator.index,
+                locator.end_index,
+                locator.row_index,
+                locator.cell_index,
+                locator.paragraph_index,
+                block.text,
+                locator.block_index,
+            ),
         )
     updated = connection.execute(
         "UPDATE recent_material SET material_id = ? WHERE singleton = 1", (material_id,)
@@ -333,20 +498,31 @@ def _insert_revision_relation(
     )
 
 
-def save_material(preview: MarkdownPreview, db_path: Path = DEFAULT_DB_PATH) -> SavedMaterial:
-    """把一次重新解析过的预览原子保存为新材料；失败不留下任何行。"""
+def save_material(
+    preview, db_path: Path = DEFAULT_DB_PATH, source_bytes: bytes | None = None
+) -> SavedMaterial:
+    """把一次重新解析过的预览原子保存为新材料；失败不留下任何行。
+
+    source_bytes 是新上传原文件字节（或 revision 的规范化文本 bytes），与 material/blocks
+    同一事务写入；legacy 材料缺失原始字节时保持 NULL，不伪造。
+    """
     material_id = f"mat_{uuid.uuid4().hex}"
     created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    fmt, parser_version, line_count = _preview_metadata(preview)
 
     with closing(connect(db_path)) as connection, connection:
-        saved_blocks = _insert_material_with_blocks(connection, preview, material_id, created_at)
+        saved_blocks = _insert_material_with_blocks(
+            connection, preview, material_id, created_at, source_bytes
+        )
 
     return SavedMaterial(
         id=material_id,
         filename=preview.filename,
+        format=fmt,
+        parser_version=parser_version,
         size_bytes=preview.size_bytes,
         sha256=preview.sha256,
-        line_count=preview.line_count,
+        line_count=line_count,
         created_at=created_at,
         blocks=saved_blocks,
     )
@@ -354,11 +530,12 @@ def save_material(preview: MarkdownPreview, db_path: Path = DEFAULT_DB_PATH) -> 
 
 def create_material_revision(
     parent_material_id: str,
-    preview: MarkdownPreview,
+    preview,
     review_id: str | None = None,
     label: str | None = None,
     inherit_binding: tuple[str, int] | None = None,
     db_path: Path = DEFAULT_DB_PATH,
+    source_bytes: bytes | None = None,
 ) -> tuple[SavedMaterial, MaterialRevision] | None:
     """从已保存父材料派生一份全新 Material（旧材料不可变，不复制/重定向旧引用）。
 
@@ -391,20 +568,25 @@ def create_material_revision(
                 )
             binding = (review["rubric_id"], review["rubric_revision"])
             member_label = label if label is not None else preview.filename
-        saved_blocks = _insert_material_with_blocks(connection, preview, material_id, created_at)
+        saved_blocks = _insert_material_with_blocks(
+            connection, preview, material_id, created_at, source_bytes
+        )
         revision = _insert_revision_relation(connection, material_id, parent_material_id, created_at)
         if binding is not None:
             _set_binding(connection, material_id, binding[0], binding[1], created_at)
         if review_id is not None and member_label is not None:
             _add_review_member(connection, review_id, material_id, member_label)
 
+    fmt, parser_version, line_count = _preview_metadata(preview)
     return (
         SavedMaterial(
             id=material_id,
             filename=preview.filename,
+            format=fmt,
+            parser_version=parser_version,
             size_bytes=preview.size_bytes,
             sha256=preview.sha256,
-            line_count=preview.line_count,
+            line_count=line_count,
             created_at=created_at,
             blocks=saved_blocks,
         ),
@@ -435,14 +617,18 @@ def list_materials(db_path: Path = DEFAULT_DB_PATH) -> list[MaterialSummary]:
     """列表摘要：不返回 blocks；按保存时间倒序（同秒用 rowid 兜底）。"""
     with closing(connect(db_path)) as connection:
         rows = connection.execute(
-            "SELECT m.id, m.filename, m.created_at, COUNT(b.id) AS block_count"
+            "SELECT m.id, m.filename, m.format, m.created_at, COUNT(b.id) AS block_count"
             " FROM materials m LEFT JOIN blocks b ON b.material_id = m.id"
             " GROUP BY m.id"
             " ORDER BY m.created_at DESC, m.rowid DESC"
         ).fetchall()
     return [
         MaterialSummary(
-            id=row["id"], filename=row["filename"], created_at=row["created_at"], block_count=row["block_count"]
+            id=row["id"],
+            filename=row["filename"],
+            format=row["format"],
+            created_at=row["created_at"],
+            block_count=row["block_count"],
         )
         for row in rows
     ]
@@ -533,18 +719,37 @@ def get_revision_context(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> R
     )
 
 
+def get_source_bytes(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bytes | None:
+    """新上传原文件字节（legacy 材料为 NULL）；用于审计与测试，不进入公开契约。"""
+    with closing(connect(db_path)) as connection:
+        row = connection.execute(
+            "SELECT source_bytes FROM materials WHERE id = ?", (material_id,)
+        ).fetchone()
+    if row is None or row["source_bytes"] is None:
+        return None
+    return bytes(row["source_bytes"])
+
+
 def get_editable_source(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> EditableSource | None:
-    """按真实 line_number/line_count 重建 Markdown（LF、补空行）；不承诺 BOM/CRLF/末尾换行。"""
+    """按真实 line locator 重建可编辑文本（LF、补空行）；不承诺 BOM/CRLF/末尾换行。
+
+    仅行格式（md/txt）可编辑；DOCX 原格式编辑明确拒绝（FormatNotEditable）。
+    """
     material = get_material(material_id, db_path=db_path)
     if material is None:
         return None
-    size = max([material.line_count] + [block.locator.index for block in material.blocks])
+    if material.format not in ("md", "txt"):
+        raise FormatNotEditable(
+            "该材料不是行格式，不支持原格式编辑", [f"material_id={material_id}", f"format={material.format}"]
+        )
+    line_blocks = [block for block in material.blocks if block.locator.kind == "line"]
+    size = max([material.line_count or 0] + [block.locator.index for block in line_blocks])
     lines = [""] * size
-    for block in material.blocks:
+    for block in line_blocks:
         lines[block.locator.index - 1] = block.text
     return EditableSource(
         material_id=material.id,
-        format="md",
+        format=material.format,
         text="\n".join(lines),
         normalization="lf",
     )
@@ -568,16 +773,19 @@ def save_evidence_annotation(
     note: str | None = None,
     proposed_by: str = "human",
     db_path: Path = DEFAULT_DB_PATH,
+    start: int | None = None,
+    end: int | None = None,
 ) -> EvidenceAnnotation | None:
-    """服务端解析 quote 并派生 material_id；Block 不存在返回 None，quote 未命中抛 QuoteNotFound。
+    """服务端解析 quote 并派生 material_id；Block 不存在返回 None。
 
-    quote 校验与写入在同一连接内完成：未命中时异常回滚，库中不会留下无效引用。
+    quote-only 走第一次 occurrence（兼容）；显式 start/end 逐字复验、失败抛 SpanMismatch，
+    绝不静默退回第一次匹配。校验与写入在同一连接内完成，失败时库中不留无效引用。
     """
     with closing(connect(db_path)) as connection, connection:
         block = connection.execute("SELECT id, material_id, text FROM blocks WHERE id = ?", (block_id,)).fetchone()
         if block is None:
             return None
-        start, end = resolve_span(block["text"], quote)
+        start, end = resolve_source_ref(block["text"], quote, start, end)
         annotation_id = f"ev_{uuid.uuid4().hex}"
         created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         connection.execute(
@@ -735,7 +943,7 @@ def create_link(
             raise RubricNotBound("该材料尚未绑定评分标准")
         start, end, quote = annotation["start"], annotation["end"], annotation["quote"]
         block_text = annotation["block_text"]
-        if not (0 <= start < end <= len(block_text)) or block_text[start:end] != quote:
+        if not span_matches(block_text, start, end, quote):
             raise SpanMismatch()
         duplicate = connection.execute(
             "SELECT 1 FROM criterion_evidence_links WHERE annotation_id = ? AND criterion_id = ? AND rubric_revision = ?",
@@ -840,7 +1048,7 @@ def save_agent_proposal(
     candidates: list[CandidateInput],
     db_path: Path = DEFAULT_DB_PATH,
 ) -> AgentProposal:
-    """验证每个候选（block 属于材料 + quote 经 resolve_span）后，单事务写入两张表。"""
+    """验证每个候选（block 属于材料 + quote 经统一来源复验）后，单事务写入两张表。"""
     blocks = {block.id: block for block in material.blocks}
     proposal_id = f"ap_{uuid.uuid4().hex}"
     created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -851,7 +1059,7 @@ def save_agent_proposal(
             validation_status, validation_code = "invalid", "block_not_found"
         else:
             try:
-                resolve_span(block.text, candidate.quote)
+                resolve_source_ref(block.text, candidate.quote)
             except QuoteNotFound:
                 validation_status, validation_code = "invalid", "quote_not_found"
             else:
@@ -942,7 +1150,7 @@ def accept_candidate(
         if block_text is None:
             raise SpanMismatch("候选引用的 Block 已不存在")
         try:
-            start, end = resolve_span(block_text, row["quote"])
+            start, end = resolve_source_ref(block_text, row["quote"])
         except QuoteNotFound as exc:
             raise SpanMismatch(str(exc)) from exc
         duplicate = connection.execute(

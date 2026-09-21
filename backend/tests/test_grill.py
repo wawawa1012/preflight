@@ -11,7 +11,7 @@ from dataclasses import replace
 from app import grill, llm
 from app.claim_inspector import inspect_statements
 from app.consistency import find_numeric_findings
-from app.contracts import DetectedStatement, SavedMaterial
+from app.contracts import DetectedStatement, Locator, SavedMaterial
 from app.markdown_preview import build_preview
 
 TEXT = "本文系统准确率达到 95%。\n\n复现实验的准确率达到 90%。\n"
@@ -24,6 +24,7 @@ def material_of(text: str, material_id: str = "mat_grill") -> SavedMaterial:
     return SavedMaterial(
         id=material_id,
         filename="ev.md",
+        format="md",
         size_bytes=len(text.encode("utf-8")),
         sha256="a" * 64,
         line_count=preview.line_count,
@@ -180,12 +181,15 @@ class GrillPureTest(unittest.TestCase):
                     grill.generate_grill(material)
 
     def test_oversized_prompt_is_rejected_without_calling_llm(self) -> None:
+        big_locator = Locator(kind="line", index=1, end_index=None, block_index=1)
         statements = [
             DetectedStatement(
-                block_id="blk_big", line_number=1, quote="甲" * 13000, start=0, end=13000, signal="numeric"
+                block_id="blk_big", line_number=1, locator=big_locator,
+                quote="甲" * 13000, start=0, end=13000, signal="numeric"
             ),
             DetectedStatement(
-                block_id="blk_big", line_number=1, quote="乙" * 13000, start=13000, end=26000, signal="numeric"
+                block_id="blk_big", line_number=1, locator=big_locator,
+                quote="乙" * 13000, start=13000, end=26000, signal="numeric"
             ),
         ]
 

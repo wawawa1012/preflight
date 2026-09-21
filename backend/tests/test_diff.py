@@ -26,6 +26,7 @@ def material_of(material_id: str, filename: str, texts: list[str]) -> SavedMater
     return SavedMaterial(
         id=material_id,
         filename=filename,
+        format="md",
         size_bytes=sum(len(text.encode("utf-8")) for text in texts),
         sha256="a" * 64,
         line_count=len(texts),

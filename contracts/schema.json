@@ -243,7 +243,7 @@
     },
     "CoachSource": {
       "additionalProperties": false,
-      "description": "程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。",
+      "description": "程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。\n\nline_number 只对行格式是真实行号，其余为 null；位置以 locator 为准。",
       "properties": {
         "source_id": {
           "minLength": 1,
@@ -256,9 +256,20 @@
           "type": "string"
         },
         "line_number": {
-          "minimum": 1,
-          "title": "Line Number",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Number"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
         },
         "quote": {
           "minLength": 1,
@@ -284,7 +295,7 @@
       "required": [
         "source_id",
         "block_id",
-        "line_number",
+        "locator",
         "quote",
         "start",
         "end",
@@ -295,7 +306,7 @@
     },
     "CoachSourceRef": {
       "additionalProperties": false,
-      "description": "用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。",
+      "description": "用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。\n\n可选显式 start/end 用于精确选中重复文本的某次 occurrence；两者必须同时提供。",
       "properties": {
         "block_id": {
           "minLength": 1,
@@ -306,6 +317,32 @@
           "minLength": 1,
           "title": "Quote",
           "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
         }
       },
       "required": [
@@ -317,16 +354,27 @@
     },
     "ConsistencyCitation": {
       "additionalProperties": false,
-      "description": "I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。",
+      "description": "I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。\n\nline_number 只对行格式是真实行号，其余为 null；非行来源不得展示为行。",
       "properties": {
         "block_id": {
           "title": "Block Id",
           "type": "string"
         },
         "line_number": {
-          "minimum": 1,
-          "title": "Line Number",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Number"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
         },
         "quote": {
           "minLength": 1,
@@ -355,7 +403,7 @@
       },
       "required": [
         "block_id",
-        "line_number",
+        "locator",
         "quote",
         "start",
         "end",
@@ -837,16 +885,27 @@
     },
     "DetectedStatement": {
       "additionalProperties": false,
-      "description": "I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。",
+      "description": "I7 关键陈述信号：quote == text[start:end]（code point 索引），不判真假。\n\nline_number 只对行格式（md/txt）是真实行号，其余为 null；位置一律以 locator 为准。",
       "properties": {
         "block_id": {
           "title": "Block Id",
           "type": "string"
         },
         "line_number": {
-          "minimum": 1,
-          "title": "Line Number",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Number"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
         },
         "quote": {
           "minLength": 1,
@@ -876,7 +935,7 @@
       },
       "required": [
         "block_id",
-        "line_number",
+        "locator",
         "quote",
         "start",
         "end",
@@ -957,7 +1016,8 @@
             "pdf",
             "pptx",
             "docx",
-            "md"
+            "md",
+            "txt"
           ],
           "title": "Format",
           "type": "string"
@@ -998,7 +1058,10 @@
           "type": "string"
         },
         "format": {
-          "const": "md",
+          "enum": [
+            "md",
+            "txt"
+          ],
           "title": "Format",
           "type": "string"
         },
@@ -1160,6 +1223,32 @@
           ],
           "default": null,
           "title": "Note"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End"
         }
       },
       "required": [
@@ -1353,6 +1442,9 @@
           "title": "Block Id",
           "type": "string"
         },
+        "locator": {
+          "$ref": "#/$defs/Locator"
+        },
         "start": {
           "minimum": 0,
           "title": "Start",
@@ -1393,6 +1485,7 @@
         "prompt",
         "quote",
         "block_id",
+        "locator",
         "start",
         "end",
         "trigger",
@@ -1426,7 +1519,8 @@
             "page",
             "slide",
             "paragraph",
-            "line"
+            "line",
+            "table_cell"
           ],
           "title": "Kind",
           "type": "string"
@@ -1453,6 +1547,45 @@
           "minimum": 1,
           "title": "Block Index",
           "type": "integer"
+        },
+        "row_index": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Index"
+        },
+        "cell_index": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cell Index"
+        },
+        "paragraph_index": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paragraph Index"
         }
       },
       "required": [
@@ -1529,9 +1662,20 @@
           "type": "string"
         },
         "line_number": {
-          "minimum": 1,
-          "title": "Line Number",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Number"
+        },
+        "locator": {
+          "$ref": "#/$defs/Locator"
         },
         "quote": {
           "minLength": 1,
@@ -1567,7 +1711,7 @@
         "annotation_id",
         "criterion_id",
         "block_id",
-        "line_number",
+        "locator",
         "quote",
         "rationale",
         "proposed_by",
@@ -1906,6 +2050,15 @@
           "title": "Filename",
           "type": "string"
         },
+        "format": {
+          "enum": [
+            "md",
+            "txt",
+            "docx"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
         "created_at": {
           "title": "Created At",
           "type": "string"
@@ -1919,6 +2072,7 @@
       "required": [
         "id",
         "filename",
+        "format",
         "created_at",
         "block_count"
       ],
@@ -3365,6 +3519,27 @@
           "title": "Filename",
           "type": "string"
         },
+        "format": {
+          "enum": [
+            "md",
+            "txt",
+            "docx"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "parser_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parser Version"
+        },
         "size_bytes": {
           "minimum": 0,
           "title": "Size Bytes",
@@ -3376,9 +3551,17 @@
           "type": "string"
         },
         "line_count": {
-          "minimum": 0,
-          "title": "Line Count",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Count"
         },
         "created_at": {
           "title": "Created At",
@@ -3395,13 +3578,126 @@
       "required": [
         "id",
         "filename",
+        "format",
         "size_bytes",
         "sha256",
-        "line_count",
         "created_at",
         "blocks"
       ],
       "title": "SavedMaterial",
+      "type": "object"
+    },
+    "SourcePreview": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "title": "Document Id",
+          "type": "string"
+        },
+        "filename": {
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "md",
+            "txt",
+            "docx"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "line_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line Count"
+        },
+        "parser_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parser Version"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "title": "Blocks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "document_id",
+        "filename",
+        "format",
+        "size_bytes",
+        "sha256",
+        "blocks"
+      ],
+      "title": "SourcePreview",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "description": "统一来源引用：material/block 身份 + 半开 code-point span；位置由服务端解析并逐字复验。\n\n客户端与模型只能选择 block 与 quote（可选显式 start/end 精确选中某次 occurrence），\n不得把 locator/行号当权威提交。",
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "block_id": {
+          "title": "Block Id",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id",
+        "block_id",
+        "start",
+        "end",
+        "quote"
+      ],
+      "title": "SourceRef",
       "type": "object"
     },
     "Span": {
@@ -3529,11 +3825,17 @@
     "preview": {
       "$ref": "#/$defs/MarkdownPreview"
     },
+    "source_preview": {
+      "$ref": "#/$defs/SourcePreview"
+    },
     "saved_material": {
       "$ref": "#/$defs/SavedMaterial"
     },
     "material_summary": {
       "$ref": "#/$defs/MaterialSummary"
+    },
+    "source_ref": {
+      "$ref": "#/$defs/SourceRef"
     },
     "evidence_annotation": {
       "$ref": "#/$defs/EvidenceAnnotation"
@@ -3663,8 +3965,10 @@
     "finding_set_diff_response",
     "run_request",
     "preview",
+    "source_preview",
     "saved_material",
     "material_summary",
+    "source_ref",
     "evidence_annotation",
     "evidence_annotation_create",
     "rubric_binding",

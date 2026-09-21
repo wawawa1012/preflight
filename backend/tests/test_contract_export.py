@@ -75,6 +75,13 @@ class ContractExportTest(unittest.TestCase):
             "ResponseCoachRequest",
             "ResponseCoachResponse",
             "CoachSource",
+            "SourcePreview",
+            "SourceRef",
+            "table_cell",
+            "row_index",
+            "cell_index",
+            "paragraph_index",
+            "parser_version",
         ):
             self.assertIn(marker, source, f"generated contracts.ts 缺少 {marker}；请运行 npm.cmd --prefix frontend run contracts")
         self.assertIn("VersionDiff", source)
@@ -88,9 +95,20 @@ class ContractExportTest(unittest.TestCase):
         # Sprint 2：Grill preparation 与 Coach source authority 必须在生成类型里。
         grill_start = source.index("export interface GrillQuestion")
         grill_body = source[grill_start : source.index("}", grill_start)]
-        for field in ("trigger", "why", "preparation"):
+        for field in ("trigger", "why", "preparation", "locator"):
             self.assertIn(field, grill_body)
         self.assertIn("CoachSource", source)
+        # Locator v1：结构化 locator 必须导出可选结构字段；非行 line_number 允许 null。
+        locator_start = source.index("export interface Locator")
+        locator_body = source[locator_start : source.index("}", locator_start)]
+        for field in ("row_index", "cell_index", "paragraph_index"):
+            self.assertIn(field, locator_body)
+        self.assertIn('"table_cell"', source)
+        source_ref_start = source.index("export interface SourceRef")
+        source_ref_body = source[source_ref_start : source.index("}", source_ref_start)]
+        for field in ("material_id", "block_id", "start", "end", "quote"):
+            self.assertIn(field, source_ref_body)
+        self.assertIn("line_number?: LineNumber", source)
 
 
 if __name__ == "__main__":

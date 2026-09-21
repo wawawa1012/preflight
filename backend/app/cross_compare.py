@@ -53,10 +53,10 @@ def _side_keys(citations: list[ConsistencyCitation]) -> set[tuple[str, str]]:
 
 
 def _display_values(citations: list[ConsistencyCitation]) -> str:
-    """按原文顺序列出这一侧的不同数值（带单位），只用于解释文本。"""
+    """按引用既有顺序（Block.ordinal + span）列出这一侧的不同数值，只用于解释文本。"""
     seen: set[tuple[str, str]] = set()
     values: list[str] = []
-    for citation in sorted(citations, key=lambda item: (item.line_number, item.start)):
+    for citation in citations:
         key = (value_key(citation.value), citation.unit)
         if key in seen:
             continue

@@ -39,6 +39,7 @@
 - Iteration 7.1（材料详情易用性：已关联候选显示「已关联」禁接受/拒绝、每条 Criterion「接受本条全部原文有效」批量接受、「证据」与全文 Block 默认折叠）：实现完成，待人工验收；提交 166288f，前端脚本 80/25/14/37/23 全绿，build 通过。
 - Iteration 7.2（主操作收口 + 措辞）：每条 Criterion 主按钮改「确认这 N 条依据」（=批量接受）、单条接受/拒绝降为次要样式、Workbench 与 /materials 改「已确认依据 k / n 项」；提交 6285d40，已合入 main。
 - I8（同材料数值一致性「待核对问题」）：GET consistency-findings + 报告页「待核对问题」点回 Drawer；提交 0c8d581，已合入 main。
+- Locator v1（2026-09-21，分支 codex/next-locator，base 5f12236）：完整 Locator 持久化 + `user_version=1` 迁移 + 统一 SourceRef 复验（显式 span 可精确选择 occurrence）+ 下游 locator 适配 + TXT 全链；DOCX 真实解析等待 B2 `app.source_adapters.read_source_nodes`。定向验证：backend 451 tests OK、contract export/check PASS、TestClient smoke PASS；live 未跑。checkpoint eec27d4，实现提交见 CHANGELOG。
 
 ## 保底顺序
 

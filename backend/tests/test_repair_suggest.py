@@ -163,10 +163,12 @@ class RepairSuggestionPureTest(unittest.TestCase):
             explanation="同一单位出现不同数值",
             citations=[
                 ConsistencyCitation(
-                    block_id="blk_big", line_number=1, quote="甲" * 13000, start=0, end=13000, value="95", unit="%"
+                    block_id="blk_big", line_number=1, locator=blocks[0].locator,
+                    quote="甲" * 13000, start=0, end=13000, value="95", unit="%"
                 ),
                 ConsistencyCitation(
-                    block_id="blk_big", line_number=1, quote="乙" * 13000, start=13003, end=26003, value="90", unit="%"
+                    block_id="blk_big", line_number=1, locator=blocks[0].locator,
+                    quote="乙" * 13000, start=13003, end=26003, value="90", unit="%"
                 ),
             ],
         )

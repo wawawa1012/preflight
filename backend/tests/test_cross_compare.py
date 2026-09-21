@@ -30,6 +30,7 @@ def material_of(text: str, material_id: str, filename: str) -> SavedMaterial:
     return SavedMaterial(
         id=material_id,
         filename=filename,
+        format="md",
         size_bytes=preview.size_bytes,
         sha256=preview.sha256,
         line_count=preview.line_count,
