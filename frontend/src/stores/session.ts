@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { ResponseCoachResponse } from '../types/contracts'
+import type { ResponseCoachResponse, Rubric, RubricDraft } from '../types/contracts'
 
 // 有界 session store：只解决「从功能页进入 Source Reader 再返回不丢上下文」。
 // 纯内存态：不做 localStorage，不做刷新后恢复，不把 Review.updated_at 当 cache version。
@@ -41,6 +41,31 @@ export interface CoachDraftEntry {
   feedback: { fingerprint: string; response: ResponseCoachResponse } | null
 }
 
+// 新审查 Wizard 的最小 round-trip 草稿：只解决 ReviewNew → MaterialNew → ReviewNew 一次往返。
+// 纯内存（File 对象也只活在内存）；刷新恢复 Wizard 草稿不是本期承诺。
+// MaterialNew 不理解审查规则：它只按 returnTo 返回并报告新 material id，草稿语义全在 ReviewNew。
+export interface WizardDraftSeat {
+  materialId: string
+  filename: string
+  checked: boolean
+  label: string
+}
+
+export interface WizardDraft {
+  title: string
+  step: number
+  seats: WizardDraftSeat[]
+  criteriaKind: 'existing' | 'paste' | 'upload' | 'manual'
+  rubricKey: string
+  pastedText: string
+  uploadFile: File | null
+  draft: RubricDraft | null
+  publishedRubric: Rubric | null
+  createdReviewId: string
+  createdRubric: Rubric | null
+  addedSeatIds: string[]
+}
+
 export const useSessionStore = defineStore('session', {
   state: () => ({
     currentReviewId: '' as string,
@@ -53,6 +78,8 @@ export const useSessionStore = defineStore('session', {
     dismissedActionKeys: [] as string[],
     // Response Coach 练习状态：session-only，不是长期保存。key = `${reviewId}:${materialId}:${questionKey}`。
     coachDrafts: {} as Record<string, CoachDraftEntry>,
+    // Wizard round-trip 草稿：进入 MaterialNew 前写入，回到 ReviewNew 时消费一次。
+    wizardDraft: null as WizardDraft | null,
   }),
   actions: {
     openReader(visit: ReaderVisit) {
@@ -86,6 +113,15 @@ export const useSessionStore = defineStore('session', {
     saveCoachDraft(key: string, patch: Partial<CoachDraftEntry>) {
       const current = this.coachDrafts[key] ?? { answer: '', sourceExcluded: false, feedback: null }
       this.coachDrafts[key] = { ...current, ...patch }
+    },
+    saveWizardDraft(draft: WizardDraft) {
+      this.wizardDraft = draft
+    },
+    // 消费一次：回到 ReviewNew 时取走即清空；再次离开去上传时由 ReviewNew 重新写入。
+    takeWizardDraft(): WizardDraft | null {
+      const draft = this.wizardDraft
+      this.wizardDraft = null
+      return draft
     },
   },
 })

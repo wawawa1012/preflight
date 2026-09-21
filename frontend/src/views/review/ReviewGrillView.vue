@@ -1,26 +1,40 @@
 <script setup lang="ts">
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { Block, CoachSource, DetectedStatement, GrillQuestion, MaterialSummary } from '../../types/contracts'
+import type { CoachSource, DetectedStatement, GrillQuestion, MaterialSummary } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
 import { useSessionStore, type ReaderTarget } from '../../stores/session'
-import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
 import EmptyState from '../../components/review/EmptyState.vue'
 import ResponseCoachPanel from '../../components/review/ResponseCoachPanel.vue'
 import { locatorLabel } from '../../utils/locatorLabel'
 import { identityLine } from '../../utils/materialIdentity'
 import { createRequestScope } from '../../utils/requestScope'
+import {
+  loadGrillSnapshot,
+  saveGrillSnapshot,
+  verifyRestoredQuestion,
+  GRILL_RECOVERY_VERSION,
+  type GrillRecoveryCoachDraft,
+} from '../../utils/grillRecovery'
 
 // 模拟评审 / 答辩演练（后台角色：Challenge Examiner）：对选中材料生成可回到原文的针对性追问。
 // GrillQuestion 直接使用 generated 契约类型：trigger / why / preparation 由后端程序确定性生成，
 // 前端只呈现，不自行推断「为什么可能被问」。
+// 位置展示唯一规则：locatorLabel(question.locator)，question.locator 是后端复验过的权威定位；
+// 禁止为了显示位置再从本地 blocks 推导。source identity 始终是 material + block + span + quote。
+// 来源动作只有一个：「查看原文」，统一进入现有 Source Reader；本页不再维护第二套 Drawer。
 // 延迟体验：模型生成期间先展示确定性准备材料（关键陈述信号），不是只有 spinner。
-// stale guard：换材料/重新生成后，迟到的旧响应直接丢弃。
-// 快照 key = `${reviewId}:grill`；coach 练习状态 session-only（session.coachDrafts）。
+// stale guard：requestScope；换材料/重新生成后，迟到的旧响应直接丢弃。
+// 刷新恢复：sessionStorage（utils/grillRecovery.ts）；恢复的问题必须逐条与当前原文复验，
+// 复验通过前来源动作不可点；Coach 反馈永不恢复，只恢复回答草稿与来源勾选。
+// 内存快照 key = `${reviewId}:grill`（本会话切页返回）；持久恢复由 grillRecovery 负责。
 interface GrillSnapshot {
   materialId: string
   questions: GrillQuestion[]
   generated: boolean
+  generatedAt: string
+  // 本会话内导航往返直接可信（生成时已由服务端复验）；来自 sessionStorage 的恢复才需要复验。
+  trusted: boolean
 }
 
 const context = inject(reviewContextKey)
@@ -47,12 +61,27 @@ const generating = ref(false)
 const error = ref<{ message: string; detail: string } | null>(null)
 const questions = ref<GrillQuestion[]>([])
 const generated = ref(false)
+const generatedAt = ref('')
 const emptyResult = computed(() => generated.value && questions.value.length === 0)
 
+// 刷新恢复状态：restored = 问题来自 sessionStorage；trusted = 已与当前原文逐条复验。
+// 复验是局部动作：失败只影响来源入口，绝不把整个 Grill 标成不可用，可单独重试。
+const restored = ref(false)
+const trusted = ref(false)
+const verifying = ref(false)
+const verifyError = ref('')
+const droppedCount = ref(0)
+// 复验通过后再写回 session 的 Coach 草稿（key = questionKey）；不含 feedback。
+let recoveredCoachDrafts: Record<string, GrillRecoveryCoachDraft> = {}
+
+// 来源动作的可信门槛：新生成的问题服务端已复验；恢复的问题必须等本地复验通过。
+const sourceTrusted = computed(() => generated.value && (!restored.value || trusted.value))
+
 // 模拟评审：request scope + 确定性准备材料（关键陈述信号）+ 练习回答展开态。
-// 三条 scope 分开：信号拉取不得打断进行中的问题生成，blocks 拉取也独立。
+// 三条 scope 分开：信号拉取不得打断进行中的问题生成，复验拉取也独立。
 const generateScope = createRequestScope()
 const signalScope = createRequestScope()
+const verifyScope = createRequestScope()
 const signals = ref<DetectedStatement[]>([])
 const signalsUnavailable = ref(false)
 const coachOpenFor = ref('')
@@ -108,15 +137,78 @@ function filenameOf(id: string) {
 }
 
 // DOCX 可审查、可定位原文，但本期不承诺创建修改版（后端 400 format_not_editable）。
+// 限制必须 inline 可见：tooltip 对键盘/触屏用户不是可靠信息渠道。
 function isEditableFormat(id: string) {
   const format = library.value.find((item) => item.id === id)?.format
   return format !== 'docx'
 }
 
-const blocks = ref<Block[]>([])
-const blocksUnavailable = ref(false)
-// blocks 拉取独立 scope：换材料后迟到的旧材料 blocks 不得落地。
-const blockScope = createRequestScope()
+// —— 持久恢复（sessionStorage）——
+function currentRecoverySnapshot(): Parameters<typeof saveGrillSnapshot>[0] | null {
+  const current = review.value
+  if (!current || materialId.value === '' || !generated.value) return null
+  const coachDrafts: Record<string, GrillRecoveryCoachDraft> = {}
+  for (const question of questions.value) {
+    const entry = session.coachDrafts[coachStorageKey(question)]
+    if (entry && (entry.answer !== '' || entry.sourceExcluded)) {
+      // feedback 永不入盘：旧判断不能在刷新后冒充当前判断。
+      coachDrafts[questionKey(question)] = { answer: entry.answer, sourceExcluded: entry.sourceExcluded }
+    }
+  }
+  return {
+    version: GRILL_RECOVERY_VERSION,
+    reviewId: current.id,
+    rubricId: current.rubric_id,
+    rubricRevision: current.rubric_revision,
+    materialId: materialId.value,
+    generatedAt: generatedAt.value,
+    questions: questions.value,
+    coachDrafts,
+  }
+}
+
+function persistRecovery() {
+  const snapshot = currentRecoverySnapshot()
+  if (snapshot) saveGrillSnapshot(snapshot)
+}
+
+// 恢复问题的复验：quote == block.text[start:end]，与后端「复验通过才返回」同一语义。
+// 对不上的条目丢弃；全部对不上时留空态，用户可重新生成。
+async function verifyRecovered(id: string) {
+  const ticket = verifyScope.begin({ reviewId: reviewId.value, materialId: id, purpose: 'verify' as const })
+  verifying.value = true
+  verifyError.value = ''
+  try {
+    const response = await fetch(`/api/v1/materials/${encodeURIComponent(id)}`)
+    const body = await response.json().catch(() => null)
+    ticket.commit(() => {
+      if (!response.ok) {
+        verifyError.value = '无法读取材料原文来核对上次结果。'
+        return
+      }
+      const blocks = Array.isArray(body?.blocks) ? (body.blocks as { id: string; text: string }[]) : []
+      const kept = questions.value.filter((question) => verifyRestoredQuestion(question, blocks))
+      droppedCount.value = questions.value.length - kept.length
+      questions.value = kept
+      // 复验通过的题目才恢复 Coach 草稿；被丢弃题目的草稿一并消失。
+      for (const question of kept) {
+        const draft = recoveredCoachDrafts[questionKey(question)]
+        if (draft) session.saveCoachDraft(coachStorageKey(question), { ...draft, feedback: null })
+      }
+      recoveredCoachDrafts = {}
+      trusted.value = true
+      persistRecovery()
+    })
+  } catch {
+    ticket.commit(() => {
+      verifyError.value = '无法读取材料原文来核对上次结果。'
+    })
+  } finally {
+    ticket.commit(() => {
+      verifying.value = false
+    })
+  }
+}
 
 // 恢复/保存都等 review.id 就绪：review 由 inject 异步加载，setup 时可能为空，
 // 用 watch(review.id, ..., { immediate: true }) 在 id 到达后恢复，避免空 reviewId key 恢复 miss。
@@ -129,38 +221,59 @@ watch(
   (id) => {
     if (!id || id === restoredReviewId) return
     restoredReviewId = id
-    // 切换 Review：作废在飞的生成、信号与 blocks 响应，防止旧 Review 的迟到结果污染新上下文。
+    // 切换 Review：作废在飞的生成、信号与复验响应，防止旧 Review 的迟到结果污染新上下文。
     generateScope.invalidate()
     signalScope.invalidate()
-    blockScope.invalidate()
+    verifyScope.invalidate()
     generating.value = false
+    verifying.value = false
     // 先重置到默认，再恢复该 review 的快照；只接受仍在成员里的 id。
     const previousMaterialId = materialId.value
     skipMaterialClear = false
     materialId.value = ''
     questions.value = []
     generated.value = false
+    generatedAt.value = ''
     error.value = null
-    blocks.value = []
-    blocksUnavailable.value = false
-    const restored = session.restoreCapability<GrillSnapshot>(`${id}:grill`)
+    restored.value = false
+    trusted.value = false
+    verifyError.value = ''
+    droppedCount.value = 0
+    recoveredCoachDrafts = {}
     const memberIds = new Set(members.value.map((member) => member.material_id))
-    if (restored && memberIds.has(restored.materialId)) {
+    // 优先本会话内存快照（切页返回，已可信）；否则尝试 sessionStorage 恢复（刷新场景）。
+    const memory = session.restoreCapability<GrillSnapshot>(`${id}:grill`)
+    if (memory && memberIds.has(memory.materialId)) {
       // 仅当 materialId 实际变化时置位，避免 net 无变化时标志残留。
-      skipMaterialClear = previousMaterialId !== restored.materialId
-      materialId.value = restored.materialId
-      questions.value = restored.questions
-      generated.value = restored.generated
+      skipMaterialClear = previousMaterialId !== memory.materialId
+      materialId.value = memory.materialId
+      questions.value = memory.questions
+      generated.value = memory.generated
+      generatedAt.value = memory.generatedAt
+      trusted.value = memory.trusted
+      restored.value = !memory.trusted
+      return
+    }
+    const current = review.value
+    const recovered = current
+      ? loadGrillSnapshot({ reviewId: id, rubricId: current.rubric_id, rubricRevision: current.rubric_revision })
+      : null
+    if (recovered && memberIds.has(recovered.materialId)) {
+      skipMaterialClear = previousMaterialId !== recovered.materialId
+      materialId.value = recovered.materialId
+      questions.value = recovered.questions
+      generated.value = true
+      generatedAt.value = recovered.generatedAt
+      restored.value = true
+      trusted.value = false
+      recoveredCoachDrafts = recovered.coachDrafts
+      void verifyRecovered(recovered.materialId)
     } else {
       materialId.value = members.value[0]?.material_id ?? ''
     }
   },
   { immediate: true },
 )
-
-const drawerOpen = ref(false)
-const drawerBlockId = ref('')
-const highlight = ref<{ start: number; end: number } | null>(null)
 
 async function loadLibrary() {
   loading.value = true
@@ -210,6 +323,14 @@ async function generate() {
     ticket.commit(() => {
       questions.value = Array.isArray(body) ? (body as GrillQuestion[]) : []
       generated.value = true
+      generatedAt.value = new Date().toISOString()
+      // 新生成已由服务端复验：脱离「上次恢复」状态，来源动作立即可信。
+      restored.value = false
+      trusted.value = false
+      verifyError.value = ''
+      droppedCount.value = 0
+      recoveredCoachDrafts = {}
+      persistRecovery()
     })
   } catch (cause) {
     ticket.commit(() => {
@@ -229,10 +350,11 @@ function retry() {
 // 换材料后旧追问与旧原文一并作废；恢复快照时由 skipMaterialClear 跳过本次清空。
 watch(materialId, (id, previousId) => {
   generateScope.invalidate()
-  blockScope.invalidate()
+  verifyScope.invalidate()
   signalScope.invalidate()
   // 发起时的生成 scope 已作废，其 finally 复位会被拒；这里负责把 loading 复位回新上下文。
   generating.value = false
+  verifying.value = false
   coachOpenFor.value = ''
   signals.value = []
   signalsUnavailable.value = false
@@ -243,127 +365,91 @@ watch(materialId, (id, previousId) => {
   }
   questions.value = []
   generated.value = false
+  generatedAt.value = ''
   error.value = null
-  blocks.value = []
-  blocksUnavailable.value = false
+  restored.value = false
+  trusted.value = false
+  verifyError.value = ''
+  droppedCount.value = 0
+  recoveredCoachDrafts = {}
 })
 
-watch([materialId, questions, generated], () => {
+watch([materialId, questions, generated, trusted], () => {
   if (reviewId.value === '') return
   session.saveCapability(snapshotKey.value, {
     materialId: materialId.value,
     questions: questions.value,
     generated: generated.value,
+    generatedAt: generatedAt.value,
+    trusted: trusted.value || !restored.value,
   } satisfies GrillSnapshot)
 })
 
-function blockById(blockId: string): Block | null {
-  return blocks.value.find((block) => block.id === blockId) ?? null
-}
+// Coach 草稿变化（回答/来源勾选）同步入 sessionStorage，刷新后可恢复；feedback 不入盘。
+watch(
+  () => session.coachDrafts,
+  () => persistRecovery(),
+  { deep: true },
+)
 
-function rowLocation(blockId: string): string {
-  return locatorLabel(blockById(blockId)?.locator ?? null)
-}
-
-function blockAt(offset: number): Block | null {
-  const index = blocks.value.findIndex((item) => item.id === drawerBlockId.value)
-  if (index < 0) return null
-  return blocks.value[index + offset] ?? null
-}
-
-const drawerBlock = computed(() => blockById(drawerBlockId.value))
-const previousBlock = computed(() => blockAt(-1))
-const nextBlock = computed(() => blockAt(1))
-const drawerFilename = computed(() => filenameOf(materialId.value))
-
-async function ensureBlocks() {
-  if (blocks.value.length > 0 || blocksUnavailable.value || materialId.value === '') return
-  const ticket = blockScope.begin({ materialId: materialId.value, purpose: 'blocks' as const })
-  try {
-    const response = await fetch(`/api/v1/materials/${encodeURIComponent(ticket.context.materialId)}`)
-    const body = await response.json().catch(() => null)
-    ticket.commit(() => {
-      if (!response.ok) {
-        blocksUnavailable.value = true
-        return
-      }
-      blocks.value = Array.isArray(body?.blocks) ? (body.blocks as Block[]) : []
-    })
-  } catch {
-    ticket.commit(() => {
-      blocksUnavailable.value = true
-    })
-  }
-}
-
-async function openQuestion(question: GrillQuestion) {
-  drawerBlockId.value = question.block_id
-  drawerOpen.value = true
-  highlight.value = null
-  await ensureBlocks()
-  const block = blockById(question.block_id)
-  if (block) highlight.value = { start: question.start, end: question.end }
-}
-
-// 「在材料中打开」：该材料的全部追问映射成 ReaderTarget；materialId 取 block.document_id。
-async function openInReader(question: GrillQuestion) {
-  await ensureBlocks()
-  const clickedBlock = blockById(question.block_id)
-  if (!clickedBlock) {
-    blocksUnavailable.value = true
-    return
-  }
-  const targets = questions.value
-    .map((item): ReaderTarget | null => {
-      const block = blockById(item.block_id)
-      return block
-        ? { materialId: block.document_id, blockId: item.block_id, start: item.start, end: item.end, quote: item.quote }
-        : null
-    })
-    .filter((target): target is ReaderTarget => target !== null)
+// 「查看原文」：唯一来源动作，统一进入现有 Source Reader。
+// 本页所有问题同属当前选中材料：material identity 直接取 materialId，无需本地 blocks。
+function openInReader(question: GrillQuestion) {
+  if (!sourceTrusted.value) return
+  const targets = questions.value.map(
+    (item): ReaderTarget => ({
+      materialId: materialId.value,
+      blockId: item.block_id,
+      start: item.start,
+      end: item.end,
+      quote: item.quote,
+    }),
+  )
   const index = targets.findIndex((target) => target.blockId === question.block_id && target.start === question.start)
   session.openReader({
     reviewId: reviewId.value,
     reviewTitle: reviewTitle.value,
-    materialId: clickedBlock.document_id,
-    materialLabel: labelOf(clickedBlock.document_id),
-    materialFilename: filenameOf(clickedBlock.document_id),
+    materialId: materialId.value,
+    materialLabel: labelOf(materialId.value),
+    materialFilename: filenameOf(materialId.value),
     targets,
     index: index < 0 ? 0 : index,
     origin: { fullPath: route.fullPath, label: '模拟评审' },
   })
-  await router.push(
-    `/reviews/${reviewId.value}/reader/${clickedBlock.document_id}?b=${question.block_id}&s=${question.start}&e=${question.end}`,
+  void router.push(
+    `/reviews/${reviewId.value}/reader/${materialId.value}?b=${question.block_id}&s=${question.start}&e=${question.end}`,
   )
 }
 
 // Coach「查看原文」：来源统一进入现有 Reader 上下文，返回后回到本题。
-async function openCoachSource(source: CoachSource) {
-  await ensureBlocks()
-  const block = blockById(source.block_id)
-  if (!block) {
-    blocksUnavailable.value = true
-    return
-  }
+// Coach 反馈永不恢复，能走到这里的来源必然来自本次会话的实时响应，无需复验门禁。
+function openCoachSource(source: CoachSource) {
   session.openReader({
     reviewId: reviewId.value,
     reviewTitle: reviewTitle.value,
-    materialId: block.document_id,
-    materialLabel: labelOf(block.document_id),
-    materialFilename: filenameOf(block.document_id),
-    targets: [{ materialId: block.document_id, blockId: source.block_id, start: source.start, end: source.end, quote: source.quote }],
+    materialId: materialId.value,
+    materialLabel: labelOf(materialId.value),
+    materialFilename: filenameOf(materialId.value),
+    targets: [{ materialId: materialId.value, blockId: source.block_id, start: source.start, end: source.end, quote: source.quote }],
     index: 0,
     origin: { fullPath: route.fullPath, label: '模拟评审' },
   })
-  await router.push(
-    `/reviews/${reviewId.value}/reader/${block.document_id}?b=${source.block_id}&s=${source.start}&e=${source.end}`,
+  void router.push(
+    `/reviews/${reviewId.value}/reader/${materialId.value}?b=${source.block_id}&s=${source.start}&e=${source.end}`,
   )
 }
+
+const generatedAtText = computed(() => {
+  if (generatedAt.value === '') return ''
+  const time = new Date(generatedAt.value)
+  if (Number.isNaN(time.getTime())) return ''
+  return time.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+})
 
 onBeforeUnmount(() => {
   generateScope.invalidate()
   signalScope.invalidate()
-  blockScope.invalidate()
+  verifyScope.invalidate()
 })
 
 loadLibrary()
@@ -407,6 +493,11 @@ loadLibrary()
         </UButton>
       </div>
 
+      <!-- DOCX 限制 inline 可见：不靠 hover tooltip 传达关键能力边界。 -->
+      <p v-if="materialId !== '' && !isEditableFormat(materialId)" class="mt-3 rounded-md bg-slate-950/40 px-3 py-2 text-xs leading-relaxed text-slate-400">
+        Word 材料可以审查和查看来源，暂不支持在此创建修改版。请在原编辑器中修改后重新上传；重新上传的文件不会自动建立修改前后的关系。
+      </p>
+
       <!-- 延迟体验：模型生成期间先看确定性准备材料，不是只有 spinner。 -->
       <div v-if="generating && signals.length > 0" class="mt-4 rounded-xl border border-slate-800 p-4">
         <p class="text-xs font-medium text-slate-300">等待评审问题时，可以先核对这份材料的关键陈述</p>
@@ -430,9 +521,23 @@ loadLibrary()
     <section v-if="generated && members.length >= 1">
       <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-800 pb-3">
         <h2 class="text-sm font-medium tracking-wide text-slate-200">针对性追问</h2>
-        <span class="text-xs text-slate-500">{{ questions.length }} 条 · 仅展示能够回到原文的追问</span>
+        <span class="text-xs text-slate-500">
+          <template v-if="restored && generatedAtText">上次生成 · {{ generatedAtText }} · </template>
+          {{ questions.length }} 条 · 仅展示能够回到原文的追问
+        </span>
       </div>
       <p class="mt-1 text-xs text-slate-500">{{ identityLine(labelOf(materialId), filenameOf(materialId)) }}</p>
+
+      <!-- 恢复复验状态：局部提示 + 局部重试，绝不把整个 Grill 标成不可用。 -->
+      <p v-if="restored && verifying" class="mt-3 text-xs text-slate-500">正在核对上次结果与当前原文…</p>
+      <div v-else-if="restored && verifyError" class="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-amber-800/50 bg-amber-950/20 px-3 py-2.5">
+        <p class="text-xs text-amber-200">{{ verifyError }} 核对通过前「查看原文」暂不可用。</p>
+        <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-refresh-cw" @click="verifyRecovered(materialId)">重新核对</UButton>
+      </div>
+      <p v-else-if="restored && trusted && droppedCount > 0" class="mt-3 text-xs text-slate-500">
+        已核对上次结果与当前原文；{{ droppedCount }} 条未能对上，已隐藏。
+      </p>
+
       <EmptyState
         v-if="emptyResult"
         class="mt-4"
@@ -456,16 +561,20 @@ loadLibrary()
               </p>
 
               <p class="mt-5 text-xs tracking-widest text-slate-500">触发依据</p>
-              <div class="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2.5">
-                <button type="button" class="group flex min-w-0 flex-1 items-center justify-between gap-4 text-left" @click="openQuestion(question)">
-                  <span class="min-w-0 text-sm leading-relaxed text-slate-300">“{{ question.quote }}”</span>
-                  <span class="flex shrink-0 items-center gap-3">
-                    <span class="text-xs text-slate-500">{{ rowLocation(question.block_id) }}</span>
-                    <span class="text-xs text-violet-300/90 transition group-hover:text-violet-200">查看原文 →</span>
-                  </span>
-                </button>
-                <button type="button" class="shrink-0 text-[11px] text-slate-500 transition hover:text-violet-300" @click="openInReader(question)">在材料中打开</button>
-              </div>
+              <button
+                type="button"
+                class="group mt-1.5 flex w-full flex-wrap items-center justify-between gap-4 rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2.5 text-left disabled:cursor-not-allowed"
+                :disabled="!sourceTrusted"
+                @click="openInReader(question)"
+              >
+                <span class="min-w-0 flex-1 text-sm leading-relaxed text-slate-300">“{{ question.quote }}”</span>
+                <span class="flex shrink-0 items-center gap-3">
+                  <!-- 位置唯一来源：question.locator（后端复验过的权威定位），不经本地 blocks 推导。 -->
+                  <span class="text-xs text-slate-500">{{ locatorLabel(question.locator) }}</span>
+                  <span v-if="sourceTrusted" class="text-xs text-violet-300/90 transition group-hover:text-violet-200">查看原文 →</span>
+                  <span v-else class="text-xs text-slate-600">核对原文中…</span>
+                </span>
+              </button>
 
               <!-- 你需要准备什么：确定性 checklist，是准备方向，不是答案。 -->
               <div v-if="question.preparation.length > 0" class="mt-3">
@@ -480,15 +589,14 @@ loadLibrary()
 
               <!-- 动作：回到触发依据确认出处，必要时改稿，或直接练习回答。 -->
               <div class="mt-3 flex flex-wrap items-center gap-2">
-                <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-book-open" @click="openInReader(question)">查看原文</UButton>
+                <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-book-open" :disabled="!sourceTrusted" @click="openInReader(question)">查看原文</UButton>
                 <UButton
+                  v-if="isEditableFormat(materialId)"
                   size="xs"
                   color="neutral"
                   variant="subtle"
                   icon="i-lucide-pencil-line"
-                  :to="isEditableFormat(materialId) ? `${basePath}/reader/${materialId}/revise` : undefined"
-                  :disabled="!isEditableFormat(materialId)"
-                  :title="isEditableFormat(materialId) ? undefined : 'Word 文档暂不支持创建修改版；可以审查与查看原文'"
+                  :to="`${basePath}/reader/${materialId}/revise`"
                 >开始修改</UButton>
                 <UButton
                   size="xs"
@@ -513,17 +621,6 @@ loadLibrary()
           </div>
         </li>
       </ol>
-      <p v-if="blocksUnavailable" class="mt-3 text-xs text-amber-300">原文暂不可用</p>
     </section>
-
-    <EvidenceDrawer
-      :open="drawerOpen"
-      :highlight="highlight"
-      :block="drawerBlock"
-      :previous-block="previousBlock"
-      :next-block="nextBlock"
-      :filename="drawerFilename"
-      @update:open="drawerOpen = $event"
-    />
   </div>
 </template>
