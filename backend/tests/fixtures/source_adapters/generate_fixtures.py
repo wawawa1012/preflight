@@ -4,7 +4,8 @@
     & backend/.venv/Scripts/python.exe -X utf8 backend/tests/fixtures/source_adapters/generate_fixtures.py
 
 生成物与 backend/tests/test_txt_adapter.py、test_docx_adapter.py 的期望值一一对应；
-重跑可复现（ZIP 时间戳固定为 2026-01-01）。
+重跑可复现（ZIP 时间戳固定为 2026-01-01）。同目录 .gitattributes 禁用行尾归一化，
+保证 CRLF/BOM 等字节精确进入版本库。
 """
 from pathlib import Path
 import zipfile
