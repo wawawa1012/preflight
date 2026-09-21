@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Block, CoachSource, DetectedStatement, GrillQuestion, MaterialSummary } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
@@ -9,7 +9,7 @@ import EmptyState from '../../components/review/EmptyState.vue'
 import ResponseCoachPanel from '../../components/review/ResponseCoachPanel.vue'
 import { locatorLabel } from '../../utils/locatorLabel'
 import { identityLine } from '../../utils/materialIdentity'
-import { createAsyncGuard } from '../../utils/asyncGuard'
+import { createRequestScope } from '../../utils/requestScope'
 
 // 模拟评审 / 答辩演练（后台角色：Challenge Examiner）：对选中材料生成可回到原文的针对性追问。
 // GrillQuestion 直接使用 generated 契约类型：trigger / why / preparation 由后端程序确定性生成，
@@ -49,10 +49,10 @@ const questions = ref<GrillQuestion[]>([])
 const generated = ref(false)
 const emptyResult = computed(() => generated.value && questions.value.length === 0)
 
-// 模拟评审：stale guard + 确定性准备材料（关键陈述信号）+ 练习回答展开态。
-// 两条守卫分开：信号拉取不得打断进行中的问题生成。
-const guard = createAsyncGuard()
-const signalGuard = createAsyncGuard()
+// 模拟评审：request scope + 确定性准备材料（关键陈述信号）+ 练习回答展开态。
+// 三条 scope 分开：信号拉取不得打断进行中的问题生成，blocks 拉取也独立。
+const generateScope = createRequestScope()
+const signalScope = createRequestScope()
 const signals = ref<DetectedStatement[]>([])
 const signalsUnavailable = ref(false)
 const coachOpenFor = ref('')
@@ -80,19 +80,22 @@ function coachStorageKey(question: GrillQuestion): string {
 // 关键陈述信号是确定性 GET：选中材料即可见，模型等待期间用户有真实内容可看。
 async function loadSignals(id: string) {
   if (id === '') return
+  const ticket = signalScope.begin({ materialId: id, purpose: 'signals' as const })
   signalsUnavailable.value = false
-  const token = signalGuard.next()
   try {
     const response = await fetch(`/api/v1/materials/${encodeURIComponent(id)}/statement-signals`)
-    if (!signalGuard.isCurrent(token)) return
     const body = await response.json().catch(() => null)
-    if (!response.ok) {
-      signalsUnavailable.value = true
-      return
-    }
-    signals.value = Array.isArray(body) ? (body as DetectedStatement[]) : []
+    ticket.commit(() => {
+      if (!response.ok) {
+        signalsUnavailable.value = true
+        return
+      }
+      signals.value = Array.isArray(body) ? (body as DetectedStatement[]) : []
+    })
   } catch {
-    if (signalGuard.isCurrent(token)) signalsUnavailable.value = true
+    ticket.commit(() => {
+      signalsUnavailable.value = true
+    })
   }
 }
 
@@ -112,8 +115,8 @@ function isEditableFormat(id: string) {
 
 const blocks = ref<Block[]>([])
 const blocksUnavailable = ref(false)
-// blocks 拉取独立代次：换材料后迟到的旧材料 blocks 不得落地。
-const blockGuard = createAsyncGuard()
+// blocks 拉取独立 scope：换材料后迟到的旧材料 blocks 不得落地。
+const blockScope = createRequestScope()
 
 // 恢复/保存都等 review.id 就绪：review 由 inject 异步加载，setup 时可能为空，
 // 用 watch(review.id, ..., { immediate: true }) 在 id 到达后恢复，避免空 reviewId key 恢复 miss。
@@ -126,9 +129,10 @@ watch(
   (id) => {
     if (!id || id === restoredReviewId) return
     restoredReviewId = id
-    // 切换 Review：作废在飞的生成与信号响应，防止旧 Review 的迟到结果污染新上下文。
-    guard.invalidate()
-    signalGuard.invalidate()
+    // 切换 Review：作废在飞的生成、信号与 blocks 响应，防止旧 Review 的迟到结果污染新上下文。
+    generateScope.invalidate()
+    signalScope.invalidate()
+    blockScope.invalidate()
     generating.value = false
     // 先重置到默认，再恢复该 review 的快照；只接受仍在成员里的 id。
     const previousMaterialId = materialId.value
@@ -182,7 +186,7 @@ function failureText(code: string, message: string): { message: string; detail: 
 
 async function generate() {
   if (generating.value || materialId.value === '') return
-  const token = guard.next()
+  const ticket = generateScope.begin({ reviewId: reviewId.value, materialId: materialId.value, purpose: 'generate' as const })
   generating.value = true
   error.value = null
   questions.value = []
@@ -191,23 +195,30 @@ async function generate() {
     const response = await fetch('/api/v1/grill', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ material_id: materialId.value }),
+      body: JSON.stringify({ material_id: ticket.context.materialId }),
     })
     const body = await response.json().catch(() => null)
     // 迟到响应：用户已换材料或重新运行，直接丢弃。
-    if (!guard.isCurrent(token)) return
+    if (!ticket.isCurrent()) return
     if (!response.ok) {
       const code = body?.code ? body.code : `HTTP ${response.status}`
-      error.value = failureText(code, body?.message ? body.message : '')
+      ticket.commit(() => {
+        error.value = failureText(code, body?.message ? body.message : '')
+      })
       return
     }
-    questions.value = Array.isArray(body) ? (body as GrillQuestion[]) : []
-    generated.value = true
+    ticket.commit(() => {
+      questions.value = Array.isArray(body) ? (body as GrillQuestion[]) : []
+      generated.value = true
+    })
   } catch (cause) {
-    if (!guard.isCurrent(token)) return
-    error.value = { message: '模拟评审暂不可用，请稍后重试。', detail: cause instanceof Error ? cause.message : '网络错误' }
+    ticket.commit(() => {
+      error.value = { message: '模拟评审暂不可用，请稍后重试。', detail: cause instanceof Error ? cause.message : '网络错误' }
+    })
   } finally {
-    if (guard.isCurrent(token)) generating.value = false
+    ticket.commit(() => {
+      generating.value = false
+    })
   }
 }
 
@@ -217,8 +228,11 @@ function retry() {
 
 // 换材料后旧追问与旧原文一并作废；恢复快照时由 skipMaterialClear 跳过本次清空。
 watch(materialId, (id, previousId) => {
-  guard.invalidate()
-  blockGuard.invalidate()
+  generateScope.invalidate()
+  blockScope.invalidate()
+  signalScope.invalidate()
+  // 发起时的生成 scope 已作废，其 finally 复位会被拒；这里负责把 loading 复位回新上下文。
+  generating.value = false
   coachOpenFor.value = ''
   signals.value = []
   signalsUnavailable.value = false
@@ -264,19 +278,21 @@ const drawerFilename = computed(() => filenameOf(materialId.value))
 
 async function ensureBlocks() {
   if (blocks.value.length > 0 || blocksUnavailable.value || materialId.value === '') return
-  const token = blockGuard.next()
-  const requestedMaterialId = materialId.value
+  const ticket = blockScope.begin({ materialId: materialId.value, purpose: 'blocks' as const })
   try {
-    const response = await fetch(`/api/v1/materials/${encodeURIComponent(requestedMaterialId)}`)
-    if (!blockGuard.isCurrent(token) || materialId.value !== requestedMaterialId) return
+    const response = await fetch(`/api/v1/materials/${encodeURIComponent(ticket.context.materialId)}`)
     const body = await response.json().catch(() => null)
-    if (!response.ok) {
-      blocksUnavailable.value = true
-      return
-    }
-    blocks.value = Array.isArray(body?.blocks) ? (body.blocks as Block[]) : []
+    ticket.commit(() => {
+      if (!response.ok) {
+        blocksUnavailable.value = true
+        return
+      }
+      blocks.value = Array.isArray(body?.blocks) ? (body.blocks as Block[]) : []
+    })
   } catch {
-    if (blockGuard.isCurrent(token) && materialId.value === requestedMaterialId) blocksUnavailable.value = true
+    ticket.commit(() => {
+      blocksUnavailable.value = true
+    })
   }
 }
 
@@ -343,6 +359,12 @@ async function openCoachSource(source: CoachSource) {
     `/reviews/${reviewId.value}/reader/${block.document_id}?b=${source.block_id}&s=${source.start}&e=${source.end}`,
   )
 }
+
+onBeforeUnmount(() => {
+  generateScope.invalidate()
+  signalScope.invalidate()
+  blockScope.invalidate()
+})
 
 loadLibrary()
 </script>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Block, SavedMaterial } from '../../types/contracts'
 import { useSessionStore, type ReaderTarget } from '../../stores/session'
 import { locatorLabel } from '../../utils/locatorLabel'
-import { createAsyncGuard } from '../../utils/asyncGuard'
+import { createRequestScope } from '../../utils/requestScope'
 
 // Source Reader v1：阅读原文并定位依据。
 // 结构围绕 material_id / block_id / span / server locator 设计（gutter 一律走 locatorLabel，
@@ -21,7 +21,7 @@ const material = ref<SavedMaterial | null>(null)
 const loading = ref(true)
 const error = ref('')
 // 切材料后迟到的旧材料响应不得落地。
-const loadGuard = createAsyncGuard()
+const loadScope = createRequestScope()
 
 // 引用序列：优先 session 里的 ReaderVisit（来自 Finding/Compare/Grill 的一组引用）；
 // 否则退化为 query 参数指定的单条目标。
@@ -65,21 +65,25 @@ const materialName = computed(() => {
 })
 
 async function loadMaterial() {
-  const token = loadGuard.next()
+  const ticket = loadScope.begin({ materialId: materialId.value })
   loading.value = true
   error.value = ''
   material.value = null
   try {
-    const response = await fetch(`/api/v1/materials/${encodeURIComponent(materialId.value)}`)
-    if (!loadGuard.isCurrent(token)) return
+    const response = await fetch(`/api/v1/materials/${encodeURIComponent(ticket.context.materialId)}`)
     const body = await response.json().catch(() => null)
     if (!response.ok) throw new Error(body && body.message ? body.message : `HTTP ${response.status}`)
-    material.value = body as SavedMaterial
+    ticket.commit(() => {
+      material.value = body as SavedMaterial
+    })
   } catch (cause) {
-    if (!loadGuard.isCurrent(token)) return
-    error.value = cause instanceof Error ? cause.message : '未知错误'
+    ticket.commit(() => {
+      error.value = cause instanceof Error ? cause.message : '未知错误'
+    })
   } finally {
-    if (loadGuard.isCurrent(token)) loading.value = false
+    ticket.commit(() => {
+      loading.value = false
+    })
   }
 }
 
@@ -158,6 +162,8 @@ watch([targets, queryTarget], () => {
 watch([activeBlock, loading], () => {
   if (!loading.value && activeBlock.value) void scrollToActive()
 })
+
+onBeforeUnmount(() => loadScope.invalidate())
 
 onUnmounted(() => session.closeReader())
 </script>

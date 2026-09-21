@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { ReviewDetail } from '../../types/review'
 import type { Rubric } from '../../types/contracts'
 import { ApiFailure, reviewsApi } from '../../services/reviews'
 import { useSessionStore } from '../../stores/session'
 import { formatSavedAt } from '../../utils/format'
+import { createRequestScope } from '../../utils/requestScope'
 import { reviewContextKey } from './reviewContext'
 import EmptyState from '../../components/review/EmptyState.vue'
 
@@ -41,23 +42,34 @@ const rubricBadge = computed(() => {
   return name ? `${name} · v${current.rubric_revision}` : `审查标准 · v${current.rubric_revision}`
 })
 
+// Review 详情属于发起时的 reviewId：切换 reviewId 或卸载时作废旧响应。
+const scope = createRequestScope()
+
 async function load() {
   if (!reviewId.value) return
+  const ticket = scope.begin({ reviewId: reviewId.value })
   loading.value = true
   notFound.value = false
   error.value = ''
   try {
-    review.value = await reviewsApi.get(reviewId.value)
-    session.currentReviewId = reviewId.value
+    const detail = await reviewsApi.get(ticket.context.reviewId)
+    ticket.commit((context) => {
+      review.value = detail
+      session.currentReviewId = context.reviewId
+    })
   } catch (cause) {
-    review.value = null
-    if (cause instanceof ApiFailure && cause.status === 404) {
-      notFound.value = true
-    } else {
-      error.value = cause instanceof Error ? cause.message : '未知错误'
-    }
+    ticket.commit(() => {
+      review.value = null
+      if (cause instanceof ApiFailure && cause.status === 404) {
+        notFound.value = true
+      } else {
+        error.value = cause instanceof Error ? cause.message : '未知错误'
+      }
+    })
   } finally {
-    loading.value = false
+    ticket.commit(() => {
+      loading.value = false
+    })
   }
 }
 
@@ -65,15 +77,26 @@ provide(reviewContextKey, { review, rubricTitle, refresh: load })
 
 watch(reviewId, load, { immediate: true })
 
+onBeforeUnmount(() => scope.invalidate())
+
 // 标准名录只读拉取一次；失败不阻塞工作区（badge 回退为「审查标准 · vN」）。
-fetch('/api/v1/rubrics')
-  .then(async (response) => {
+const rubricScope = createRequestScope()
+async function loadRubricDirectory() {
+  const ticket = rubricScope.begin({ reviewId: reviewId.value })
+  try {
+    const response = await fetch('/api/v1/rubrics')
     const body = await response.json().catch(() => null)
-    rubrics.value = response.ok && Array.isArray(body) ? (body as Rubric[]) : []
-  })
-  .catch(() => {
-    rubrics.value = []
-  })
+    ticket.commit(() => {
+      rubrics.value = response.ok && Array.isArray(body) ? (body as Rubric[]) : []
+    })
+  } catch {
+    ticket.commit(() => {
+      rubrics.value = []
+    })
+  }
+}
+void loadRubricDirectory()
+onBeforeUnmount(() => rubricScope.invalidate())
 
 // rail：同一次审查的五个视角；概览用精确匹配，其余按子路径前缀。
 const views = [

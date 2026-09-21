@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import type { AgentProposal, Criterion, MaterialPreflightSummary, Rubric } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
 import { evidenceApi } from '../../services/evidence'
-import { createAsyncGuard } from '../../utils/asyncGuard'
+import { createRequestScope } from '../../utils/requestScope'
 import { materialIdentity } from '../../utils/materialIdentity'
 import EmptyState from '../../components/review/EmptyState.vue'
 
@@ -35,9 +35,9 @@ const loadError = ref('')
 const selected = ref<Set<string>>(new Set())
 const queue = ref<RunItem[]>([])
 const running = ref(false)
-// 读（初始加载）与跑（运行队列）使用独立代次：重新加载不取消在飞运行，重新运行不取消加载。
-const guard = createAsyncGuard()
-const loadGuard = createAsyncGuard()
+// 读（初始加载）与跑（运行队列/单项重试）使用独立 scope：重新加载不取消在飞运行，重新运行不取消加载。
+const loadScope = createRequestScope()
+const runScope = createRequestScope()
 // 历史提案加载失败的材料：状态必须呈现为「未知」，不得当作「未运行」。
 const proposalLoadFailed = ref<Set<string>>(new Set())
 
@@ -92,7 +92,7 @@ function stateOf(materialId: string, criterionId: string): { label: string; tone
 }
 
 async function load() {
-  const token = loadGuard.next()
+  const ticket = loadScope.begin({ reviewId: reviewId.value, purpose: 'load' as const })
   loading.value = true
   loadError.value = ''
   queue.value = []
@@ -103,17 +103,20 @@ async function load() {
       fetch('/api/v1/rubrics'),
       fetch('/api/v1/preflight-summaries'),
     ])
-    if (!loadGuard.isCurrent(token)) return
     const rubricsBody = await rubricsResponse.json().catch(() => null)
     const summariesBody = await summariesResponse.json().catch(() => null)
     if (!rubricsResponse.ok) throw new Error(rubricsBody?.message ?? `HTTP ${rubricsResponse.status}`)
     if (!summariesResponse.ok) throw new Error(summariesBody?.message ?? `HTTP ${summariesResponse.status}`)
     const current = review.value
-    rubric.value =
+    const currentRubric =
       (Array.isArray(rubricsBody) ? (rubricsBody as Rubric[]) : []).find(
         (entry) => current && entry.id === current.rubric_id && entry.revision === current.rubric_revision,
       ) ?? null
-    summaries.value = Array.isArray(summariesBody) ? (summariesBody as MaterialPreflightSummary[]) : []
+    const currentSummaries = Array.isArray(summariesBody) ? (summariesBody as MaterialPreflightSummary[]) : []
+    if (!ticket.commit(() => {
+      rubric.value = currentRubric
+      summaries.value = currentSummaries
+    })) return
 
     // 每个已绑定成员的历史提案并行拉取（确定性 GET）；单份失败只标记该材料，不拖垮整页。
     const bound = members.value.filter((member) => summaryOf(member.material_id)?.bound)
@@ -127,22 +130,26 @@ async function load() {
         }
       }),
     )
-    if (!loadGuard.isCurrent(token)) return
-    proposalsByMaterial.value = Object.fromEntries(settled.map(([materialId, proposals]) => [materialId, proposals]))
-    proposalLoadFailed.value = new Set(settled.filter(([, , ok]) => !ok).map(([materialId]) => materialId))
-    // 默认勾选：尚无 completed 提案的 criterion（历史未知的也勾选，运行后才有真相）。
-    const defaults = new Set<string>()
-    for (const member of bound) {
-      for (const criterion of criteria.value) {
-        if (!latestProposal(member.material_id, criterion.id)) defaults.add(itemKey(member.material_id, criterion.id))
+    ticket.commit(() => {
+      proposalsByMaterial.value = Object.fromEntries(settled.map(([materialId, proposals]) => [materialId, proposals]))
+      proposalLoadFailed.value = new Set(settled.filter(([, , ok]) => !ok).map(([materialId]) => materialId))
+      // 默认勾选：尚无 completed 提案的 criterion（历史未知的也勾选，运行后才有真相）。
+      const defaults = new Set<string>()
+      for (const member of bound) {
+        for (const criterion of criteria.value) {
+          if (!latestProposal(member.material_id, criterion.id)) defaults.add(itemKey(member.material_id, criterion.id))
+        }
       }
-    }
-    selected.value = defaults
+      selected.value = defaults
+    })
   } catch (cause) {
-    if (!loadGuard.isCurrent(token)) return
-    loadError.value = cause instanceof Error ? cause.message : '未知错误'
+    ticket.commit(() => {
+      loadError.value = cause instanceof Error ? cause.message : '未知错误'
+    })
   } finally {
-    if (loadGuard.isCurrent(token)) loading.value = false
+    ticket.commit(() => {
+      loading.value = false
+    })
   }
 }
 
@@ -161,49 +168,45 @@ function patchItem(target: RunItem, patch: Partial<RunItem>) {
   queue.value = queue.value.map((item) => (item === target || (item.materialId === target.materialId && item.criterionId === target.criterionId) ? { ...item, ...patch } : item))
 }
 
-// 单项重试：只执行目标项，不动其他结果；独立代次 + 主代次捕获，换 Review/重跑后旧响应不落地。
-const itemGuards = new Map<string, ReturnType<typeof createAsyncGuard>>()
+// 单项重试：只执行目标项，不动其他结果；与全局 run 共用 run scope，begin 即作废旧 run ticket。
+// 只在非 running 时允许；换 Review 后由 watch 作废，旧响应不落地。
 async function retryItem(materialId: string, criterionId: string) {
   if (running.value) return
   const item = queueItem(materialId, criterionId)
   if (!item || item.state !== 'failed') return
-  const key = itemKey(materialId, criterionId)
-  let itemGuard = itemGuards.get(key)
-  if (!itemGuard) {
-    itemGuard = createAsyncGuard()
-    itemGuards.set(key, itemGuard)
-  }
-  const token = itemGuard.next()
-  const mainGeneration = guard.current()
+  const ticket = runScope.begin({ reviewId: reviewId.value, purpose: 'run' as const })
   patchItem(item, { state: 'running', detail: '' })
   try {
     const proposal = await evidenceApi.runCriterion(materialId, criterionId)
-    if (!itemGuard.isCurrent(token) || guard.current() !== mainGeneration) return
-    if (proposal.status === 'failed') {
-      patchItem(item, { state: 'failed', detail: proposal.error ?? '运行失败' })
-    } else if (proposal.candidates.length > 0) {
-      patchItem(item, { state: 'success', detail: `候选 ${proposal.candidates.length} 条` })
-    } else {
-      patchItem(item, { state: 'empty', detail: '' })
-    }
+    ticket.commit(() => {
+      if (proposal.status === 'failed') {
+        patchItem(item, { state: 'failed', detail: proposal.error ?? '运行失败' })
+      } else if (proposal.candidates.length > 0) {
+        patchItem(item, { state: 'success', detail: `候选 ${proposal.candidates.length} 条` })
+      } else {
+        patchItem(item, { state: 'empty', detail: '' })
+      }
+    })
     // 刷新该材料历史提案，让裁决入口看到最新状态。
     try {
       const proposals = await evidenceApi.listProposals(materialId)
-      if (!itemGuard.isCurrent(token) || guard.current() !== mainGeneration) return
-      proposalsByMaterial.value = { ...proposalsByMaterial.value, [materialId]: proposals }
+      ticket.commit(() => {
+        proposalsByMaterial.value = { ...proposalsByMaterial.value, [materialId]: proposals }
+      })
     } catch {
       // 列表刷新失败不影响已展示的该项结果。
     }
   } catch (cause) {
-    if (!itemGuard.isCurrent(token) || guard.current() !== mainGeneration) return
-    patchItem(item, { state: 'failed', detail: cause instanceof Error ? cause.message : '未知错误' })
+    ticket.commit(() => {
+      patchItem(item, { state: 'failed', detail: cause instanceof Error ? cause.message : '未知错误' })
+    })
   }
 }
 
-// 渐进执行：3 个 worker 持续消费整个队列；每项完成立即落态；迟到响应由 guard 丢弃。
+// 渐进执行：3 个 worker 持续消费整个队列；每项完成立即落态；迟到响应由 run scope 丢弃。
 async function runSelected() {
   if (running.value || selected.value.size === 0) return
-  const token = guard.next()
+  const ticket = runScope.begin({ reviewId: reviewId.value, purpose: 'run' as const })
   running.value = true
   const items: RunItem[] = []
   for (const member of boundMembers.value) {
@@ -219,65 +222,73 @@ async function runSelected() {
     while (cursor < items.length) {
       const item = items[cursor]
       cursor += 1
-      if (!guard.isCurrent(token)) return
+      if (!ticket.isCurrent()) return
       patchItem(item, { state: 'running' })
       try {
         const proposal = await evidenceApi.runCriterion(item.materialId, item.criterionId)
-        if (!guard.isCurrent(token)) return
-        if (proposal.status === 'failed') {
-          patchItem(item, { state: 'failed', detail: proposal.error ?? '运行失败' })
-        } else if (proposal.candidates.length > 0) {
-          patchItem(item, { state: 'success', detail: `候选 ${proposal.candidates.length} 条` })
-        } else {
-          patchItem(item, { state: 'empty', detail: '' })
-        }
+        ticket.commit(() => {
+          if (proposal.status === 'failed') {
+            patchItem(item, { state: 'failed', detail: proposal.error ?? '运行失败' })
+          } else if (proposal.candidates.length > 0) {
+            patchItem(item, { state: 'success', detail: `候选 ${proposal.candidates.length} 条` })
+          } else {
+            patchItem(item, { state: 'empty', detail: '' })
+          }
+        })
       } catch (cause) {
-        if (!guard.isCurrent(token)) return
-        patchItem(item, { state: 'failed', detail: cause instanceof Error ? cause.message : '未知错误' })
+        ticket.commit(() => {
+          patchItem(item, { state: 'failed', detail: cause instanceof Error ? cause.message : '未知错误' })
+        })
       }
     }
   }
   await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENCY, items.length) }, () => worker()))
-  // 只有本代次仍是当前代才收尾：旧任务不得清掉新任务的 running，也不得覆盖新上下文的历史提案。
-  if (guard.isCurrent(token)) {
-    // 运行结束：按材料批量刷新历史提案（每份材料一次），让「裁决入口」看到最新状态。
-    const affected = [...new Set(items.filter((item) => item.state !== 'waiting' && item.state !== 'running').map((item) => item.materialId))]
-    const refreshed = await Promise.all(
-      affected.map(async (materialId) => {
-        try {
-          return [materialId, await evidenceApi.listProposals(materialId), true] as const
-        } catch {
-          return [materialId, [] as AgentProposal[], false] as const
-        }
-      }),
-    )
-    if (guard.isCurrent(token)) {
-      const next = { ...proposalsByMaterial.value }
-      const failed = new Set(proposalLoadFailed.value)
-      for (const [materialId, proposals, ok] of refreshed) {
-        if (ok) {
-          next[materialId] = proposals
-          failed.delete(materialId)
-        }
+  // 收尾写入只允许在 commit 内：旧任务不得清掉新任务的 running，也不得覆盖新上下文的历史提案。
+  if (!ticket.isCurrent()) return
+  // 运行结束：按材料批量刷新历史提案（每份材料一次），让「裁决入口」看到最新状态。
+  const affected = [...new Set(items.filter((item) => item.state !== 'waiting' && item.state !== 'running').map((item) => item.materialId))]
+  const refreshed = await Promise.all(
+    affected.map(async (materialId) => {
+      try {
+        return [materialId, await evidenceApi.listProposals(materialId), true] as const
+      } catch {
+        return [materialId, [] as AgentProposal[], false] as const
       }
-      proposalsByMaterial.value = next
-      proposalLoadFailed.value = failed
+    }),
+  )
+  ticket.commit(() => {
+    const next = { ...proposalsByMaterial.value }
+    const failed = new Set(proposalLoadFailed.value)
+    for (const [materialId, proposals, ok] of refreshed) {
+      if (ok) {
+        next[materialId] = proposals
+        failed.delete(materialId)
+      }
     }
+    proposalsByMaterial.value = next
+    proposalLoadFailed.value = failed
+  })
+  ticket.commit(() => {
     running.value = false
-  }
+  })
 }
 
 // 切换 Review：作废在飞响应（读与跑都作废），清空本视图全部运行态。
 watch(
   () => review.value?.id,
   (id) => {
-    guard.invalidate()
-    loadGuard.invalidate()
+    loadScope.invalidate()
+    runScope.invalidate()
     running.value = false
     if (id) void load()
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadScope.invalidate()
+  runScope.invalidate()
+})
 </script>
 
 <template>

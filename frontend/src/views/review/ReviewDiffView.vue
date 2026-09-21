@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Block, ConsistencyFinding, MaterialSummary } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
@@ -8,6 +8,7 @@ import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
 import EmptyState from '../../components/review/EmptyState.vue'
 import { locatorLabel } from '../../utils/locatorLabel'
 import { materialIdentity, identityLine } from '../../utils/materialIdentity'
+import { createRequestScope } from '../../utils/requestScope'
 
 // 修改效果：在本次审查的成员里选「修改前 / 修改后」两份材料，看一致性待核对项的变化。
 // 快照 key = `${reviewId}:diff`；从 reader 返回或切页回来时恢复选择与结果。
@@ -72,12 +73,21 @@ function sideIdentity(materialId: string) {
 // 恢复/保存都等 review.id 就绪：review 由 inject 异步加载，setup 时可能为空，
 // 用 watch(review.id, ..., { immediate: true }) 在 id 到达后恢复，避免空 reviewId key 恢复 miss。
 let restoredReviewId = ''
+// 三个独立 scope：比较动作、材料库加载、blocks 拉取，互不作废。
+const diffScope = createRequestScope()
+const loadScope = createRequestScope()
+const blocksScope = createRequestScope()
 
 watch(
   () => review.value?.id,
   (id) => {
     if (!id || id === restoredReviewId) return
     restoredReviewId = id
+    // 切换 Review：作废在飞比较/加载/blocks 响应，防止旧 Review 的结果落进新上下文。
+    diffScope.invalidate()
+    blocksScope.invalidate()
+    // 发起时 scope 已作废，其 finally 复位会被拒；这里把 loading 复位回新上下文。
+    diffing.value = false
     // 先重置到默认，再恢复该 review 的快照；只接受仍在成员里的 id，否则回落到默认前两名。
     materialIdBefore.value = ''
     materialIdAfter.value = ''
@@ -162,17 +172,24 @@ const drawerBlockId = ref('')
 const highlight = ref<{ start: number; end: number } | null>(null)
 
 async function loadLibrary() {
+  const ticket = loadScope.begin({ reviewId: reviewId.value, purpose: 'load' as const })
   loading.value = true
   loadError.value = ''
   try {
     const response = await fetch('/api/v1/materials')
     const body = await response.json().catch(() => null)
     if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`)
-    library.value = Array.isArray(body) ? (body as MaterialSummary[]) : []
+    ticket.commit(() => {
+      library.value = Array.isArray(body) ? (body as MaterialSummary[]) : []
+    })
   } catch (cause) {
-    loadError.value = cause instanceof Error ? cause.message : '未知错误'
+    ticket.commit(() => {
+      loadError.value = cause instanceof Error ? cause.message : '未知错误'
+    })
   } finally {
-    loading.value = false
+    ticket.commit(() => {
+      loading.value = false
+    })
   }
 }
 
@@ -183,6 +200,8 @@ async function diff() {
     diffError.value = '两份材料不能相同，请选择两份不同的材料'
     return
   }
+  // request scope：运行期间切换 Review 或再次运行时，迟到响应直接丢弃。
+  const ticket = diffScope.begin({ reviewId: reviewId.value, purpose: 'diff' as const })
   diffing.value = true
   diffError.value = ''
   const payload: DiffRequest = { material_id_before: materialIdBefore.value, material_id_after: materialIdAfter.value }
@@ -194,12 +213,19 @@ async function diff() {
     })
     const body = await response.json().catch(() => null)
     if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`)
-    result.value = body as DiffResponse
+    const compared = body as DiffResponse
+    ticket.commit(() => {
+      result.value = compared
+    })
   } catch (cause) {
-    result.value = null
-    diffError.value = cause instanceof Error ? cause.message : '未知错误'
+    ticket.commit(() => {
+      result.value = null
+      diffError.value = cause instanceof Error ? cause.message : '未知错误'
+    })
   } finally {
-    diffing.value = false
+    ticket.commit(() => {
+      diffing.value = false
+    })
   }
 }
 
@@ -253,20 +279,27 @@ async function ensureBlocks() {
     : [materialIdBefore.value, materialIdAfter.value]
   const missing = ids.filter((id) => id !== '' && !(id in blocksByMaterial.value))
   if (missing.length === 0 || blocksUnavailable.value) return
+  const ticket = blocksScope.begin({ reviewId: reviewId.value, purpose: 'blocks' as const })
   for (const id of missing) {
     try {
       const response = await fetch(`/api/v1/materials/${encodeURIComponent(id)}`)
       const body = await response.json().catch(() => null)
       if (!response.ok) {
-        blocksUnavailable.value = true
+        ticket.commit(() => {
+          blocksUnavailable.value = true
+        })
         return
       }
-      blocksByMaterial.value = {
-        ...blocksByMaterial.value,
-        [id]: Array.isArray(body?.blocks) ? (body.blocks as Block[]) : [],
-      }
+      ticket.commit(() => {
+        blocksByMaterial.value = {
+          ...blocksByMaterial.value,
+          [id]: Array.isArray(body?.blocks) ? (body.blocks as Block[]) : [],
+        }
+      })
     } catch {
-      blocksUnavailable.value = true
+      ticket.commit(() => {
+        blocksUnavailable.value = true
+      })
       return
     }
   }
@@ -311,6 +344,12 @@ async function openInReader(finding: ConsistencyFinding, citation: ConsistencyFi
     `/reviews/${reviewId.value}/reader/${clickedBlock.document_id}?b=${citation.block_id}&s=${citation.start}&e=${citation.end}`,
   )
 }
+
+onBeforeUnmount(() => {
+  diffScope.invalidate()
+  loadScope.invalidate()
+  blocksScope.invalidate()
+})
 
 loadLibrary()
 </script>

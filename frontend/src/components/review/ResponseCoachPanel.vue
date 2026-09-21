@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import type { CoachClaim, CoachSource, CoachSourceRef } from '../../types/contracts'
 import { useSessionStore } from '../../stores/session'
 import { ApiFailure } from '../../services/reviews'
 import { checkAnswer, coachFingerprint } from '../../services/responseCoach'
+import { createRequestScope } from '../../utils/requestScope'
 
 // 练习回答（Response Coach）：用户先写出回答，系统检查这条回答能否由带入的来源支持。
 // 状态存 session（草稿/来源勾选/最近反馈），页面内切换不丢；session-only，不伪装长期保存。
@@ -49,6 +50,11 @@ const stale = computed(() => feedback.value !== null && feedback.value.fingerpri
 const checking = ref(false)
 const error = ref('')
 
+// REQUEST IDENTITY：这个响应是否仍属于发起时的 storageKey + 内容 fingerprint。
+// 内容与身份的匹配（fingerprint 渲染 stale）仍由上面的 fingerprint 逻辑负责，二者不混用。
+const scope = createRequestScope()
+onBeforeUnmount(() => scope.invalidate())
+
 function errorMessage(cause: unknown): string {
   const code = cause instanceof ApiFailure ? cause.code : ''
   if (code === 'llm_unconfigured') return '回答检查暂未就绪。'
@@ -58,7 +64,8 @@ function errorMessage(cause: unknown): string {
 
 async function check() {
   if (checking.value || answer.value.trim() === '') return
-  const requestFingerprint = fingerprint.value
+  // 发起时同时捕获 storageKey 与内容 fingerprint；写入必须用捕获值，绝不用响应回来时的 props。
+  const ticket = scope.begin({ storageKey: props.storageKey, fingerprint: fingerprint.value })
   checking.value = true
   error.value = ''
   try {
@@ -70,11 +77,17 @@ async function check() {
       sourceRefs: sourceRefs.value,
     })
     // 存的是发起时的 fingerprint：请求期间回答被改动，反馈自然变 stale，不冒充当前结果。
-    session.saveCoachDraft(props.storageKey, { feedback: { fingerprint: requestFingerprint, response } })
+    ticket.commit((context) => {
+      session.saveCoachDraft(context.storageKey, { feedback: { fingerprint: context.fingerprint, response } })
+    })
   } catch (cause) {
-    error.value = errorMessage(cause)
+    ticket.commit(() => {
+      error.value = errorMessage(cause)
+    })
   } finally {
-    checking.value = false
+    ticket.commit(() => {
+      checking.value = false
+    })
   }
 }
 

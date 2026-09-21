@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ConsistencyFinding, MaterialPreflightSummary, MaterialSummary } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
 import { useSessionStore } from '../../stores/session'
 import { reviewsApi } from '../../services/reviews'
 import { materialIdentity } from '../../utils/materialIdentity'
-import { createAsyncGuard } from '../../utils/asyncGuard'
+import { createRequestScope } from '../../utils/requestScope'
 import type { ActionItemModel } from '../../types/action'
 import ActionItem from '../../components/action/ActionItem.vue'
 import EmptyState from '../../components/review/EmptyState.vue'
@@ -42,8 +42,8 @@ async function deleteReview() {
 const materials = ref<MaterialSummary[]>([])
 const summaries = ref<MaterialPreflightSummary[]>([])
 const factsError = ref('')
-// 事实加载独立代次：切换 Review 后旧事实不得覆盖新上下文。
-const factsGuard = createAsyncGuard()
+// 事实加载独立 scope：切换 Review 后旧事实不得覆盖新上下文；卸载同样作废。
+const factsScope = createRequestScope()
 
 // 关键陈述信号：按成员并行拉取（确定性 GET），总数是真实状态；失败记为未运行。
 const signalCounts = ref<Record<string, number> | null>(null)
@@ -61,7 +61,7 @@ interface DiffSnapshot {
 }
 
 async function loadFacts() {
-  const token = factsGuard.next()
+  const ticket = factsScope.begin({ reviewId: review.value?.id ?? '' })
   factsError.value = ''
   signalCounts.value = null
   try {
@@ -69,16 +69,21 @@ async function loadFacts() {
       fetch('/api/v1/materials'),
       fetch('/api/v1/preflight-summaries'),
     ])
-    if (!factsGuard.isCurrent(token)) return
     const materialsBody = await materialsResponse.json().catch(() => null)
     const summariesBody = await summariesResponse.json().catch(() => null)
     if (!materialsResponse.ok) throw new Error(materialsBody?.message ?? `HTTP ${materialsResponse.status}`)
     if (!summariesResponse.ok) throw new Error(summariesBody?.message ?? `HTTP ${summariesResponse.status}`)
-    materials.value = Array.isArray(materialsBody) ? materialsBody : []
-    summaries.value = Array.isArray(summariesBody) ? summariesBody : []
+    const committed = ticket.commit(() => {
+      materials.value = Array.isArray(materialsBody) ? materialsBody : []
+      summaries.value = Array.isArray(summariesBody) ? summariesBody : []
+    })
+    if (!committed) return
   } catch (cause) {
-    if (!factsGuard.isCurrent(token)) return
-    factsError.value = cause instanceof Error ? cause.message : '未知错误'
+    // 迟到的旧上下文不得写入；错误同样经 commit 判定身份。
+    const committed = ticket.commit(() => {
+      factsError.value = cause instanceof Error ? cause.message : '未知错误'
+    })
+    if (!committed) return
   }
 
   const memberIds = (review.value?.materials ?? []).map((member) => member.material_id)
@@ -97,12 +102,14 @@ async function loadFacts() {
       }
     }),
   )
-  if (!factsGuard.isCurrent(token)) return
-  // 任一成员拉取失败都不展示部分总数（那不是真实状态），保持「尚未运行」。
-  if (settled.every(Boolean)) signalCounts.value = counts
+  ticket.commit(() => {
+    // 任一成员拉取失败都不展示部分总数（那不是真实状态），保持「尚未运行」。
+    if (settled.every(Boolean)) signalCounts.value = counts
+  })
 }
 
 watch(() => review.value?.id, loadFacts, { immediate: true })
+onBeforeUnmount(() => factsScope.invalidate())
 
 const reviewId = computed(() => review.value?.id ?? '')
 const members = computed(() => review.value?.materials ?? [])
