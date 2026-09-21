@@ -10,8 +10,10 @@ import re
 
 from . import llm
 from .contracts import Block, ConsistencyCitation, ConsistencyFinding, RepairSuggestion
-from .claim_inspector import inspect_statements, locator_label
+from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
+from .evidence import QuoteNotFound, SpanMismatch
+from .source_authority import SourceAuthority, SourceRuleViolation, SourceScope, locator_label
 
 SUGGESTION_MAX_CHARS = 200
 ACTION_MAX_CHARS = 40
@@ -44,16 +46,23 @@ class CitationMismatch(Exception):
 def verify_citations(
     finding: ConsistencyFinding, blocks: list[Block]
 ) -> list[tuple[ConsistencyCitation, Block]]:
-    """逐条复验 quote == text[start:end]；返回 (citation, block) 对供拼 prompt。"""
-    blocks_by_id = {block.id: block for block in blocks}
+    """经统一 SourceAuthority 逐条复验；返回 (citation, block) 对供拼 prompt。
+
+    角色失败策略：Repair 的引用对不上 → fail 当前请求（400 citation_mismatch），不静默跳过。
+    """
+    scope = SourceScope.from_blocks(blocks)
+    authority = SourceAuthority(scope)
     verified: list[tuple[ConsistencyCitation, Block]] = []
     for citation in finding.citations:
-        block = blocks_by_id.get(citation.block_id)
-        if block is None:
-            raise CitationMismatch("引用指向的 Block 不在该材料中", [f"block_id={citation.block_id}"])
-        if not (0 <= citation.start < citation.end <= len(block.text)) or (
-            block.text[citation.start : citation.end] != citation.quote
-        ):
+        try:
+            resolved = authority.resolve(
+                citation.block_id, citation.quote, start=citation.start, end=citation.end
+            )
+        except SourceRuleViolation as exc:
+            raise CitationMismatch(
+                "引用指向的 Block 不在该材料中", [f"block_id={citation.block_id}"]
+            ) from exc
+        except (QuoteNotFound, SpanMismatch) as exc:
             raise CitationMismatch(
                 "引用与 Block 原文不一致",
                 [
@@ -61,8 +70,8 @@ def verify_citations(
                     f"quote={citation.quote}",
                     f"span=[{citation.start},{citation.end})",
                 ],
-            )
-        verified.append((citation, block))
+            ) from exc
+        verified.append((citation, scope.blocks[resolved.block_id]))
     return verified
 
 

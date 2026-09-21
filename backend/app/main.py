@@ -8,6 +8,7 @@ from typing import Literal
 from . import (
     criteria_builder,
     cross_compare,
+    database,
     diff,
     grill,
     llm,
@@ -79,8 +80,8 @@ from .storage import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时确保 SQLite 表和 data 目录存在；不做迁移。
-    storage.init_db()
+    # 启动时检查 schema 版本并在单一事务内完成初始化/迁移；不支持未来版本则拒绝启动。
+    database.init_db()
     # backend/.env（如存在）加载到环境；不覆盖既有环境变量。
     llm.load_env_file()
     # 评分标准文件仓：非法/重复文件直接拒绝启动，不降级为空列表。

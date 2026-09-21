@@ -16,8 +16,8 @@ from pathlib import Path
 
 from openai import APIConnectionError, APITimeoutError, OpenAI, OpenAIError
 
-from .claim_inspector import locator_label
 from .contracts import Block, Criterion
+from .source_authority import locator_label
 
 PROMPT_VERSION = "p5-criterion-preflight-v2.6"
 MAX_PROMPT_CHARS = 24000

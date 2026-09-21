@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app import database
 from app import main, storage
 from app.contracts import Block, Locator
 from app.markdown_preview import build_preview
@@ -79,18 +80,18 @@ class InspectStatementsTest(unittest.TestCase):
 
 
 class StatementSignalsApiTest(unittest.TestCase):
-    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+    """API 直调 + patch database.connect 到 temp DB，避免读写开发库。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "signals.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         self.material = storage.save_material(build_preview("api.md", TEXT.encode("utf-8")))
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         self._tmp.cleanup()
 
     def test_saved_material_returns_signals(self) -> None:

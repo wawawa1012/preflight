@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from app import database
 from app import main, storage
 from app.contracts import MaterialRevisionCreate, SourcePreview
 from app.markdown_preview import PreviewRejected, build_preview
@@ -184,16 +185,16 @@ class DocxEvidencePlumbingTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "docx-plumbing.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         self.preview = build_source_preview("report.docx", fixture("docx_body_table_body.docx"))
         self.material = storage.save_material(
             self.preview, source_bytes=fixture("docx_body_table_body.docx")
         )
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         self._tmp.cleanup()
 
     def test_save_round_trip_and_source_bytes(self) -> None:
@@ -242,16 +243,16 @@ class TxtRevisionLoopTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "txt-revision.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         parent_bytes = "第一行\n\n第三行\n".encode("utf-8")
         self.parent = storage.save_material(
             build_source_preview("draft.txt", parent_bytes), source_bytes=parent_bytes
         )
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         self._tmp.cleanup()
 
     def test_txt_revision_preserves_blank_lines_and_format(self) -> None:

@@ -9,6 +9,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
+from app import database
 from app import main, rubric_store, storage
 from app.contracts import Criterion, MaterialRevisionCreate, Rubric
 from app.markdown_preview import PreviewRejected, build_preview
@@ -30,7 +31,7 @@ def synthetic_rubric(rubric_id: str = "rubric_syn", revision: int = 1) -> Rubric
 
 
 def count_rows(db: Path, table: str) -> int:
-    with closing(storage.connect(db)) as connection:
+    with closing(database.connect(db)) as connection:
         return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
@@ -38,7 +39,7 @@ class RevisionStorageTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "revisions.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric(), ("rubric_other", 2): synthetic_rubric("rubric_other", 2)})
         self.parent = self._material("draft.md", TEXT_V1)
 
@@ -95,10 +96,10 @@ class RevisionStorageTest(unittest.TestCase):
         result = self._revision(self.parent.id)
         child, _ = result
         other = self._material("other.md", "别的材料")
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             with self.assertRaises(storage.StorageConflict):
                 storage._insert_revision_relation(connection, child.id, other.id, "2026-01-01T00:00:00+00:00")
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             row = connection.execute(
                 "SELECT parent_material_id FROM material_revisions WHERE child_material_id = ?", (child.id,)
             ).fetchone()
@@ -195,7 +196,7 @@ class RevisionStorageTest(unittest.TestCase):
         self.assertEqual(context.parent.material_id, self.parent.id)
         self.assertFalse(context.parent.parent_available)
         self.assertEqual(count_rows(self.db, "material_revisions"), 1)
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             row = connection.execute(
                 "SELECT parent_material_id FROM material_revisions WHERE child_material_id = ?", (child.id,)
             ).fetchone()
@@ -236,19 +237,19 @@ class RevisionStorageTest(unittest.TestCase):
 
 
 class RevisionApiTest(unittest.TestCase):
-    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+    """API 直调 + patch database.connect 到 temp DB，避免读写开发库。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "revision-api.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric(), ("rubric_other", 2): synthetic_rubric("rubric_other", 2)})
         self.parent = storage.save_material(build_preview("draft.md", TEXT_V1.encode("utf-8")))
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         rubric_store.reset_index()
         self._tmp.cleanup()
 

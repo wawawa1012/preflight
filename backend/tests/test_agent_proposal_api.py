@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app import database
 from app import llm, main, rubric_store, storage
 from app.contracts import AgentProposalCreate, Criterion, ProposalCandidateReject, Rubric
 from app.markdown_preview import build_preview
@@ -30,9 +31,9 @@ class AgentProposalApiTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "api.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric()})
 
         self._original_propose = llm.propose_candidates
@@ -42,7 +43,7 @@ class AgentProposalApiTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         llm.propose_candidates = self._original_propose
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         rubric_store.reset_index()
         self._tmp.cleanup()
 

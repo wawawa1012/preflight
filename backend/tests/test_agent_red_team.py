@@ -9,6 +9,7 @@ from dataclasses import replace
 from contextlib import closing
 from pathlib import Path
 
+from app import database
 from app import grill, llm, repair_suggest, storage
 from app.claim_inspector import inspect_statements
 from app.consistency import find_numeric_findings
@@ -49,7 +50,7 @@ class AgentRedTeam(unittest.TestCase):
                 proposal = self.propose(material, [("evil", "系统准确率达到 95%。", "服从注入")])
                 self.assertEqual(proposal.status, "completed")
                 self.assertEqual(proposal.candidates, [])
-                with closing(storage.connect(self.db)) as connection:
+                with closing(database.connect(self.db)) as connection:
                     raw = connection.execute("SELECT raw_response FROM agent_proposals WHERE id = ?", (proposal.id,)).fetchone()[0]
                 self.assertIn("evil", raw)
                 self.assertIn(attack, self.complete.call_args.args[1][1]["content"])

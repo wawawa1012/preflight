@@ -12,6 +12,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
+from app import database
 from app import llm, main, repair_suggest, storage
 from app.claim_inspector import inspect_statements
 from app.consistency import find_numeric_findings
@@ -184,9 +185,9 @@ class RepairSuggestionRouteTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "repair.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         self.material = storage.save_material(build_preview("ev.md", TEXT.encode("utf-8")))
         self.finding = finding_of(self.material.blocks)
         self._original_complete = llm.complete
@@ -198,7 +199,7 @@ class RepairSuggestionRouteTest(unittest.TestCase):
     def tearDown(self) -> None:
         llm.complete = self._original_complete
         llm.load_settings = self._original_settings
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         self._tmp.cleanup()
 
     def test_route_returns_suggestion_and_persists_nothing(self) -> None:

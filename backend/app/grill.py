@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 
 from . import llm
-from .claim_inspector import inspect_statements, line_number_of
+from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
     GRILL_PROMPT_MAX_CHARS,
@@ -22,6 +22,8 @@ from .contracts import (
     Locator,
     SavedMaterial,
 )
+from .evidence import QuoteNotFound, SpanMismatch
+from .source_authority import SourceAuthority, SourceRuleViolation, SourceScope
 
 MAX_QUESTIONS = 5
 MAX_STATEMENTS_IN_PROMPT = 8
@@ -123,25 +125,26 @@ class RawQuestion:
 def prepare_sources(
     findings: list[ConsistencyFinding], statements: list[DetectedStatement], blocks: list[Block]
 ) -> list[Source]:
-    by_id = {block.id: block for block in blocks}
+    authority = SourceAuthority(SourceScope.from_blocks(blocks))
     sources: list[Source] = []
     seen: set[tuple[str, int, int]] = set()
 
     def add(item: DetectedStatement | ConsistencyCitation, basis: str, trigger: str) -> None:
-        block = by_id.get(item.block_id)
-        if block is None or not (0 <= item.start < item.end <= len(block.text)):
+        # 角色失败策略：来源不可复验的候选在这里静默跳过（宁少勿错）。
+        try:
+            resolved = authority.resolve(
+                item.block_id, item.quote, start=item.start, end=item.end,
+                context_radius=CONTEXT_RADIUS,
+            )
+        except (SourceRuleViolation, QuoteNotFound, SpanMismatch):
             return
-        if block.text[item.start:item.end] != item.quote:
-            return
-        key = (item.block_id, item.start, item.end)
+        key = (resolved.block_id, resolved.start, resolved.end)
         if key in seen:
             return
         seen.add(key)
-        # A numeric token alone loses its subject. Include only bounded local context.
-        context = block.text[max(0, item.start - CONTEXT_RADIUS):item.end + CONTEXT_RADIUS]
-        sources.append(Source(f"s{len(sources) + 1}", item.block_id, item.quote,
-                              item.start, item.end, basis, context, trigger,
-                              line_number_of(block), block.locator))
+        sources.append(Source(f"s{len(sources) + 1}", resolved.block_id, resolved.quote,
+                              resolved.start, resolved.end, basis, resolved.context or "", trigger,
+                              resolved.line_number, resolved.locator))
 
     for finding in findings:
         basis = f"{finding.kind}；度量词：{finding.measure}；不同数值：{'、'.join(finding.values)}"
@@ -193,17 +196,19 @@ def verify_questions(questions: list[RawQuestion], sources: list[Source], blocks
         # Production preparation creates unique IDs; fail closed if that invariant breaks.
         logger.warning("grill source pool has duplicate IDs; refusing ambiguous lookup")
         return []
-    by_block = {b.id: b for b in blocks}
+    # Re-verify against the freshly loaded blocks through the same source rule.
+    authority = SourceAuthority(SourceScope.from_blocks(blocks))
     verified = []
     seen: set[tuple[str, str]] = set()
     for question in questions:
         source = by_source.get(question.source_id)
         if source is None:
             continue
-        block = by_block.get(source.block_id)
-        if block is None or not (0 <= source.start < source.end <= len(block.text)):
-            continue
-        if block.text[source.start:source.end] != source.quote:
+        try:
+            resolved = authority.resolve(
+                source.block_id, source.quote, start=source.start, end=source.end
+            )
+        except (SourceRuleViolation, QuoteNotFound, SpanMismatch):
             continue
         # Narrow regression guard only, not a general relevance classifier.
         generic = re.sub(r"[\s，。！？?,.!：:]", "", question.prompt)
@@ -215,11 +220,11 @@ def verify_questions(questions: list[RawQuestion], sources: list[Source], blocks
         seen.add(key)
         verified.append(GrillQuestion(
             prompt=question.prompt,
-            quote=source.quote,
-            block_id=source.block_id,
-            locator=block.locator,
-            start=source.start,
-            end=source.end,
+            quote=resolved.quote,
+            block_id=resolved.block_id,
+            locator=resolved.locator,
+            start=resolved.start,
+            end=resolved.end,
             trigger=source.trigger,
             why=why_question(source.trigger),
             preparation=preparation_checklist(source.trigger),

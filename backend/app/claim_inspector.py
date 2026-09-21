@@ -6,32 +6,10 @@
 """
 import re
 
-from .contracts import Block, DetectedStatement, Locator
+from .contracts import Block, DetectedStatement
+from .source_authority import line_number_of
 
 MAX_STATEMENTS = 20
-
-
-def line_number_of(block: Block) -> int | None:
-    """真实行号只对行格式存在；非行来源一律 null，不用 index 冒充行号。"""
-    return block.locator.index if block.locator.kind == "line" else None
-
-
-def locator_label(locator: Locator) -> str:
-    """人类可读的位置标签；prompt 与非行来源展示共用，避免把段落/表格说成行。"""
-    if locator.kind == "line":
-        return f"line {locator.index}"
-    if locator.kind == "paragraph":
-        return f"paragraph {locator.index}"
-    if locator.kind == "page":
-        return f"page {locator.index}"
-    if locator.kind == "slide":
-        return f"slide {locator.index}"
-    if locator.kind == "table_cell":
-        return (
-            f"table {locator.index} row {locator.row_index} cell {locator.cell_index}"
-            f" paragraph {locator.paragraph_index}"
-        )
-    return f"{locator.kind} {locator.index}"
 
 PERCENTAGE_PATTERN = re.compile(r"\d+(?:\.\d+)?%")
 ABSOLUTE_PATTERN = re.compile(r"首创|唯一|完全解决|100%")
@@ -85,7 +63,7 @@ def inspect_statements(blocks: list[Block]) -> list[DetectedStatement]:
             found.append(
                 DetectedStatement(
                     block_id=block.id,
-                    line_number=line_number_of(block),
+                    line_number=line_number_of(block.locator),
                     locator=block.locator,
                     quote=text[start:end],
                     start=start,

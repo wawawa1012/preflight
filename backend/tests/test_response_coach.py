@@ -13,6 +13,7 @@ from pathlib import Path
 
 from fastapi import Response
 
+from app import database
 from app import llm, main, response_coach, rubric_store, storage
 from app.contracts import (
     Criterion,
@@ -32,7 +33,10 @@ ANSWER = "我们在 240 份文档上做了测试，系统准确率达到 95%。"
 def material_of(text: str, material_id: str = "mat_coach") -> SavedMaterial:
     """预览 Block 与持久化无关；coach 只要求 block_id 能在 material.blocks 里找到。"""
     preview = build_preview("coach.md", text.encode("utf-8"))
-    blocks = [block.model_copy(update={"id": f"blk_{index}"}) for index, block in enumerate(preview.blocks)]
+    blocks = [
+        block.model_copy(update={"id": f"blk_{index}", "document_id": material_id})
+        for index, block in enumerate(preview.blocks)
+    ]
     return SavedMaterial(
         id=material_id,
         filename="coach.md",
@@ -380,14 +384,14 @@ def synthetic_rubric() -> Rubric:
 
 
 class CoachRouteTest(unittest.TestCase):
-    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+    """API 直调 + patch database.connect 到 temp DB，避免读写开发库。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "coach.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric()})
         self.material = storage.save_material(build_preview("coach.md", TEXT.encode("utf-8")))
         self._original_complete = llm.complete
@@ -399,7 +403,7 @@ class CoachRouteTest(unittest.TestCase):
     def tearDown(self) -> None:
         llm.complete = self._original_complete
         llm.load_settings = self._original_settings
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         rubric_store.reset_index()
         self._tmp.cleanup()
 

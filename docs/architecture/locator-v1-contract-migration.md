@@ -22,7 +22,8 @@
 
 `SourceRef`：`material_id`、`block_id`、`start`、`end`、`quote`（span 为 Unicode code point 半开区间）。
 
-服务端规则（`evidence.resolve_source_ref`，HTTP / 下游共用同一实现）：
+服务端规则（`evidence.resolve_source_ref` 纯文本规则，由 `source_authority.SourceAuthority` 在固定
+`SourceScope` 内统一执行 scope 归属 + block 归属 + span/quote 复验）：
 
 1. 位置权威是服务端：Locator 由服务端从 Block 解析；客户端/模型只能提交 `block_id` + `quote`（+ 可选精确 `start`/`end`）。
 2. 材料归属：`block_id` 必须属于目标 `material_id`，否则 404 `block_not_found`（HTTP 路径不泄露跨材料 block 的存在性）。
@@ -30,6 +31,9 @@
 4. 显式 span：`start`/`end` 必须同时提供；`0 <= start < end <= len(text)` 且 `text[start:end] == quote` 逐字复验。复验失败 400 `span_mismatch`，**绝不静默退回第一次匹配**。重复文本允许用显式 span 选择第二次及以后的 occurrence。
 5. 显式 span 指向的位置服务端照实保存；读取时必须仍满足 `text[start:end] == quote`（Block 文本不可变，故失效即数据损坏，读取路径报 `span_mismatch`）。
 6. 旧已确认 annotation / link / binding / revision 不改变位置与身份：迁移只回填 Locator 字段，不改 `start`/`end`/`quote`/ID。
+7. 结构不变量：`SourceScope` 只包含调用方已加载且允许访问的材料/blocks；`ResolvedSource` 只证明
+   「引用位于允许的材料中」，不证明相关、充分支持或事实正确；失败类型由规则抛出、失败策略由角色决定
+   （人工输入 400、LLM 候选丢弃、Repair fail 当前请求），SourceAuthority 不决定 HTTP status、不查全库。
 
 ## 3. 契约增量（contracts.py）
 
@@ -50,7 +54,11 @@
 
 兼容原则：Markdown/TXT 的值与旧 wire 完全一致；新增字段只增不改；`line_number` 仅在非行来源为 null。
 
-## 4. 持久化与迁移（storage.py）
+## 4. 持久化（storage.py）与迁移（database.py / migrations.py）
+
+边界：`database.py` 只负责连接配置与初始化入口（`connect`/`init_db`）；`migrations.py` 独占
+schema bootstrap、版本检查、迁移事务与外键生命周期；`storage.py` 只做业务读写与业务原子事务
+（revision、first binding + membership、annotation/link 写入），不 import parser/source_ingest。
 
 新列：
 
@@ -60,11 +68,12 @@
 
 迁移：
 
-- 版本号用 `PRAGMA user_version`（本次 `SCHEMA_VERSION = 1`），`schema_migrations` 不需要；版本单调、可重复执行（已到版本即 no-op）。
-- legacy（user_version=0 且存在旧 `blocks.line_number`）在同一事务中重建 `blocks`/`materials`：`CREATE new → INSERT SELECT（line_number→index、kind='line'、format='md'、parser_version=NULL、source_bytes=NULL）→ DROP old → RENAME`；Block ID、material ID、annotation span、link、revision、binding 全部原样保留。
-- FK 处理：重建在 `PRAGMA foreign_keys=OFF` 下进行（该 pragma 不能在事务内切换），事务提交前执行 `PRAGMA foreign_key_check`，有违规即回滚；提交后再恢复 `foreign_keys=ON`。子表只引用 `blocks(id)`/`materials(id)`，ID 不变故引用不悬空。
-- 失败回滚：重建 + `user_version` 更新在同一事务；任一步失败由 `with connection` 整体 rollback，旧表与旧版本号原样保留，不留半迁移。目标表名先建临时名、成功后才 RENAME，DROP 也只针对旧表。
-- 全新库：直接按新 schema 建表并写版本号，不走重建路径。
+- 版本号用 `PRAGMA user_version`（`migrations.SCHEMA_VERSION = 1`）；`version == supported` → no-op，`version > supported` → `UnsupportedSchemaVersion` 明确拒绝启动。
+- 一次 `bootstrap` 是单一原子边界：schema 创建（逐条 execute，不用会隐式 COMMIT 的 `executescript`）+ legacy 重建 + `foreign_key_check` + 版本号写入全部在显式 `BEGIN IMMEDIATE` 内；任一步失败整体 rollback，不留 `*_locator_v1` 临时表或半初始化库。
+- legacy（user_version=0 且存在旧 `blocks.line_number`）重建 `blocks`/`materials`：`CREATE new → INSERT SELECT（line_number→index、kind='line'、format='md'、parser_version=NULL、source_bytes=NULL）→ DROP old → RENAME`；Block ID、material ID、annotation span、link、revision、binding 全部原样保留。
+- 调用方事务：`connection.in_transaction` 为真时直接拒绝（`MigrationError`），不隐式提交/回滚调用方事务。
+- FK 生命周期：进入前记录原 on/off；重建期间 FK OFF（该 pragma 在事务内会被静默忽略，故在 BEGIN 之前设置并复验）；结束（无论成败）恢复原状态并再次复验。子表只引用 `blocks(id)`/`materials(id)`，ID 不变故引用不悬空。
+- 全新库：同一事务内建 schema 并写版本号，不走重建路径。
 
 ## 5. 解析接入边界（B2 接口）
 

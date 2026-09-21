@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import Response
 from pydantic import ValidationError
 
+from app import database
 from app import main, rubric_store, storage
 from app.contracts import Criterion, CriterionEvidenceLinkCreate, Rubric, RubricBindingCreate
 from app.markdown_preview import build_preview
@@ -34,7 +35,7 @@ class LinkStorageTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "test.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         self.material = storage.save_material(
             build_preview("ev.md", TEXT.encode("utf-8")), self.db
         )
@@ -101,7 +102,7 @@ class LinkStorageTest(unittest.TestCase):
 
     def test_tampered_span_is_rejected_without_rows(self) -> None:
         self._bind()
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             connection.execute(
                 "UPDATE evidence_annotations SET quote = ? WHERE id = ?", ("被篡改的引用", self.annotation.id)
             )
@@ -137,7 +138,7 @@ class LinkStorageTest(unittest.TestCase):
         annotation = storage.save_evidence_annotation(target.blocks[0].id, "甲", db_path=self.db)
         storage.bind_material_rubric(target.id, "rubric_syn", 1, self.db)
         link = storage.create_link(target.id, annotation.id, "c_syn_1", "理由", db_path=self.db)
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             connection.execute("DELETE FROM materials WHERE id = ?", (target.id,))
         self.assertIsNone(storage.get_binding(target.id, self.db))
         self.assertIsNone(storage.get_evidence_annotation(annotation.id, self.db))
@@ -145,20 +146,20 @@ class LinkStorageTest(unittest.TestCase):
 
 
 class LinkApiTest(unittest.TestCase):
-    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+    """API 直调 + patch database.connect 到 temp DB，避免读写开发库。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "api.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric()})
         self.material = storage.save_material(build_preview("ev.md", TEXT.encode("utf-8")))
         self.annotation = storage.save_evidence_annotation(self.material.blocks[0].id, QUOTE)
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         rubric_store.reset_index()
         self._tmp.cleanup()
 

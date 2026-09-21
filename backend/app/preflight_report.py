@@ -2,7 +2,6 @@
 from pathlib import Path
 
 from . import rubric_store, storage
-from .claim_inspector import line_number_of
 from .contracts import (
     MaterialPreflightCitation,
     MaterialPreflightCriterionRow,
@@ -10,7 +9,7 @@ from .contracts import (
     MaterialPreflightReport,
     MaterialPreflightSummary,
 )
-from .evidence import span_matches
+from .source_authority import SourceAuthority, SourceScope
 from .storage import RubricNotBound
 
 SCOPE_TMPL = (
@@ -31,7 +30,8 @@ def _resolve_rubric(material_id: str, db_path: Path) -> tuple:
     return binding, rubric
 
 
-def _assemble_criteria(material, rubric, links, annotations, blocks_by_id) -> list[MaterialPreflightCriterionRow]:
+def _assemble_criteria(material, rubric, links, annotations) -> list[MaterialPreflightCriterionRow]:
+    authority = SourceAuthority(SourceScope.from_material(material))
     rows: list[MaterialPreflightCriterionRow] = []
     for criterion in rubric.criteria:
         citations: list[MaterialPreflightCitation] = []
@@ -41,26 +41,28 @@ def _assemble_criteria(material, rubric, links, annotations, blocks_by_id) -> li
             annotation = annotations.get(link.annotation_id)
             if annotation is None:
                 continue  # 关联残留不该发生（FK CASCADE）；跳过，不要崩
-            block = blocks_by_id.get(annotation.block_id)
-            if block is None:
-                continue  # Block 不存在时不能伪造 locator
-            if not span_matches(
-                block.text, annotation.source.start, annotation.source.end, annotation.source.quote
-            ):
-                continue  # 原文是事实源：存储的 span 与不可变 Block 不一致时不展示为已验证引用
+            # 角色失败策略：读取路径只展示可复验引用，失效 span 不进入已验证引用。
+            resolved = authority.verify(
+                annotation.block_id,
+                annotation.source.quote,
+                start=annotation.source.start,
+                end=annotation.source.end,
+            )
+            if resolved is None:
+                continue
             citations.append(
                 MaterialPreflightCitation(
                     link_id=link.id,
                     annotation_id=annotation.id,
                     criterion_id=criterion.id,
-                    block_id=annotation.block_id,
-                    line_number=line_number_of(block),
-                    locator=block.locator,
-                    quote=annotation.source.quote,
+                    block_id=resolved.block_id,
+                    line_number=resolved.line_number,
+                    locator=resolved.locator,
+                    quote=resolved.quote,
                     rationale=link.rationale,
                     proposed_by=link.proposed_by,
-                    start=annotation.source.start,
-                    end=annotation.source.end,
+                    start=resolved.start,
+                    end=resolved.end,
                 )
             )
         if citations:
@@ -108,8 +110,7 @@ def assemble_report(
         return None
     _, rubric = _resolve_rubric(material_id, db_path)
     links, annotations = _load_scope(material_id, db_path)
-    blocks_by_id = {block.id: block for block in material.blocks}
-    rows = _assemble_criteria(material, rubric, links, annotations, blocks_by_id)
+    rows = _assemble_criteria(material, rubric, links, annotations)
     return MaterialPreflightReport(
         material_id=material.id,
         filename=material.filename,
@@ -164,8 +165,7 @@ def assemble_summaries(db_path: Path = storage.DEFAULT_DB_PATH) -> list[Material
             )
             continue
         links, annotations = _load_scope(item.id, db_path)
-        blocks_by_id = {block.id: block for block in material.blocks}
-        rows = _assemble_criteria(material, rubric, links, annotations, blocks_by_id)
+        rows = _assemble_criteria(material, rubric, links, annotations)
         with_citations = sum(1 for row in rows if row.citations)
         summaries.append(
             MaterialPreflightSummary(

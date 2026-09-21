@@ -16,7 +16,7 @@ from typing import Annotated, Literal
 from pydantic import Field, ValidationError
 
 from . import grill, llm
-from .claim_inspector import inspect_statements, line_number_of
+from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
     COACH_CLAIM_MAX_CHARS,
@@ -29,7 +29,8 @@ from .contracts import (
     ResponseCoachResponse,
     SavedMaterial,
 )
-from .evidence import QuoteNotFound, SpanMismatch, resolve_source_ref
+from .evidence import QuoteNotFound, SpanMismatch
+from .source_authority import SourceAuthority, SourceRuleViolation, SourceScope
 
 MAX_SERVER_SOURCES = 12
 MAX_ASPECTS = 6
@@ -128,38 +129,36 @@ def build_source_pool(material: SavedMaterial, refs) -> list[grill.Source]:
     findings = find_numeric_findings(statements, material.blocks)
     pool = list(grill.prepare_sources(findings, statements, material.blocks)[:MAX_SERVER_SOURCES])
     seen = {(source.block_id, source.start, source.end) for source in pool}
-    blocks_by_id = {block.id: block for block in material.blocks}
+    authority = SourceAuthority(SourceScope.from_material(material))
     for ref in refs:
-        block = blocks_by_id.get(ref.block_id)
-        if block is None:
-            raise CoachRequestRejected(
-                "source_ref_mismatch", "选择的来源不在该材料中", [f"block_id={ref.block_id}"]
-            )
+        # 角色失败策略：用户显式选择的来源无法复验 → 400 source_ref_mismatch（fail 当前请求）。
         try:
-            start, end = resolve_source_ref(block.text, ref.quote, ref.start, ref.end)
-        except (QuoteNotFound, SpanMismatch) as exc:
+            resolved = authority.resolve(
+                ref.block_id, ref.quote, start=ref.start, end=ref.end,
+                context_radius=grill.CONTEXT_RADIUS,
+            )
+        except (SourceRuleViolation, QuoteNotFound, SpanMismatch) as exc:
             raise CoachRequestRejected(
                 "source_ref_mismatch",
-                "选择的来源 quote 与材料原文不一致",
+                "选择的来源不在该材料中，或 quote 与材料原文不一致",
                 [f"block_id={ref.block_id}", f"quote={ref.quote[:60]}"],
             ) from exc
-        key = (ref.block_id, start, end)
+        key = (resolved.block_id, resolved.start, resolved.end)
         if key in seen:
             continue
         seen.add(key)
-        context = block.text[max(0, start - grill.CONTEXT_RADIUS):end + grill.CONTEXT_RADIUS]
         pool.append(
             grill.Source(
                 f"s{len(pool) + 1}",
-                ref.block_id,
-                ref.quote,
-                start,
-                end,
+                resolved.block_id,
+                resolved.quote,
+                resolved.start,
+                resolved.end,
                 "用户选择的来源",
-                context,
+                resolved.context or "",
                 "generic",
-                line_number_of(block),
-                block.locator,
+                resolved.line_number,
+                resolved.locator,
             )
         )
     return pool

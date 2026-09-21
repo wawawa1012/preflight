@@ -1,5 +1,13 @@
 # Progress log
 
+## 2026-09-21 — Architecture Stabilization：migration 生命周期 + SourceAuthority（分支 codex/next-locator）
+Codex 静态 review 判定 migration BLOCK；本轮只做正确性修复与收拢，不加功能、不改 wire contract。
+- **Migration 生命周期（migrations.py 新增）**：DDL 前显式 `BEGIN IMMEDIATE`（`with connection` 不会在首条 DDL 前 BEGIN）；schema 创建 + legacy 重建 + `foreign_key_check` + `user_version` 写入成为单一原子边界；DDL 逐条 `execute`（`executescript` 会隐式 COMMIT）；`version == supported` no-op，`version > supported` → `UnsupportedSchemaVersion` 拒绝启动；`connection.in_transaction` 为真时拒绝且不提交/回滚调用方事务；FK 进入前记录原状态、结束（成败）恢复并显式复验；临时表只在事务内存在。
+- **Database 边界**：`database.py`（连接配置 + `init_db` 入口）与 `migrations.py`（schema/版本/迁移/FK）；`storage.py` 只保留业务读写与业务原子事务（revision、first binding + membership、annotation/link）。`storage` 删除 `source_ingest` 反向依赖，`format`/`parser_version` 改为调用方显式输入。
+- **SourceAuthority（source_authority.py 新增）**：`SourceScope → SourceAuthority.resolve → ResolvedSource`；统一 material/block 归属、range、quote == text[start:end]、显式 occurrence、code point span 与可选 `material_id` 断言；`resolve_source_ref` 只由 authority 使用，失败类型由规则抛出、失败策略由角色决定（人工 400 / LLM 候选丢弃 / Repair fail 请求 / 报告读取跳过不可复验引用）。位置 helper `line_number_of`/`locator_label` 从 claim_inspector 迁入 source_authority。
+- **消费者迁移**：Evidence annotation 写入、create_link spot-check、proposal candidate 验证与 accept、preflight citation 装配、Grill prepare/verify、Coach source_refs、Repair verify_citations 全部走同一规则；Consistency 改用共享 `span_matches`；业务角色不再手写 `text[start:end] == quote` / 归属判断 / locator.kind 业务分支。
+- **验证（deterministic）**：完整 backend `Ran 518 tests ... OK`；新增迁移失败 4 例 + future version + 事务保护 + FK 状态恢复、SourceAuthority 公共向量（第二次 occurrence/错材料/越界/quote mismatch/非 BMP）、架构 fitness（parser 白名单、storage 无 parser 依赖、角色只经 SourceAuthority、无 locator.kind 业务分支）；`export_contracts.py` + `check_contracts.py` PASS（无契约变化）；TXT/DOCX preview/save/Evidence smoke PASS。live 未跑。
+
 ## 2026-09-21 — B2 parser 消费：TXT/DOCX 走真实 parser（合并 codex/next-parsers）
 分支 `codex/next-locator` 合并 B2 commits `8a0cacc`/`0eb2183`（merge `327cf7a`）；未修改 B2 的 `source_adapters.py`/`txt_adapter.py`/`docx_adapter.py` 及其专属测试。
 - `source_ingest.py` 适配实际接口：`from app.txt_adapter import parse_txt`、`from app.docx_adapter import parse_docx`（`data: bytes -> ParsedSource`）；删除 `read_source_nodes`/`ParserUnavailable` 假定。

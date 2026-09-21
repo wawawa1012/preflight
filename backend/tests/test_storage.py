@@ -5,6 +5,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
+from app import database
 from app import storage
 from app.contracts import MarkdownPreview
 from app.markdown_preview import build_preview
@@ -18,7 +19,7 @@ class StorageTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "test.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -69,7 +70,7 @@ class StorageTest(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             storage.save_material(broken, self.db)
 
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             materials = connection.execute("SELECT COUNT(*) FROM materials").fetchone()[0]
             blocks = connection.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]
         self.assertEqual(materials, 1)
@@ -77,7 +78,7 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(storage.get_recent_material(self.db).id, first.id)
 
     def test_foreign_key_is_enforced(self) -> None:
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute(
                     "INSERT INTO blocks"
@@ -102,7 +103,7 @@ class StorageTest(unittest.TestCase):
         first = storage.save_material(make_preview("A\nA2\n", "a.md"), self.db)
 
         # 用真实 SQLite trigger 在 recent 指针 UPDATE 阶段注入失败。
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             connection.execute(
                 "CREATE TRIGGER reject_recent_update BEFORE UPDATE ON recent_material"
                 " BEGIN SELECT RAISE(ABORT, 'injected failure'); END"
@@ -111,7 +112,7 @@ class StorageTest(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             storage.save_material(make_preview("B\nB2\nB3\n", "b.md"), self.db)
 
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             materials = connection.execute("SELECT COUNT(*) FROM materials").fetchone()[0]
             blocks = connection.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]
         self.assertEqual(materials, 1)  # B 的 Material 0 残留
@@ -121,7 +122,7 @@ class StorageTest(unittest.TestCase):
 
     def test_init_db_is_idempotent_on_populated_database(self) -> None:
         saved = storage.save_material(make_preview("甲\n\n乙\n", "idem.md"), self.db)
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             before = (
                 connection.execute("SELECT COUNT(*) FROM materials").fetchone()[0],
                 connection.execute("SELECT COUNT(*) FROM blocks").fetchone()[0],
@@ -129,9 +130,9 @@ class StorageTest(unittest.TestCase):
                 tuple(row[0] for row in connection.execute("SELECT id FROM blocks ORDER BY id")),
             )
 
-        storage.init_db(self.db)  # 重复初始化：必须保留已有数据与 stable IDs
+        database.init_db(self.db)  # 重复初始化：必须保留已有数据与 stable IDs
 
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             after = (
                 connection.execute("SELECT COUNT(*) FROM materials").fetchone()[0],
                 connection.execute("SELECT COUNT(*) FROM blocks").fetchone()[0],

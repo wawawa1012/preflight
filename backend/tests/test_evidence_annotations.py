@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi.exceptions import RequestValidationError
 
+from app import database
 from app import main, storage
 from app.contracts import EvidenceAnnotationCreate
 from app.evidence import QuoteNotFound, resolve_span
@@ -43,13 +44,13 @@ class AnnotationStorageTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "test.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
 
     def _count_annotations(self) -> int:
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             return connection.execute("SELECT COUNT(*) FROM evidence_annotations").fetchone()[0]
 
     def test_save_get_list_with_server_derived_material(self) -> None:
@@ -98,7 +99,7 @@ class AnnotationStorageTest(unittest.TestCase):
         target = make_material(self.db, "甲\n", "a.md")
         make_material(self.db, "乙\n", "b.md")  # recent 指针指向另一份，删除 target 不受指针外键影响
         annotation = storage.save_evidence_annotation(target.blocks[0].id, "甲", db_path=self.db)
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             connection.execute("DELETE FROM materials WHERE id = ?", (target.id,))
         self.assertIsNone(storage.get_evidence_annotation(annotation.id, self.db))
         self.assertEqual(self._count_annotations(), 0)
@@ -110,7 +111,7 @@ class EvidenceApiErrorTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "api.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         self._originals = (
             storage.save_evidence_annotation,
             storage.get_evidence_annotation,

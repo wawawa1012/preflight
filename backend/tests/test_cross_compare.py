@@ -13,6 +13,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
+from app import database
 from app import cross_compare, main, storage
 from app.claim_inspector import MAX_STATEMENTS, inspect_statements
 from app.consistency import find_numeric_findings
@@ -249,12 +250,12 @@ class CrossCompareRouteTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "compare.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         self._tmp.cleanup()
 
     def save(self, filename: str, text: str) -> SavedMaterial:

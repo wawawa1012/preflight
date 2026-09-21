@@ -5,6 +5,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
+from app import database
 from app import storage
 from app.markdown_preview import build_preview
 from app.storage import CandidateInput
@@ -17,7 +18,7 @@ class AgentProposalTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "test.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         self.material = storage.save_material(build_preview("ev.md", TEXT.encode("utf-8")), self.db)
         self.block = self.material.blocks[0]
 
@@ -97,7 +98,7 @@ class AgentProposalTest(unittest.TestCase):
     def test_accept_is_atomic_under_injected_failure(self) -> None:
         proposal = self.save([self.valid_candidate()])
         candidate_id = proposal.candidates[0].id
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             connection.execute(
                 "CREATE TRIGGER reject_candidate_update BEFORE UPDATE ON proposal_candidates"
                 " BEGIN SELECT RAISE(ABORT, 'injected failure'); END"
@@ -165,7 +166,7 @@ class AgentProposalTest(unittest.TestCase):
         proposal = storage.save_agent_proposal(
             target, "c_syn_1", "rubric_syn", 1, "stub", "m", "p5", "completed", None, "{}", [], self.db
         )
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             connection.execute("DELETE FROM materials WHERE id = ?", (target.id,))
         self.assertIsNone(storage.get_agent_proposal(proposal.id, self.db))
 

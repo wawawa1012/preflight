@@ -9,8 +9,9 @@
 """
 import re
 
-from .claim_inspector import MAX_STATEMENTS, line_number_of
+from .claim_inspector import MAX_STATEMENTS
 from .contracts import Block, ConsistencyCitation, ConsistencyFinding, DetectedStatement
+from .evidence import span_matches
 from .numeric_value import value_key
 
 NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
@@ -114,10 +115,9 @@ class _Measurement:
 def _measurement_for(statement: DetectedStatement, block: Block) -> _Measurement | None:
     """从一条关键陈述提取数值与度量词；span 复验不过或没有数字则 None（宁漏勿错）。"""
     text = block.text
-    if not (0 <= statement.start < statement.end <= len(text)):
+    # 原文是事实源：复用统一 span 规则，对不上就不参与判定。
+    if not span_matches(text, statement.start, statement.end, statement.quote):
         return None
-    if text[statement.start:statement.end] != statement.quote:
-        return None  # 原文是事实源：对不上就不参与判定
     match = NUMBER_PATTERN.search(statement.quote)
     if match is None:
         return None

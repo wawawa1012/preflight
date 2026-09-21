@@ -1,21 +1,20 @@
-"""Locator v1：持久化 round-trip、legacy 迁移/回滚/FK、精确 SourceRef occurrence。
+"""Locator v1：持久化 round-trip、精确 SourceRef occurrence 与下游 locator 兼容。
 
 定向验证：
-- 旧库迁移回填真实 line locator；Block/annotation/link/binding/revision 身份不变；
-- 重复迁移 no-op；失败整体回滚，不留下半迁移；foreign_key_check 干净；
 - 非行 locator 保存→读取不变；line_number/line_count 不伪造（null）；
 - 中文及非 BMP 字符的 code-point span；同块第二次 quote 可精确选择并复验；
-- 错材料/越界/quote mismatch 被拒绝；非行材料拒绝 editable-source。
+- 错材料/越界/quote mismatch 被拒绝；非行材料拒绝 editable-source；
+- 显式 format/parser_version 由解析层传入 storage（storage 不依赖 parser 常量）。
+迁移生命周期测试在 test_migrations.py。
 """
 import asyncio
-import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
-from app import main, storage
+from app import database, main, storage
 from app.contracts import (
     Block,
     EvidenceAnnotationCreate,
@@ -25,220 +24,6 @@ from app.contracts import (
 )
 from app.evidence import QuoteNotFound, SpanMismatch, resolve_source_ref, resolve_span
 from app.markdown_preview import build_preview
-
-LEGACY_SCHEMA = """
-CREATE TABLE materials (
-    id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    sha256 TEXT NOT NULL,
-    line_count INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE blocks (
-    id TEXT PRIMARY KEY,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL,
-    line_number INTEGER NOT NULL,
-    text TEXT NOT NULL,
-    block_index INTEGER NOT NULL,
-    UNIQUE (material_id, ordinal)
-);
-CREATE TABLE recent_material (
-    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-    material_id TEXT NOT NULL REFERENCES materials(id)
-);
-CREATE TABLE evidence_annotations (
-    id TEXT PRIMARY KEY,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
-    start INTEGER NOT NULL,
-    end INTEGER NOT NULL,
-    quote TEXT NOT NULL,
-    note TEXT,
-    proposed_by TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE material_rubric_bindings (
-    material_id TEXT PRIMARY KEY REFERENCES materials(id) ON DELETE CASCADE,
-    rubric_id TEXT NOT NULL,
-    rubric_revision INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE criterion_evidence_links (
-    id TEXT PRIMARY KEY,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    annotation_id TEXT NOT NULL REFERENCES evidence_annotations(id) ON DELETE CASCADE,
-    rubric_id TEXT NOT NULL,
-    rubric_revision INTEGER NOT NULL,
-    criterion_id TEXT NOT NULL,
-    rationale TEXT NOT NULL,
-    proposed_by TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    UNIQUE (annotation_id, criterion_id, rubric_revision)
-);
-CREATE TABLE reviews (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    rubric_id TEXT NOT NULL,
-    rubric_revision INTEGER NOT NULL CHECK (rubric_revision >= 1),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE TABLE review_materials (
-    review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    label TEXT NOT NULL,
-    position INTEGER NOT NULL CHECK (position >= 0),
-    PRIMARY KEY (review_id, material_id)
-);
-CREATE TABLE material_revisions (
-    child_material_id TEXT PRIMARY KEY REFERENCES materials(id) ON DELETE CASCADE,
-    parent_material_id TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-"""
-
-LEGACY_ANNOTATION_TEXT = "甲乙"
-
-
-def build_legacy_db(db: Path) -> None:
-    """按 v0 表结构造一份带引用/绑定/review/revision 的旧库。"""
-    with closing(sqlite3.connect(db)) as connection, connection:
-        connection.executescript(LEGACY_SCHEMA)
-        connection.execute(
-            "INSERT INTO materials VALUES ('mat_parent', 'old.md', 6, ?, 3, '2026-01-01T00:00:00+00:00')",
-            ("a" * 64,),
-        )
-        connection.execute(
-            "INSERT INTO materials VALUES ('mat_child', 'old-v2.md', 6, ?, 2, '2026-01-02T00:00:00+00:00')",
-            ("b" * 64,),
-        )
-        connection.execute(
-            "INSERT INTO blocks VALUES ('blk_parent_1', 'mat_parent', 0, 1, ?, 1)", (LEGACY_ANNOTATION_TEXT,)
-        )
-        connection.execute("INSERT INTO blocks VALUES ('blk_parent_3', 'mat_parent', 1, 3, '丙', 1)")
-        connection.execute("INSERT INTO blocks VALUES ('blk_child_1', 'mat_child', 0, 1, '甲乙', 1)")
-        connection.execute("INSERT INTO recent_material VALUES (1, 'mat_parent')")
-        connection.execute(
-            "INSERT INTO evidence_annotations VALUES ('ev_legacy', 'mat_parent', 'blk_parent_1', 0, 1, '甲',"
-            " '旧标注', 'human', '2026-01-01T00:00:00+00:00')"
-        )
-        connection.execute(
-            "INSERT INTO material_rubric_bindings VALUES ('mat_parent', 'rubric_syn', 1, '2026-01-01T00:00:00+00:00')"
-        )
-        connection.execute(
-            "INSERT INTO criterion_evidence_links VALUES ('cel_legacy', 'mat_parent', 'ev_legacy', 'rubric_syn', 1,"
-            " 'c_syn_1', '旧关联', 'human', '2026-01-01T00:00:00+00:00')"
-        )
-        connection.execute(
-            "INSERT INTO reviews VALUES ('rev_legacy', '旧评审', 'rubric_syn', 1,"
-            " '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
-        )
-        connection.execute("INSERT INTO review_materials VALUES ('rev_legacy', 'mat_parent', 'old.md', 0)")
-        connection.execute(
-            "INSERT INTO material_revisions VALUES ('mat_child', 'mat_parent', '2026-01-02T00:00:00+00:00')"
-        )
-
-
-class MigrationTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.db = Path(self._tmp.name) / "legacy.db"
-
-    def tearDown(self) -> None:
-        self._tmp.cleanup()
-
-    def test_legacy_migration_backfills_lines_and_keeps_references(self) -> None:
-        build_legacy_db(self.db)
-        storage.init_db(self.db)
-
-        with closing(storage.connect(self.db)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], storage.SCHEMA_VERSION)
-            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
-
-        parent = storage.get_material("mat_parent", self.db)
-        self.assertEqual(parent.format, "md")
-        self.assertIsNone(parent.parser_version)
-        self.assertIsNone(storage.get_source_bytes("mat_parent", self.db))
-        self.assertEqual(parent.line_count, 3)
-        self.assertEqual([block.id for block in parent.blocks], ["blk_parent_1", "blk_parent_3"])
-        self.assertEqual([block.text for block in parent.blocks], [LEGACY_ANNOTATION_TEXT, "丙"])
-        first, second = (block.locator for block in parent.blocks)
-        self.assertEqual((first.kind, first.index, first.end_index, first.block_index), ("line", 1, None, 1))
-        self.assertEqual((second.kind, second.index), ("line", 3))
-        self.assertEqual((first.row_index, first.cell_index, first.paragraph_index), (None, None, None))
-
-        annotation = storage.get_evidence_annotation("ev_legacy", self.db)
-        self.assertEqual((annotation.block_id, annotation.source.start, annotation.source.end), ("blk_parent_1", 0, 1))
-        self.assertEqual(annotation.source.quote, "甲")
-        self.assertEqual([link.id for link in storage.list_links("mat_parent", self.db)], ["cel_legacy"])
-        binding = storage.get_binding("mat_parent", self.db)
-        self.assertEqual((binding.rubric_id, binding.rubric_revision), ("rubric_syn", 1))
-        revision = storage.get_revision_context("mat_child", self.db)
-        self.assertEqual((revision.parent.material_id, revision.parent.parent_available), ("mat_parent", True))
-        review = storage.get_review_detail("rev_legacy", self.db)
-        self.assertEqual([entry.material_id for entry in review.materials], ["mat_parent"])
-
-    def test_second_migration_is_idempotent(self) -> None:
-        build_legacy_db(self.db)
-        storage.init_db(self.db)
-        before = storage.get_material("mat_parent", self.db).model_dump()
-
-        storage.init_db(self.db)
-        storage.init_db(self.db)
-
-        self.assertEqual(storage.get_material("mat_parent", self.db).model_dump(), before)
-        with closing(storage.connect(self.db)) as connection:
-            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
-            self.assertNotIn("line_number", storage._table_columns(connection, "blocks"))
-
-    def test_failed_migration_rolls_back_whole_rebuild(self) -> None:
-        build_legacy_db(self.db)
-        original = storage._rebuild_blocks_legacy
-
-        def failing(connection: sqlite3.Connection) -> None:
-            original(connection)  # 先做真正的重建，再注入失败
-            raise RuntimeError("injected migration failure")
-
-        with mock.patch.object(storage, "_rebuild_blocks_legacy", failing):
-            with self.assertRaises(RuntimeError):
-                storage.init_db(self.db)
-
-        with closing(storage.connect(self.db)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 0)
-            self.assertIn("line_number", storage._table_columns(connection, "blocks"))
-            self.assertNotIn("format", storage._table_columns(connection, "materials"))
-            self.assertIsNone(
-                connection.execute(
-                    "SELECT name FROM sqlite_master WHERE name = 'blocks_locator_v1'"
-                ).fetchone()
-            )
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM blocks").fetchone()[0], 3)
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM materials").fetchone()[0], 2)
-            self.assertEqual(
-                connection.execute("SELECT line_number FROM blocks WHERE id = 'blk_parent_3'").fetchone()[0], 3
-            )
-            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
-
-    def test_fresh_db_gets_current_version(self) -> None:
-        storage.init_db(self.db)
-        with closing(storage.connect(self.db)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], storage.SCHEMA_VERSION)
-        self.assertEqual(storage.list_materials(self.db), [])
-
-    def test_migration_refuses_to_run_inside_open_transaction(self) -> None:
-        build_legacy_db(self.db)
-        with closing(storage.connect(self.db)) as connection:
-            connection.execute("INSERT INTO materials VALUES ('mat_tx', 'tx.md', 1, ?, 1, '2026-01-03T00:00:00+00:00')", ("c" * 64,))
-            with self.assertRaises(RuntimeError):
-                storage.migrate(connection)
-            connection.rollback()
-
-        with closing(storage.connect(self.db)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 0)
-            self.assertIn("line_number", storage._table_columns(connection, "blocks"))
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM blocks").fetchone()[0], 3)
 
 
 def paragraph_block(index: int, text: str, ordinal: int) -> Block:
@@ -273,7 +58,7 @@ class LocatorPersistenceTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "locator.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -319,7 +104,14 @@ class LocatorPersistenceTest(unittest.TestCase):
 
     def test_line_material_keeps_real_lines_and_legacy_wire_values(self) -> None:
         preview: MarkdownPreview = build_preview("line.md", "甲\n\n乙\n".encode("utf-8"))
-        saved = storage.save_material(preview, self.db, source_bytes="甲\n\n乙\n".encode("utf-8"))
+        # legacy MarkdownPreview 不带 format/parser_version：由解析层明确传入，storage 不猜 parser 常量。
+        saved = storage.save_material(
+            preview,
+            self.db,
+            source_bytes="甲\n\n乙\n".encode("utf-8"),
+            fmt="md",
+            parser_version="line-v1",
+        )
         self.assertEqual(saved.format, "md")
         self.assertEqual(saved.parser_version, "line-v1")
         self.assertEqual(saved.line_count, 3)
@@ -336,7 +128,7 @@ class DownstreamLocatorTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "downstream.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         preview = SourcePreview(
             document_id="preview",
             filename="report.docx",
@@ -392,7 +184,7 @@ class SourceRefOccurrenceTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "source-ref.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         self.material = storage.save_material(
             build_preview("repeat.md", "重复片段出现重复片段\n".encode("utf-8")), self.db
         )
@@ -424,7 +216,7 @@ class SourceRefOccurrenceTest(unittest.TestCase):
             storage.save_evidence_annotation(self.block.id, "重复片段", db_path=self.db, start=0, end=999)
         with self.assertRaises(SpanMismatch):
             storage.save_evidence_annotation(self.block.id, "重复片段", db_path=self.db, start=6)
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM evidence_annotations").fetchone()[0], 0)
 
     def test_non_bmp_and_chinese_code_point_spans(self) -> None:
@@ -450,7 +242,7 @@ class SourceRefOccurrenceTest(unittest.TestCase):
                 self.block.id, "重复片段", db_path=self.db, material_id="mat_other"
             )
         self.assertEqual(caught.exception.code, "material_mismatch")
-        with closing(storage.connect(self.db)) as connection:
+        with closing(database.connect(self.db)) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM evidence_annotations").fetchone()[0], 1)
         self.assertIsNone(storage.save_evidence_annotation("blk_missing", "任意", db_path=self.db))
 
@@ -464,21 +256,21 @@ class SourceRefOccurrenceTest(unittest.TestCase):
 
 
 class LocatorApiTest(unittest.TestCase):
-    """API 直调层：patch storage.connect 到 temp DB。"""
+    """API 直调层：patch database.connect 到 temp DB。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "locator-api.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         self.parent = storage.save_material(
             build_preview("repeat.md", "重复片段出现重复片段\n".encode("utf-8"))
         )
         self.block = self.parent.blocks[0]
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         self._tmp.cleanup()
 
     def test_api_explicit_span_round_trip_and_mismatch(self) -> None:

@@ -20,7 +20,10 @@ TEXT = "本文系统准确率达到 95%。\n\n复现实验的准确率达到 90%
 def material_of(text: str, material_id: str = "mat_grill") -> SavedMaterial:
     """预览 Block 与持久化无关；grill 只要求 block_id 能在 material.blocks 里找到。"""
     preview = build_preview("ev.md", text.encode("utf-8"))
-    blocks = [block.model_copy(update={"id": f"blk_{index}"}) for index, block in enumerate(preview.blocks)]
+    blocks = [
+        block.model_copy(update={"id": f"blk_{index}", "document_id": material_id})
+        for index, block in enumerate(preview.blocks)
+    ]
     return SavedMaterial(
         id=material_id,
         filename="ev.md",

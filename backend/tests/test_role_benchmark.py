@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from app import database
 from app import grill, llm, repair_suggest, storage
 from app.claim_inspector import inspect_statements
 from app.consistency import find_numeric_findings
@@ -30,7 +31,7 @@ class RoleBenchmark(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.db = Path(self.tmp.name) / "role.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         self.criterion = Criterion(id="c_metrics", title="技术效果", requirement="给出项目的量化指标", required_evidence=["量化指标原文"])
 
     def material(self, text):

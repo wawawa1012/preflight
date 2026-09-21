@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import Response
 from pydantic import ValidationError
 
+from app import database
 from app import main, rubric_store, storage
 from app.contracts import Criterion, ReviewCreate, ReviewMaterialUpsert, ReviewUpdate, Rubric
 from app.markdown_preview import build_preview
@@ -28,7 +29,7 @@ def synthetic_rubric(rubric_id: str = "rubric_syn", revision: int = 1) -> Rubric
 
 
 def count_rows(db: Path, table: str) -> int:
-    with closing(storage.connect(db)) as connection:
+    with closing(database.connect(db)) as connection:
         return connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
@@ -36,7 +37,7 @@ class ReviewStorageTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "reviews.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric(), ("rubric_other", 2): synthetic_rubric("rubric_other", 2)})
 
     def tearDown(self) -> None:
@@ -179,7 +180,7 @@ class ReviewStorageTest(unittest.TestCase):
 
         新 API 已经会阻止这种状态，所以 legacy fixture 必须用原始 SQL 构造。
         """
-        with closing(storage.connect(self.db)) as connection, connection:
+        with closing(database.connect(self.db)) as connection, connection:
             connection.execute(
                 "INSERT INTO review_materials (review_id, material_id, label, position) VALUES (?, ?, ?, ?)",
                 (review_id, material_id, label, position),
@@ -353,19 +354,19 @@ class ReviewStorageTest(unittest.TestCase):
 
 
 class ReviewApiTest(unittest.TestCase):
-    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+    """API 直调 + patch database.connect 到 temp DB，避免读写开发库。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "api.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric()})
         self.material = storage.save_material(build_preview("api.md", TEXT.encode("utf-8")))
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         rubric_store.reset_index()
         self._tmp.cleanup()
 

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app import database
 from app import main, storage
 from app.claim_inspector import MAX_STATEMENTS, inspect_statements
 from app.consistency import find_numeric_findings
@@ -177,17 +178,17 @@ class FindNumericFindingsTest(unittest.TestCase):
 
 
 class ConsistencyApiTest(unittest.TestCase):
-    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+    """API 直调 + patch database.connect 到 temp DB，避免读写开发库。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "api.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         self._tmp.cleanup()
 
     def test_unknown_material_maps_to_404(self) -> None:

@@ -1,4 +1,4 @@
-"""SQLite 持久化：Material 1 → N Blocks，原子保存；不用 ORM、只做版本化迁移。
+"""SQLite 业务持久化：Material 1 → N Blocks，原子保存；不用 ORM、不做 schema/迁移。
 
 表结构只服务当前 iteration：
 - materials：材料身份、format/parser_version、原文件字节（source_bytes）与文件元信息，主键持久稳定。
@@ -10,9 +10,7 @@
 - agent_proposals / proposal_candidates：单 criterion AI 预检及其候选；候选须过验证门，accept 原子物化。
 - reviews / review_materials：一次评审绑定一个评分标准版本，成员引用已保存材料（不复制内容）。
 
-迁移：`PRAGMA user_version` 单调递增；v1 把 legacy line_number 重建为 Locator 列并给 materials
-补 format/parser_version/source_bytes。重建在单事务内完成（FK 暂关、提交前 foreign_key_check），
-失败整体回滚，不留下半迁移；重复执行是 no-op。
+连接配置与初始化在 database.py，schema/迁移在 migrations.py；本模块只做业务读写与业务原子事务。
 """
 import sqlite3
 import uuid
@@ -21,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import database
 from .contracts import (
     AgentProposal,
     Block,
@@ -42,11 +41,9 @@ from .contracts import (
     SavedMaterial,
     Span,
 )
-from .evidence import QuoteNotFound, SpanMismatch, resolve_source_ref, span_matches
-from .source_ingest import PARSER_VERSION_LINE
-
-DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "data" / "preflight.db"
-SCHEMA_VERSION = 1
+from .database import DEFAULT_DB_PATH
+from .evidence import QuoteNotFound, SpanMismatch
+from .source_authority import BlockNotInScope, MaterialMismatch, SourceAuthority, SourceScope
 
 
 class StorageConflict(Exception):
@@ -78,17 +75,6 @@ class FormatNotEditable(Exception):
     code = "format_not_editable"
 
     def __init__(self, message: str = "该格式不支持原格式编辑", details: list[str] | None = None) -> None:
-        self.message = message
-        self.details = details or []
-        super().__init__(message)
-
-
-class MaterialMismatch(Exception):
-    """显式提供了 material_id 但 block 不属于该材料；由 API 层转 400 material_mismatch。"""
-
-    code = "material_mismatch"
-
-    def __init__(self, message: str = "block 不属于该材料", details: list[str] | None = None) -> None:
         self.message = message
         self.details = details or []
         super().__init__(message)
@@ -133,234 +119,6 @@ class CandidateInput:
     rationale: str
     risk_note: str | None = None
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS materials (
-    id TEXT PRIMARY KEY,
-    filename TEXT NOT NULL,
-    format TEXT NOT NULL DEFAULT 'md',
-    parser_version TEXT,
-    size_bytes INTEGER NOT NULL,
-    sha256 TEXT NOT NULL,
-    line_count INTEGER,
-    source_bytes BLOB,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS blocks (
-    id TEXT PRIMARY KEY,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL,
-    kind TEXT NOT NULL,
-    locator_index INTEGER NOT NULL,
-    end_index INTEGER,
-    row_index INTEGER,
-    cell_index INTEGER,
-    paragraph_index INTEGER,
-    text TEXT NOT NULL,
-    block_index INTEGER NOT NULL,
-    UNIQUE (material_id, ordinal)
-);
-CREATE TABLE IF NOT EXISTS recent_material (
-    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-    material_id TEXT NOT NULL REFERENCES materials(id)
-);
-CREATE TABLE IF NOT EXISTS evidence_annotations (
-    id TEXT PRIMARY KEY,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
-    start INTEGER NOT NULL,
-    end INTEGER NOT NULL,
-    quote TEXT NOT NULL,
-    note TEXT,
-    proposed_by TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS material_rubric_bindings (
-    material_id TEXT PRIMARY KEY REFERENCES materials(id) ON DELETE CASCADE,
-    rubric_id TEXT NOT NULL,
-    rubric_revision INTEGER NOT NULL,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS criterion_evidence_links (
-    id TEXT PRIMARY KEY,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    annotation_id TEXT NOT NULL REFERENCES evidence_annotations(id) ON DELETE CASCADE,
-    rubric_id TEXT NOT NULL,
-    rubric_revision INTEGER NOT NULL,
-    criterion_id TEXT NOT NULL,
-    rationale TEXT NOT NULL,
-    proposed_by TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    UNIQUE (annotation_id, criterion_id, rubric_revision)
-);
-CREATE INDEX IF NOT EXISTS idx_criterion_evidence_links_material ON criterion_evidence_links(material_id);
-CREATE TABLE IF NOT EXISTS agent_proposals (
-    id TEXT PRIMARY KEY,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    criterion_id TEXT NOT NULL,
-    rubric_id TEXT NOT NULL,
-    rubric_revision INTEGER NOT NULL,
-    provider TEXT NOT NULL,
-    model TEXT NOT NULL,
-    prompt_version TEXT NOT NULL,
-    status TEXT NOT NULL,
-    error TEXT,
-    raw_response TEXT,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS proposal_candidates (
-    id TEXT PRIMARY KEY,
-    proposal_id TEXT NOT NULL REFERENCES agent_proposals(id) ON DELETE CASCADE,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL,
-    block_id TEXT NOT NULL,
-    quote TEXT NOT NULL,
-    rationale TEXT NOT NULL,
-    risk_note TEXT,
-    validation_status TEXT NOT NULL,
-    validation_code TEXT,
-    review_status TEXT NOT NULL,
-    reject_reason TEXT,
-    created_annotation_id TEXT,
-    created_link_id TEXT,
-    created_at TEXT NOT NULL,
-    UNIQUE (proposal_id, ordinal)
-);
-CREATE INDEX IF NOT EXISTS idx_proposal_candidates_material ON proposal_candidates(material_id);
-CREATE TABLE IF NOT EXISTS reviews (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    rubric_id TEXT NOT NULL,
-    rubric_revision INTEGER NOT NULL CHECK (rubric_revision >= 1),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS review_materials (
-    review_id TEXT NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
-    material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    label TEXT NOT NULL,
-    position INTEGER NOT NULL CHECK (position >= 0),
-    PRIMARY KEY (review_id, material_id)
-);
-CREATE INDEX IF NOT EXISTS idx_review_materials_material ON review_materials(material_id);
-CREATE TABLE IF NOT EXISTS material_revisions (
-    child_material_id TEXT PRIMARY KEY REFERENCES materials(id) ON DELETE CASCADE,
-    parent_material_id TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-"""
-
-
-def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    """打开连接并显式启用外键（SQLite 默认不启用）。"""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(db_path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
-
-
-def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
-    row = connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
-    ).fetchone()
-    return row is not None
-
-
-def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
-    return {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
-
-
-def _rebuild_materials_legacy(connection: sqlite3.Connection) -> None:
-    """legacy materials → 新列（format='md'，parser_version/source_bytes=NULL，line_count 保留）。"""
-    connection.execute(
-        """
-        CREATE TABLE materials_locator_v1 (
-            id TEXT PRIMARY KEY,
-            filename TEXT NOT NULL,
-            format TEXT NOT NULL DEFAULT 'md',
-            parser_version TEXT,
-            size_bytes INTEGER NOT NULL,
-            sha256 TEXT NOT NULL,
-            line_count INTEGER,
-            source_bytes BLOB,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    connection.execute(
-        "INSERT INTO materials_locator_v1"
-        " (id, filename, format, parser_version, size_bytes, sha256, line_count, source_bytes, created_at)"
-        " SELECT id, filename, 'md', NULL, size_bytes, sha256, line_count, NULL, created_at FROM materials"
-    )
-    connection.execute("DROP TABLE materials")
-    connection.execute("ALTER TABLE materials_locator_v1 RENAME TO materials")
-
-
-def _rebuild_blocks_legacy(connection: sqlite3.Connection) -> None:
-    """legacy blocks.line_number → kind='line' + locator_index；Block ID 原样保留。"""
-    connection.execute(
-        """
-        CREATE TABLE blocks_locator_v1 (
-            id TEXT PRIMARY KEY,
-            material_id TEXT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-            ordinal INTEGER NOT NULL,
-            kind TEXT NOT NULL,
-            locator_index INTEGER NOT NULL,
-            end_index INTEGER,
-            row_index INTEGER,
-            cell_index INTEGER,
-            paragraph_index INTEGER,
-            text TEXT NOT NULL,
-            block_index INTEGER NOT NULL,
-            UNIQUE (material_id, ordinal)
-        )
-        """
-    )
-    connection.execute(
-        "INSERT INTO blocks_locator_v1"
-        " (id, material_id, ordinal, kind, locator_index, end_index, row_index, cell_index, paragraph_index, text, block_index)"
-        " SELECT id, material_id, ordinal, 'line', line_number, NULL, NULL, NULL, NULL, text, block_index FROM blocks"
-    )
-    connection.execute("DROP TABLE blocks")
-    connection.execute("ALTER TABLE blocks_locator_v1 RENAME TO blocks")
-
-
-def _migrate_to_v1(connection: sqlite3.Connection) -> None:
-    if _table_exists(connection, "materials") and "format" not in _table_columns(connection, "materials"):
-        _rebuild_materials_legacy(connection)
-    if _table_exists(connection, "blocks") and "kind" not in _table_columns(connection, "blocks"):
-        _rebuild_blocks_legacy(connection)
-
-
-def migrate(connection: sqlite3.Connection) -> None:
-    """版本化迁移：已到版本即 no-op；重建 + 版本号在同一事务，失败整体回滚。"""
-    version = connection.execute("PRAGMA user_version").fetchone()[0]
-    if version >= SCHEMA_VERSION:
-        return
-    # foreign_keys 不能在事务内切换；打开的事务里该 pragma 会被静默忽略，
-    # 若此时 DROP TABLE 会按 CASCADE 清空子表 —— 必须显式确认已关闭，否则拒绝迁移。
-    connection.execute("PRAGMA foreign_keys = OFF")
-    if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 0:
-        raise RuntimeError("迁移需要关闭外键，但当前连接有未提交事务；已拒绝执行以避免级联删除")
-    try:
-        with connection:
-            if version < 1:
-                _migrate_to_v1(connection)
-            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-            if violations:
-                raise RuntimeError(f"迁移后外键完整性检查失败：{len(violations)} 处")
-            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-    finally:
-        connection.execute("PRAGMA foreign_keys = ON")
-
-
-def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
-    with closing(connect(db_path)) as connection:
-        migrate(connection)
-        with connection:
-            connection.executescript(_SCHEMA)
-
-
 def _locator_from_row(row: sqlite3.Row) -> Locator:
     return Locator(
         kind=row["kind"],
@@ -370,6 +128,17 @@ def _locator_from_row(row: sqlite3.Row) -> Locator:
         row_index=row["row_index"],
         cell_index=row["cell_index"],
         paragraph_index=row["paragraph_index"],
+    )
+
+
+def _block_from_row(row: sqlite3.Row) -> Block:
+    """blocks 行 → 公共 Block；material_id 列即 document_id（服务端身份）。"""
+    return Block(
+        id=row["id"],
+        document_id=row["material_id"],
+        ordinal=row["ordinal"],
+        text=row["text"],
+        locator=_locator_from_row(row),
     )
 
 
@@ -383,26 +152,19 @@ def _material_from_rows(material: sqlite3.Row, blocks: list[sqlite3.Row]) -> Sav
         sha256=material["sha256"],
         line_count=material["line_count"],
         created_at=material["created_at"],
-        blocks=[
-            Block(
-                id=row["id"],
-                document_id=material["id"],
-                ordinal=row["ordinal"],
-                text=row["text"],
-                locator=_locator_from_row(row),
-            )
-            for row in blocks
-        ],
+        blocks=[_block_from_row(row) for row in blocks],
     )
 
 
-def _preview_metadata(preview) -> tuple[str, str | None, int | None]:
-    """兼容旧 MarkdownPreview（md/line-v1）与 SourcePreview；不伪造 docx 行数。"""
-    fmt = getattr(preview, "format", "md")
-    parser_version = getattr(preview, "parser_version", None)
-    if parser_version is None and fmt in ("md", "txt"):
-        parser_version = PARSER_VERSION_LINE
-    return fmt, parser_version, preview.line_count
+def _preview_metadata(
+    preview, fmt: str | None = None, parser_version: str | None = None
+) -> tuple[str, str | None, int | None]:
+    """format/parser_version 由解析层明确传入（或 preview 自带）；storage 不依赖 parser 常量。"""
+    resolved_format = fmt if fmt is not None else getattr(preview, "format", "md")
+    resolved_version = (
+        parser_version if parser_version is not None else getattr(preview, "parser_version", None)
+    )
+    return resolved_format, resolved_version, preview.line_count
 
 
 def _insert_material_with_blocks(
@@ -411,6 +173,8 @@ def _insert_material_with_blocks(
     material_id: str,
     created_at: str,
     source_bytes: bytes | None = None,
+    fmt: str | None = None,
+    parser_version: str | None = None,
 ) -> list[Block]:
     """connection-aware：material + blocks + recent 指针；调用方负责事务与提交。"""
     block_ids = [f"{material_id}-blk-{block.ordinal}" for block in preview.blocks]
@@ -418,7 +182,7 @@ def _insert_material_with_blocks(
         Block(id=block_id, document_id=material_id, ordinal=block.ordinal, text=block.text, locator=block.locator)
         for block, block_id in zip(preview.blocks, block_ids)
     ]
-    fmt, parser_version, line_count = _preview_metadata(preview)
+    fmt, parser_version, line_count = _preview_metadata(preview, fmt, parser_version)
     connection.execute(
         "INSERT INTO materials (id, filename, format, parser_version, size_bytes, sha256, line_count, source_bytes, created_at)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -510,20 +274,26 @@ def _insert_revision_relation(
 
 
 def save_material(
-    preview, db_path: Path = DEFAULT_DB_PATH, source_bytes: bytes | None = None
+    preview,
+    db_path: Path = DEFAULT_DB_PATH,
+    source_bytes: bytes | None = None,
+    *,
+    fmt: str | None = None,
+    parser_version: str | None = None,
 ) -> SavedMaterial:
     """把一次重新解析过的预览原子保存为新材料；失败不留下任何行。
 
     source_bytes 是新上传原文件字节（或 revision 的规范化文本 bytes），与 material/blocks
     同一事务写入；legacy 材料缺失原始字节时保持 NULL，不伪造。
+    format/parser_version 由解析层明确传入（SourcePreview 自带；legacy MarkdownPreview 必须显式传）。
     """
     material_id = f"mat_{uuid.uuid4().hex}"
     created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-    fmt, parser_version, line_count = _preview_metadata(preview)
+    fmt, parser_version, line_count = _preview_metadata(preview, fmt, parser_version)
 
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         saved_blocks = _insert_material_with_blocks(
-            connection, preview, material_id, created_at, source_bytes
+            connection, preview, material_id, created_at, source_bytes, fmt, parser_version
         )
 
     return SavedMaterial(
@@ -547,6 +317,9 @@ def create_material_revision(
     inherit_binding: tuple[str, int] | None = None,
     db_path: Path = DEFAULT_DB_PATH,
     source_bytes: bytes | None = None,
+    *,
+    fmt: str | None = None,
+    parser_version: str | None = None,
 ) -> tuple[SavedMaterial, MaterialRevision] | None:
     """从已保存父材料派生一份全新 Material（旧材料不可变，不复制/重定向旧引用）。
 
@@ -558,7 +331,7 @@ def create_material_revision(
     material_id = f"mat_{uuid.uuid4().hex}"
     created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         parent = connection.execute("SELECT 1 FROM materials WHERE id = ?", (parent_material_id,)).fetchone()
         if parent is None:
             return None
@@ -580,7 +353,7 @@ def create_material_revision(
             binding = (review["rubric_id"], review["rubric_revision"])
             member_label = label if label is not None else preview.filename
         saved_blocks = _insert_material_with_blocks(
-            connection, preview, material_id, created_at, source_bytes
+            connection, preview, material_id, created_at, source_bytes, fmt, parser_version
         )
         revision = _insert_revision_relation(connection, material_id, parent_material_id, created_at)
         if binding is not None:
@@ -588,7 +361,7 @@ def create_material_revision(
         if review_id is not None and member_label is not None:
             _add_review_member(connection, review_id, material_id, member_label)
 
-    fmt, parser_version, line_count = _preview_metadata(preview)
+    fmt, parser_version, line_count = _preview_metadata(preview, fmt, parser_version)
     return (
         SavedMaterial(
             id=material_id,
@@ -606,7 +379,7 @@ def create_material_revision(
 
 
 def get_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> SavedMaterial | None:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         material = connection.execute("SELECT * FROM materials WHERE id = ?", (material_id,)).fetchone()
         if material is None:
             return None
@@ -617,7 +390,7 @@ def get_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> SavedMate
 
 
 def get_recent_material(db_path: Path = DEFAULT_DB_PATH) -> SavedMaterial | None:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         pointer = connection.execute("SELECT material_id FROM recent_material WHERE singleton = 1").fetchone()
     if pointer is None:
         return None
@@ -626,7 +399,7 @@ def get_recent_material(db_path: Path = DEFAULT_DB_PATH) -> SavedMaterial | None
 
 def list_materials(db_path: Path = DEFAULT_DB_PATH) -> list[MaterialSummary]:
     """列表摘要：不返回 blocks；按保存时间倒序（同秒用 rowid 兜底）。"""
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         rows = connection.execute(
             "SELECT m.id, m.filename, m.format, m.created_at, COUNT(b.id) AS block_count"
             " FROM materials m LEFT JOIN blocks b ON b.material_id = m.id"
@@ -646,7 +419,7 @@ def list_materials(db_path: Path = DEFAULT_DB_PATH) -> list[MaterialSummary]:
 
 
 def material_exists(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         row = connection.execute("SELECT 1 FROM materials WHERE id = ?", (material_id,)).fetchone()
     return row is not None
 
@@ -658,7 +431,7 @@ def delete_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
     再删材料；否则 FK 约束会挡住删除，指针也不会指向已删除的行。
     材料不存在返回 False（调用方转 404）。
     """
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         # 先记下该材料参与的 Review；删材料后由 FK CASCADE 清成员，再刷新受影响 Review 的 updated_at。
         affected_reviews = [
             row["review_id"]
@@ -693,7 +466,7 @@ def delete_material(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
 
 def get_revision_context(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> RevisionContext | None:
     """只读直接 parent/children；材料不存在返回 None。parent 删除后 parent_available=false。"""
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         material = connection.execute("SELECT 1 FROM materials WHERE id = ?", (material_id,)).fetchone()
         if material is None:
             return None
@@ -732,7 +505,7 @@ def get_revision_context(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> R
 
 def get_source_bytes(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> bytes | None:
     """新上传原文件字节（legacy 材料为 NULL）；用于审计与测试，不进入公开契约。"""
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         row = connection.execute(
             "SELECT source_bytes FROM materials WHERE id = ?", (material_id,)
         ).fetchone()
@@ -788,36 +561,45 @@ def save_evidence_annotation(
     end: int | None = None,
     material_id: str | None = None,
 ) -> EvidenceAnnotation | None:
-    """服务端解析 quote 并派生 material_id；Block 不存在返回 None。
+    """经 SourceAuthority 解析 quote 并派生 material_id；Block 不存在返回 None。
 
     material_id 仅在客户端显式断言时校验：block 不属于该材料抛 MaterialMismatch（400），
     否则 material_id 一律由 block 行派生。quote-only 走第一次 occurrence（兼容）；显式
     start/end 逐字复验、失败抛 SpanMismatch，绝不静默退回第一次匹配。校验与写入在同一
     连接内完成，失败时库中不留无效引用。
     """
-    with closing(connect(db_path)) as connection, connection:
-        block = connection.execute("SELECT id, material_id, text FROM blocks WHERE id = ?", (block_id,)).fetchone()
-        if block is None:
+    with closing(database.connect(db_path)) as connection, connection:
+        block_row = connection.execute("SELECT * FROM blocks WHERE id = ?", (block_id,)).fetchone()
+        if block_row is None:
             return None
-        if material_id is not None and material_id != block["material_id"]:
-            raise MaterialMismatch(
-                "block 不属于声明的材料",
-                [f"block_id={block_id}", f"material_id={material_id}", f"actual={block['material_id']}"],
-            )
-        start, end = resolve_source_ref(block["text"], quote, start, end)
+        block = _block_from_row(block_row)
+        authority = SourceAuthority(SourceScope.from_blocks([block]))
+        resolved = authority.resolve(
+            block_id, quote, start=start, end=end, material_id=material_id
+        )
         annotation_id = f"ev_{uuid.uuid4().hex}"
         created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         connection.execute(
             "INSERT INTO evidence_annotations"
             " (id, material_id, block_id, start, end, quote, note, proposed_by, created_at)"
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (annotation_id, block["material_id"], block_id, start, end, quote, note, proposed_by, created_at),
+            (
+                annotation_id,
+                resolved.material_id,
+                resolved.block_id,
+                resolved.start,
+                resolved.end,
+                resolved.quote,
+                note,
+                proposed_by,
+                created_at,
+            ),
         )
     return EvidenceAnnotation(
         id=annotation_id,
-        material_id=block["material_id"],
-        block_id=block_id,
-        source=Span(block_id=block_id, start=start, end=end, quote=quote),
+        material_id=resolved.material_id,
+        block_id=resolved.block_id,
+        source=Span(block_id=resolved.block_id, start=resolved.start, end=resolved.end, quote=resolved.quote),
         note=note,
         proposed_by=proposed_by,
         created_at=created_at,
@@ -825,13 +607,13 @@ def save_evidence_annotation(
 
 
 def get_evidence_annotation(annotation_id: str, db_path: Path = DEFAULT_DB_PATH) -> EvidenceAnnotation | None:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         row = connection.execute("SELECT * FROM evidence_annotations WHERE id = ?", (annotation_id,)).fetchone()
     return _annotation_from_row(row) if row is not None else None
 
 
 def list_evidence_annotations(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> list[EvidenceAnnotation]:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         rows = connection.execute(
             "SELECT * FROM evidence_annotations WHERE material_id = ? ORDER BY rowid ASC", (material_id,)
         ).fetchall()
@@ -840,7 +622,7 @@ def list_evidence_annotations(material_id: str, db_path: Path = DEFAULT_DB_PATH)
 
 def delete_evidence_annotation(material_id: str, annotation_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
     """WHERE 同时限定 material，防跨材料探测；关联由 FK CASCADE 清理。"""
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         deleted = connection.execute(
             "DELETE FROM evidence_annotations WHERE id = ? AND material_id = ?", (annotation_id, material_id)
         )
@@ -857,7 +639,7 @@ def _binding_from_row(row: sqlite3.Row) -> RubricBinding:
 
 
 def get_binding(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> RubricBinding | None:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         row = connection.execute(
             "SELECT * FROM material_rubric_bindings WHERE material_id = ?", (material_id,)
         ).fetchone()
@@ -894,7 +676,7 @@ def bind_material_rubric(
     任一 Review 标准与本次绑定不同即抛 BindingConflict（保持未绑定，不动 membership）。
     检查与写入在同一连接事务内完成。
     """
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         material = connection.execute("SELECT 1 FROM materials WHERE id = ?", (material_id,)).fetchone()
         if material is None:
             return None
@@ -942,16 +724,14 @@ def create_link(
     proposed_by: str = "human",
     db_path: Path = DEFAULT_DB_PATH,
 ) -> CriterionEvidenceLink | None:
-    """单事务：查 annotation（含 block 文本）→ 绑定 → spot-check span → 查重 → 插入。
+    """单事务：查 annotation → 绑定 → 统一 SourceAuthority spot-check → 查重 → 插入。
 
     annotation 不存在或不属于该材料返回 None；未绑定抛 RubricNotBound；
     span 复验失败抛 SpanMismatch；重复关联抛 DuplicateLink。
     """
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         annotation = connection.execute(
-            "SELECT a.id, a.material_id, a.block_id, a.start, a.end, a.quote, b.text AS block_text"
-            " FROM evidence_annotations a JOIN blocks b ON b.id = a.block_id WHERE a.id = ?",
-            (annotation_id,),
+            "SELECT * FROM evidence_annotations WHERE id = ?", (annotation_id,)
         ).fetchone()
         if annotation is None or annotation["material_id"] != material_id:
             return None
@@ -960,10 +740,22 @@ def create_link(
         ).fetchone()
         if binding is None:
             raise RubricNotBound("该材料尚未绑定评分标准")
-        start, end, quote = annotation["start"], annotation["end"], annotation["quote"]
-        block_text = annotation["block_text"]
-        if not span_matches(block_text, start, end, quote):
-            raise SpanMismatch()
+        block_row = connection.execute(
+            "SELECT * FROM blocks WHERE id = ? AND material_id = ?",
+            (annotation["block_id"], material_id),
+        ).fetchone()
+        if block_row is None:
+            raise SpanMismatch("annotation 引用的 Block 已不存在")
+        authority = SourceAuthority(SourceScope.from_blocks([_block_from_row(block_row)]))
+        try:
+            authority.resolve(
+                annotation["block_id"],
+                annotation["quote"],
+                start=annotation["start"],
+                end=annotation["end"],
+            )
+        except (QuoteNotFound, SpanMismatch) as exc:
+            raise SpanMismatch() from exc
         duplicate = connection.execute(
             "SELECT 1 FROM criterion_evidence_links WHERE annotation_id = ? AND criterion_id = ? AND rubric_revision = ?",
             (annotation_id, criterion_id, binding["rubric_revision"]),
@@ -1002,7 +794,7 @@ def create_link(
 
 
 def list_links(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> list[CriterionEvidenceLink]:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         rows = connection.execute(
             "SELECT * FROM criterion_evidence_links WHERE material_id = ? ORDER BY rowid ASC", (material_id,)
         ).fetchall()
@@ -1010,7 +802,7 @@ def list_links(material_id: str, db_path: Path = DEFAULT_DB_PATH) -> list[Criter
 
 
 def delete_link(material_id: str, link_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         deleted = connection.execute(
             "DELETE FROM criterion_evidence_links WHERE id = ? AND material_id = ?", (link_id, material_id)
         )
@@ -1068,24 +860,23 @@ def save_agent_proposal(
     db_path: Path = DEFAULT_DB_PATH,
 ) -> AgentProposal:
     """验证每个候选（block 属于材料 + quote 经统一来源复验）后，单事务写入两张表。"""
-    blocks = {block.id: block for block in material.blocks}
+    authority = SourceAuthority(SourceScope.from_material(material))
     proposal_id = f"ap_{uuid.uuid4().hex}"
     created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     prepared: list[tuple[str, int, CandidateInput, str, str | None]] = []
     for ordinal, candidate in enumerate(candidates):
-        block = blocks.get(candidate.block_id)
-        if block is None:
+        if authority.scope.get_block(candidate.block_id) is None:
             validation_status, validation_code = "invalid", "block_not_found"
         else:
             try:
-                resolve_source_ref(block.text, candidate.quote)
+                authority.resolve(candidate.block_id, candidate.quote)
             except QuoteNotFound:
                 validation_status, validation_code = "invalid", "quote_not_found"
             else:
                 validation_status, validation_code = "passed", None
         prepared.append((f"apc_{uuid.uuid4().hex}", ordinal, candidate, validation_status, validation_code))
 
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         connection.execute(
             "INSERT INTO agent_proposals"
             " (id, material_id, criterion_id, rubric_id, rubric_revision, provider, model, prompt_version,"
@@ -1112,7 +903,7 @@ def save_agent_proposal(
 
 
 def get_agent_proposal(proposal_id: str, db_path: Path = DEFAULT_DB_PATH) -> AgentProposal | None:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         proposal = connection.execute("SELECT * FROM agent_proposals WHERE id = ?", (proposal_id,)).fetchone()
         if proposal is None:
             return None
@@ -1131,7 +922,7 @@ def list_agent_proposals(
         query += " AND criterion_id = ?"
         params.append(criterion_id)
     query += " ORDER BY rowid DESC"
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         proposals = connection.execute(query, params).fetchall()
         result: list[AgentProposal] = []
         for proposal in proposals:
@@ -1149,13 +940,12 @@ def accept_candidate(
 
     任一步失败全部回滚；候选不存在/跨材料返回 None。
     """
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         row = connection.execute(
             "SELECT c.*, p.criterion_id AS proposal_criterion_id, p.rubric_id AS proposal_rubric_id,"
-            " p.rubric_revision AS proposal_rubric_revision, b.text AS block_text"
+            " p.rubric_revision AS proposal_rubric_revision"
             " FROM proposal_candidates c"
             " JOIN agent_proposals p ON p.id = c.proposal_id"
-            " LEFT JOIN blocks b ON b.id = c.block_id"
             " WHERE c.id = ?",
             (candidate_id,),
         ).fetchone()
@@ -1165,13 +955,20 @@ def accept_candidate(
             raise InvalidCandidate("候选未通过验证门，不能接受")
         if row["review_status"] != "unreviewed":
             raise CandidateAlreadyReviewed("候选已被裁决")
-        block_text = row["block_text"]
-        if block_text is None:
+        block_row = connection.execute(
+            "SELECT * FROM blocks WHERE id = ? AND material_id = ?",
+            (row["block_id"], material_id),
+        ).fetchone()
+        if block_row is None:
             raise SpanMismatch("候选引用的 Block 已不存在")
+        authority = SourceAuthority(SourceScope.from_blocks([_block_from_row(block_row)]))
         try:
-            start, end = resolve_source_ref(block_text, row["quote"])
+            resolved = authority.resolve(row["block_id"], row["quote"])
         except QuoteNotFound as exc:
             raise SpanMismatch(str(exc)) from exc
+        except BlockNotInScope as exc:
+            raise SpanMismatch("候选引用的 Block 已不存在") from exc
+        start, end = resolved.start, resolved.end
         duplicate = connection.execute(
             "SELECT 1 FROM criterion_evidence_links l"
             " JOIN evidence_annotations a ON a.id = l.annotation_id"
@@ -1231,7 +1028,7 @@ def accept_candidate(
 def reject_candidate(
     material_id: str, candidate_id: str, reason: str | None = None, db_path: Path = DEFAULT_DB_PATH
 ) -> ProposalCandidate | None:
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         row = connection.execute(
             "SELECT * FROM proposal_candidates WHERE id = ?", (candidate_id,)
         ).fetchone()
@@ -1271,7 +1068,7 @@ def create_review(
     review_id = f"rev_{uuid.uuid4().hex}"
     # updated_at 必须可观测地变化，故保留微秒。
     now = datetime.now(timezone.utc).isoformat()
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         connection.execute(
             "INSERT INTO reviews (id, title, rubric_id, rubric_revision, created_at, updated_at)"
             " VALUES (?, ?, ?, ?, ?, ?)",
@@ -1288,13 +1085,13 @@ def create_review(
 
 
 def list_reviews(db_path: Path = DEFAULT_DB_PATH) -> list[Review]:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         rows = connection.execute("SELECT * FROM reviews ORDER BY created_at DESC, rowid DESC").fetchall()
     return [_review_from_row(row) for row in rows]
 
 
 def get_review_detail(review_id: str, db_path: Path = DEFAULT_DB_PATH) -> ReviewDetail | None:
-    with closing(connect(db_path)) as connection:
+    with closing(database.connect(db_path)) as connection:
         review = connection.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
         if review is None:
             return None
@@ -1312,7 +1109,7 @@ def rename_review(review_id: str, title: str, db_path: Path = DEFAULT_DB_PATH) -
     """只改 title；不存在返回 None。rubric 绑定不可通过本函数变更。"""
     # updated_at 必须可观测地变化，故保留微秒。
     now = datetime.now(timezone.utc).isoformat()
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         updated = connection.execute(
             "UPDATE reviews SET title = ?, updated_at = ? WHERE id = ?", (title, now, review_id)
         )
@@ -1324,7 +1121,7 @@ def rename_review(review_id: str, title: str, db_path: Path = DEFAULT_DB_PATH) -
 
 def delete_review(review_id: str, db_path: Path = DEFAULT_DB_PATH) -> bool:
     """删除 Review 本体；review_materials 由 FK CASCADE 清理，绝不动 materials。"""
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         deleted = connection.execute("DELETE FROM reviews WHERE id = ?", (review_id,))
     return deleted.rowcount > 0
 
@@ -1343,7 +1140,7 @@ def upsert_review_material(
     已绑定其他版本 → BindingConflict（409），绝不自动改绑定、不覆盖历史绑定。
     label 缺省取 filename，position 缺省追加到末尾；更新时缺省保持原值。
     """
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         review = connection.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
         if review is None:
             return None
@@ -1412,7 +1209,7 @@ def remove_review_material(review_id: str, material_id: str, db_path: Path = DEF
     """移除成员关系并刷新 Review.updated_at；不存在返回 False。绝不动 materials。"""
     # updated_at 必须可观测地变化，故保留微秒。
     now = datetime.now(timezone.utc).isoformat()
-    with closing(connect(db_path)) as connection, connection:
+    with closing(database.connect(db_path)) as connection, connection:
         deleted = connection.execute(
             "DELETE FROM review_materials WHERE review_id = ? AND material_id = ?", (review_id, material_id)
         )

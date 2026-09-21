@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from app import database
 from app import main, rubric_store, storage
 from app.markdown_preview import build_preview
 from app.preflight_report import assemble_report, assemble_summaries
@@ -30,7 +31,7 @@ class AssemblePreflightReportTest(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "test.db"
-        storage.init_db(self.db)
+        database.init_db(self.db)
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric()})
         self.material = storage.save_material(build_preview("ev.md", TEXT.encode("utf-8")), self.db)
         self.block = self.material.blocks[0]
@@ -90,19 +91,19 @@ class AssemblePreflightReportTest(unittest.TestCase):
 
 
 class PreflightReportApiTest(unittest.TestCase):
-    """API 直调 + patch storage.connect 到 temp DB，避免读写开发库。"""
+    """API 直调 + patch database.connect 到 temp DB，避免读写开发库。"""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "api.db"
-        self._original_connect = storage.connect
-        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
-        storage.init_db()
+        self._original_connect = database.connect
+        database.connect = lambda db_path=database.DEFAULT_DB_PATH: self._original_connect(self.db)
+        database.init_db()
         rubric_store.set_index({("rubric_syn", 1): synthetic_rubric()})
         self.material = storage.save_material(build_preview("api.md", TEXT.encode("utf-8")))
 
     def tearDown(self) -> None:
-        storage.connect = self._original_connect
+        database.connect = self._original_connect
         rubric_store.reset_index()
         self._tmp.cleanup()
 

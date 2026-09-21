@@ -41,6 +41,7 @@
 - I8（同材料数值一致性「待核对问题」）：GET consistency-findings + 报告页「待核对问题」点回 Drawer；提交 0c8d581，已合入 main。
 - Locator v1（2026-09-21，分支 codex/next-locator，base 5f12236）：完整 Locator 持久化 + `user_version=1` 迁移 + 统一 SourceRef 复验（显式 span 可精确选择 occurrence）+ 下游 locator 适配 + TXT 全链；DOCX 当时等待 B2 parser（后已消费，见下条）。定向验证：backend 452 tests OK、contract export/check PASS、TestClient smoke PASS；live 未跑。checkpoint eec27d4。
 - B2 parser 消费（2026-09-21，同分支）：合并 `codex/next-parsers` 8a0cacc/0eb2183；`source_ingest` 改用 `parse_txt`/`parse_docx` + `ParsedSource`/`SourceNode`/`SourceParseError`，删除 `read_source_nodes` 假定；DOCX 不再 `parser_unavailable`，复杂结构按 parser 错误码 400；body_ordinal/结构坐标原样映射。验证：完整 backend 498 tests OK、contract check PASS、TXT/DOCX preview/save/Evidence-source smoke PASS；live 未跑。
+- Architecture Stabilization（2026-09-21，同分支）：migration 生命周期修复（显式事务、单一原子边界、future version 拒绝、调用方事务保护、FK 状态恢复）+ `database.py`/`migrations.py`/`storage.py` 边界 + SourceAuthority（SourceScope→resolve→ResolvedSource，消费者统一走同一来源规则）。完整 backend 518 tests OK、contract check PASS（无 wire 变化）、TXT/DOCX smoke PASS。
 
 ## 保底顺序
 
