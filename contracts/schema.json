@@ -125,6 +125,499 @@
       "title": "ApiError",
       "type": "object"
     },
+    "AssessmentAggregation": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "available",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssessmentScore"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "assessed_criterion_count": {
+          "minimum": 0,
+          "title": "Assessed Criterion Count",
+          "type": "integer"
+        },
+        "scorable_criterion_count": {
+          "minimum": 0,
+          "title": "Scorable Criterion Count",
+          "type": "integer"
+        },
+        "total_criterion_count": {
+          "minimum": 0,
+          "title": "Total Criterion Count",
+          "type": "integer"
+        },
+        "missing_criterion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Criterion Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "reason_codes",
+        "assessed_criterion_count",
+        "scorable_criterion_count",
+        "total_criterion_count",
+        "missing_criterion_ids"
+      ],
+      "title": "AssessmentAggregation",
+      "type": "object"
+    },
+    "AssessmentComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "before_id": {
+          "title": "Before Id",
+          "type": "string"
+        },
+        "after_id": {
+          "title": "After Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "comparable",
+            "not_comparable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "evidence_scope_changed": {
+          "title": "Evidence Scope Changed",
+          "type": "boolean"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/AssessmentCriterionChange"
+          },
+          "title": "Criteria",
+          "type": "array"
+        },
+        "aggregation_before": {
+          "$ref": "#/$defs/AssessmentAggregation"
+        },
+        "aggregation_after": {
+          "$ref": "#/$defs/AssessmentAggregation"
+        }
+      },
+      "required": [
+        "before_id",
+        "after_id",
+        "status",
+        "reason_codes",
+        "evidence_scope_changed",
+        "criteria",
+        "aggregation_before",
+        "aggregation_after"
+      ],
+      "title": "AssessmentComparison",
+      "type": "object"
+    },
+    "AssessmentCreate": {
+      "additionalProperties": false,
+      "description": "Empty request: scope and execution rules are resolved exclusively by the server.",
+      "properties": {},
+      "title": "AssessmentCreate",
+      "type": "object"
+    },
+    "AssessmentCriterionChange": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "before": {
+          "$ref": "#/$defs/AssessmentResult"
+        },
+        "after": {
+          "$ref": "#/$defs/AssessmentResult"
+        },
+        "observation": {
+          "enum": [
+            "unchanged",
+            "status_changed",
+            "newly_assessable",
+            "became_insufficient",
+            "range_overlaps",
+            "range_shifted_upward",
+            "range_shifted_downward"
+          ],
+          "title": "Observation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "before",
+        "after",
+        "observation"
+      ],
+      "title": "AssessmentCriterionChange",
+      "type": "object"
+    },
+    "AssessmentMaterial": {
+      "additionalProperties": false,
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        },
+        "ancestor_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ancestor Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "material_id",
+        "sha256",
+        "label",
+        "position",
+        "ancestor_ids"
+      ],
+      "title": "AssessmentMaterial",
+      "type": "object"
+    },
+    "AssessmentResult": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "assessed",
+            "insufficient_evidence",
+            "abstain",
+            "execution_failed",
+            "not_scorable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "selected_anchor_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Anchor Id"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "missing_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Conditions",
+          "type": "array"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Caveats",
+          "type": "array"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AssessmentScore"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "status",
+        "rationale"
+      ],
+      "title": "AssessmentResult",
+      "type": "object"
+    },
+    "AssessmentScore": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "exact",
+            "range"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "minimum": {
+          "minimum": 0,
+          "title": "Minimum",
+          "type": "number"
+        },
+        "maximum": {
+          "minimum": 0,
+          "title": "Maximum",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "minimum",
+        "maximum"
+      ],
+      "title": "AssessmentScore",
+      "type": "object"
+    },
+    "AssessmentSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/EvaluationScope"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/AssessmentResult"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "aggregation": {
+          "$ref": "#/$defs/AssessmentAggregation"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "model_identifier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Identifier"
+        },
+        "prompt_version": {
+          "title": "Prompt Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "results",
+        "aggregation",
+        "created_at",
+        "prompt_version"
+      ],
+      "title": "AssessmentSnapshot",
+      "type": "object"
+    },
+    "AssessmentSource": {
+      "additionalProperties": false,
+      "description": "Source ID is the accepted link ID; provenance is frozen, never model-authored.",
+      "properties": {
+        "link": {
+          "$ref": "#/$defs/CriterionEvidenceLink"
+        },
+        "annotation": {
+          "$ref": "#/$defs/EvidenceAnnotation"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRef"
+        }
+      },
+      "required": [
+        "link",
+        "annotation",
+        "source"
+      ],
+      "title": "AssessmentSource",
+      "type": "object"
+    },
+    "AssessmentSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "review_id": {
+          "title": "Review Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "aggregation": {
+          "$ref": "#/$defs/AssessmentAggregation"
+        },
+        "assessment_method_version": {
+          "title": "Assessment Method Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "review_id",
+        "created_at",
+        "aggregation",
+        "assessment_method_version"
+      ],
+      "title": "AssessmentSummary",
+      "type": "object"
+    },
+    "AssessorProposal": {
+      "additionalProperties": false,
+      "description": "Only this narrow shape is accepted from the LLM; no scores or SourceRefs.",
+      "properties": {
+        "criterion_id": {
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "assessed",
+            "insufficient_evidence",
+            "abstain",
+            "not_scorable"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "selected_anchor_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Anchor Id"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "missing_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Missing Conditions",
+          "type": "array"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Caveats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "status",
+        "rationale"
+      ],
+      "title": "AssessorProposal",
+      "type": "object"
+    },
     "Block": {
       "additionalProperties": false,
       "properties": {
@@ -574,6 +1067,19 @@
           ],
           "default": null,
           "title": "Scoring Sources"
+        },
+        "scoring_definition_version": {
+          "anyOf": [
+            {
+              "const": "anchors-v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Definition Version"
         }
       },
       "required": [
@@ -719,6 +1225,19 @@
           ],
           "default": null,
           "title": "Scoring Sources"
+        },
+        "scoring_definition_version": {
+          "anyOf": [
+            {
+              "const": "anchors-v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Definition Version"
         },
         "order": {
           "minimum": 0,
@@ -1082,6 +1601,71 @@
         "normalization"
       ],
       "title": "EditableSource",
+      "type": "object"
+    },
+    "EvaluationScope": {
+      "additionalProperties": false,
+      "properties": {
+        "review_id": {
+          "title": "Review Id",
+          "type": "string"
+        },
+        "rubric": {
+          "$ref": "#/$defs/Rubric"
+        },
+        "scoring_definition_hash": {
+          "title": "Scoring Definition Hash",
+          "type": "string"
+        },
+        "criterion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Criterion Ids",
+          "type": "array"
+        },
+        "materials": {
+          "items": {
+            "$ref": "#/$defs/AssessmentMaterial"
+          },
+          "title": "Materials",
+          "type": "array"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/AssessmentSource"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "blocks": {
+          "items": {
+            "$ref": "#/$defs/Block"
+          },
+          "title": "Blocks",
+          "type": "array"
+        },
+        "source_policy_version": {
+          "title": "Source Policy Version",
+          "type": "string"
+        },
+        "assessment_method_version": {
+          "title": "Assessment Method Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "review_id",
+        "rubric",
+        "scoring_definition_hash",
+        "criterion_ids",
+        "materials",
+        "sources",
+        "blocks",
+        "source_policy_version",
+        "assessment_method_version"
+      ],
+      "title": "EvaluationScope",
       "type": "object"
     },
     "Evidence": {
@@ -2948,6 +3532,19 @@
           ],
           "default": null,
           "title": "Model Assisted"
+        },
+        "scoring_aggregation": {
+          "anyOf": [
+            {
+              "const": "sum_points_v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Aggregation"
         }
       },
       "required": [
@@ -3088,6 +3685,19 @@
           "minItems": 1,
           "title": "Criteria",
           "type": "array"
+        },
+        "scoring_aggregation": {
+          "anyOf": [
+            {
+              "const": "sum_points_v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Aggregation"
         }
       },
       "required": [
@@ -3171,6 +3781,45 @@
           ],
           "default": null,
           "title": "Score"
+        },
+        "anchor_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Anchor Id"
+        },
+        "min_score": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Score"
+        },
+        "max_score": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Score"
         }
       },
       "required": [
@@ -3257,6 +3906,19 @@
           "minItems": 1,
           "title": "Criteria",
           "type": "array"
+        },
+        "scoring_aggregation": {
+          "anyOf": [
+            {
+              "const": "sum_points_v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scoring Aggregation"
         },
         "confirmed": {
           "const": true,
@@ -3792,6 +4454,21 @@
   },
   "additionalProperties": false,
   "properties": {
+    "assessment_create": {
+      "$ref": "#/$defs/AssessmentCreate"
+    },
+    "assessment_snapshot": {
+      "$ref": "#/$defs/AssessmentSnapshot"
+    },
+    "assessment_summary": {
+      "$ref": "#/$defs/AssessmentSummary"
+    },
+    "assessment_comparison": {
+      "$ref": "#/$defs/AssessmentComparison"
+    },
+    "assessor_proposal": {
+      "$ref": "#/$defs/AssessorProposal"
+    },
     "rubric_draft_request": {
       "$ref": "#/$defs/RubricDraftRequest"
     },
@@ -3962,6 +4639,11 @@
     }
   },
   "required": [
+    "assessment_create",
+    "assessment_snapshot",
+    "assessment_summary",
+    "assessment_comparison",
+    "assessor_proposal",
     "rubric_draft_request",
     "rubric_draft",
     "rubric_publish",

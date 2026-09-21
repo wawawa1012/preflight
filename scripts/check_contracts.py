@@ -408,3 +408,27 @@ print(
     "rubric draft checks, grill preparation checks, response coach checks, "
     "source ref/locator v1 checks, negative cases"
 )
+
+# Assessment fixtures must validate both the public shape and code-owned numeric mapping.
+from app.contracts import AssessmentSnapshot, AssessorProposal
+from app.assessment import validate_snapshot, compare_assessment_snapshots, validate_proposal
+
+assessment_fixture = json.loads((ROOT / "contracts/fixtures/assessment.json").read_text(encoding="utf-8"))
+assert assessment_fixture["test_only"] is True
+assessment_before = AssessmentSnapshot.model_validate(assessment_fixture["before"])
+assessment_after = AssessmentSnapshot.model_validate(assessment_fixture["after"])
+for snapshot in (assessment_before, assessment_after):
+    validate_snapshot(snapshot)
+comparison = compare_assessment_snapshots(assessment_before, assessment_after)
+assert comparison.status == "comparable"
+assert comparison.criteria[0].observation == "newly_assessable"
+assert assessment_before.aggregation.score is None
+assert assessment_after.aggregation.score.minimum == 16
+for invalid in assessment_fixture["invalid_outputs"]:
+    try:
+        validate_proposal(assessment_after.scope, "c1", AssessorProposal.model_validate(invalid))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid assessment output was accepted")
+print("PASS: Assessment snapshot fixtures, numeric mapping, comparison and hostile output rejection")

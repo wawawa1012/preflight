@@ -3,6 +3,7 @@
 Edit here, export JSON Schema, then regenerate frontend types. IDs are opaque.
 """
 from typing import Annotated, Literal
+import math
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -21,6 +22,9 @@ class RubricLevel(Contract):
     label: str = Field(min_length=1)
     description: str | None = None
     score: float | None = None
+    anchor_id: str | None = Field(default=None, min_length=1)
+    min_score: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    max_score: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class Criterion(Contract):
@@ -36,6 +40,32 @@ class Criterion(Contract):
     rubric_levels: list[RubricLevel] | None = None
     scoring_anchors: list[str] | None = None
     scoring_sources: list[str] | None = None
+    scoring_definition_version: Literal["anchors-v1"] | None = None
+
+    @model_validator(mode="after")
+    def executable_scoring(self) -> "Criterion":
+        if self.scoring_definition_version is None:
+            return self
+        if self.max_score is None or not math.isfinite(self.max_score) or self.max_score < 0:
+            raise ValueError("executable criterion requires finite nonnegative max_score")
+        if self.weight is not None and (not math.isfinite(self.weight) or self.weight < 0):
+            raise ValueError("weight must be finite and nonnegative")
+        levels = self.rubric_levels or []
+        ids = [level.anchor_id for level in levels]
+        if not levels or any(not aid or not aid.strip() for aid in ids) or len(set(ids)) != len(ids):
+            raise ValueError("executable criterion requires unique anchor IDs")
+        for level in levels:
+            if not level.description or not level.description.strip():
+                raise ValueError("anchor conditions are required")
+            if level.score is not None:
+                if level.min_score is not None or level.max_score is not None:
+                    raise ValueError("anchor must define exact score OR range")
+                if not math.isfinite(level.score) or not 0 <= level.score <= self.max_score:
+                    raise ValueError("anchor score outside criterion bounds")
+            elif (level.min_score is None or level.max_score is None
+                  or not 0 <= level.min_score <= level.max_score <= self.max_score):
+                raise ValueError("anchor requires bounded min/max range")
+        return self
 
 
 class Rubric(Contract):
@@ -51,6 +81,7 @@ class Rubric(Contract):
     aggregation_rule: str | None = None
     aggregation_rule_source: str | None = None
     model_assisted: bool | None = None
+    scoring_aggregation: Literal["sum_points_v1"] | None = None
 
 
 class RubricDraftRequest(Contract):
@@ -77,6 +108,7 @@ class RubricDraft(Contract):
     aggregation_rule_source: str | None = None
     model_assisted: bool = False
     criteria: list[CriterionDraft] = Field(min_length=1, max_length=50)
+    scoring_aggregation: Literal["sum_points_v1"] | None = None
 
 
 class RubricPublish(RubricDraft):
@@ -790,6 +822,142 @@ class EditableSource(Contract):
     normalization: Literal["lf"]
 
 
+AssessmentStatus = Literal["assessed", "insufficient_evidence", "abstain", "execution_failed", "not_scorable"]
+
+
+class AssessmentScore(Contract):
+    kind: Literal["exact", "range"]
+    minimum: float = Field(ge=0, allow_inf_nan=False)
+    maximum: float = Field(ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def ordered(self) -> "AssessmentScore":
+        if self.minimum > self.maximum or (self.kind == "exact" and self.minimum != self.maximum):
+            raise ValueError("invalid score bounds")
+        return self
+
+
+class AssessorProposal(Contract):
+    """Only this narrow shape is accepted from the LLM; no scores or SourceRefs."""
+    criterion_id: str
+    status: Literal["assessed", "insufficient_evidence", "abstain", "not_scorable"]
+    selected_anchor_id: str | None = None
+    source_ids: list[str] = Field(default_factory=list, max_length=200)
+    rationale: str = Field(min_length=1, max_length=4000)
+    missing_conditions: list[str] = Field(default_factory=list, max_length=50)
+    caveats: list[str] = Field(default_factory=list, max_length=50)
+
+
+class AssessmentCreate(Contract):
+    """Empty request: scope and execution rules are resolved exclusively by the server."""
+    pass
+
+
+class AssessmentResult(Contract):
+    criterion_id: str
+    status: AssessmentStatus
+    selected_anchor_id: str | None = None
+    source_ids: list[str] = Field(default_factory=list)
+    rationale: str
+    missing_conditions: list[str] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+    score: AssessmentScore | None = None
+    error_code: str | None = None
+
+    @model_validator(mode="after")
+    def numeric_status(self) -> "AssessmentResult":
+        if self.status == "assessed":
+            if self.score is None or not self.selected_anchor_id or not self.source_ids or self.error_code:
+                raise ValueError("assessed requires mapped score, anchor and citations")
+        elif self.score is not None or self.selected_anchor_id is not None:
+            raise ValueError("non-assessed statuses cannot carry numbers or anchors")
+        if (self.status == "execution_failed") != (self.error_code is not None):
+            raise ValueError("execution failure requires an error code only on failure")
+        return self
+
+
+class AssessmentSource(Contract):
+    """Source ID is the accepted link ID; provenance is frozen, never model-authored."""
+    link: CriterionEvidenceLink
+    annotation: EvidenceAnnotation
+    source: SourceRef
+
+
+class AssessmentMaterial(Contract):
+    material_id: str
+    sha256: str
+    label: str
+    position: int
+    ancestor_ids: list[str]
+
+
+class EvaluationScope(Contract):
+    review_id: str
+    rubric: Rubric
+    scoring_definition_hash: str
+    criterion_ids: list[str]
+    materials: list[AssessmentMaterial]
+    sources: list[AssessmentSource]
+    blocks: list[Block]
+    source_policy_version: str
+    assessment_method_version: str
+
+
+class AssessmentAggregation(Contract):
+    status: Literal["available", "unavailable"]
+    score: AssessmentScore | None = None
+    reason_codes: list[str]
+    assessed_criterion_count: int = Field(ge=0)
+    scorable_criterion_count: int = Field(ge=0)
+    total_criterion_count: int = Field(ge=0)
+    missing_criterion_ids: list[str]
+
+    @model_validator(mode="after")
+    def availability(self) -> "AssessmentAggregation":
+        if (self.status == "available") != (self.score is not None):
+            raise ValueError("only available aggregation has a score")
+        if self.status == "available" and (self.reason_codes or self.missing_criterion_ids):
+            raise ValueError("available aggregation cannot have blockers")
+        return self
+
+
+class AssessmentSnapshot(Contract):
+    id: str
+    scope: EvaluationScope
+    results: list[AssessmentResult]
+    aggregation: AssessmentAggregation
+    created_at: str
+    model_identifier: str | None = None
+    prompt_version: str
+
+
+class AssessmentSummary(Contract):
+    id: str
+    review_id: str
+    created_at: str
+    aggregation: AssessmentAggregation
+    assessment_method_version: str
+
+
+class AssessmentCriterionChange(Contract):
+    criterion_id: str
+    before: AssessmentResult
+    after: AssessmentResult
+    observation: Literal["unchanged", "status_changed", "newly_assessable", "became_insufficient",
+                         "range_overlaps", "range_shifted_upward", "range_shifted_downward"]
+
+
+class AssessmentComparison(Contract):
+    before_id: str
+    after_id: str
+    status: Literal["comparable", "not_comparable"]
+    reason_codes: list[str]
+    evidence_scope_changed: bool
+    criteria: list[AssessmentCriterionChange]
+    aggregation_before: AssessmentAggregation
+    aggregation_after: AssessmentAggregation
+
+
 class ApiError(Contract):
     code: str
     message: str
@@ -797,6 +965,11 @@ class ApiError(Contract):
 
 
 class ContractBundle(Contract):
+    assessment_create: AssessmentCreate
+    assessment_snapshot: AssessmentSnapshot
+    assessment_summary: AssessmentSummary
+    assessment_comparison: AssessmentComparison
+    assessor_proposal: AssessorProposal
     rubric_draft_request: RubricDraftRequest
     rubric_draft: RubricDraft
     rubric_publish: RubricPublish

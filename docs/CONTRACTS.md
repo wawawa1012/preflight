@@ -120,3 +120,6 @@ npm.cmd --prefix frontend run contracts
 ```
 
 fixtures 是人工写定的契约示例，非解析产物、非真实 AIC 结果。D1 扩展完整三幕 mock，不实现生产 diff。
+# Sprint 4 Assessment additive contract
+
+新增 `AssessmentCreate`、`AssessorProposal`、`AssessmentResult`、`EvaluationScope`、`AssessmentSnapshot`、`AssessmentSummary` 和 `AssessmentComparison`；不修改旧 `CriterionAssessment`/RunReport 语义。评分元数据增量、状态、来源权限、持久化与四个 API 见 [Sprint 4 接入说明](architecture/sprint4-assessment-delivery.md)。结构源仍是 `backend/app/contracts.py`；JSON Schema/TS 从该源生成。无评分定义不产生数字，非 assessed 项不记零，模型不能给总分。

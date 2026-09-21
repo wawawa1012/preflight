@@ -127,6 +127,10 @@ Grill 迭代完成后（预计 I9），同一测试的完整口吻为：
 
 ## 八、维护规则
 
+### Sprint 4 后端接入备注（2026-09-21）
+
+用户明确授权的 Explainable Assessment 养活现有「评分报告」与「修改闭环」两片叶子：入口为 Review 报告/版本比较；验收为 15 项 Assessment 测试矩阵及契约/API/迁移检查；demo 预算 30 秒。`wave4/assessment-core` 后端契约和 API 已实现并离线验证，前端入口待接入、live 质量未验收、未合并 main。不把锚点评估写成比赛分数预测，不把 assessed 写成风险已解决。详情见 [Sprint 4 接入说明](architecture/sprint4-assessment-delivery.md)。
+
 - 每个迭代收口时更新第四节账本（状态与 demo 秒数）。
 - 产品树结构变更（加枝/砍枝）需用户明确确认，任何 AI 不得自行加枝。
 - MASTER_PLAN 保持 2026-09-15 冻结、不改正文。产品取舍与验收口径以用户后续明确指令和本文为准（MASTER_PLAN 自己规定「用户后续明确指令 > 本计划」）。
