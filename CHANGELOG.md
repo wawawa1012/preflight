@@ -11,6 +11,13 @@
 - 验证：完整后端 **549 tests OK**（基线 524，新增 25）；contract export/check PASS；npm ci/contracts/build PASS；Windows 原生 uvicorn 临时数据库 health/OpenAPI 200。构建保留现有 chunk >500 kB 提示，未做性能优化。
 - 详情：[Sprint 4 交付与前端接入](docs/architecture/sprint4-assessment-delivery.md)。
 
+### 2026-09-21 — Assessment contract review 修正（APPROVE_WITH_CHANGES）
+
+- Comparability 纳入评估器身份：`prompt_version` 或 `model_identifier` 与 method/rubric/scoring hash/source policy/材料范围一并比较，任一不同即 `prompt_version_mismatch`/`model_identifier_mismatch` 且 `criteria` 为空、不产生可归因于材料变化的 observation；method/prompt/model 三个概念保持分离，V1 不做跨模型等价判断。
+- 删除含糊 `unchanged`：`AssessmentCriterionChange.observation` 改为 `identical`/`anchor_changed`/`reason_changed` 加既有状态与区间码，并新增 `score_changed`/`anchor_changed`/`reason_changed` 布尔；同数值区间不同 anchor、同状态不同 reason 均不得再被读成整个评估未变化。
+- 同步重新导出 `contracts/schema.json` 与 generated TS，更新 `contracts/fixtures/assessment.json`（评估器身份对齐）和 `scripts/check_contracts.py`（新增身份不匹配与裸 `unchanged` 回归断言）。
+- 验证：完整 backend 553 tests OK（原 549 + 新增 4）、`tests.test_contract_export` 4 OK、`scripts/check_contracts.py` PASS、`npm.cmd run build`（vite + vue-tsc）PASS；未触碰 migration。
+
 ## 2026-09-21 — Architecture Stabilization：migration 生命周期 + SourceAuthority（分支 codex/next-locator）
 Codex 静态 review 判定 migration BLOCK；本轮只做正确性修复与收拢，不加功能、不改 wire contract。
 - **Migration 生命周期（migrations.py 新增）**：DDL 前显式 `BEGIN IMMEDIATE`（`with connection` 不会在首条 DDL 前 BEGIN）；schema 创建 + legacy 重建 + `foreign_key_check` + `user_version` 写入成为单一原子边界；DDL 逐条 `execute`（`executescript` 会隐式 COMMIT）；`version == supported` no-op，`version > supported` → `UnsupportedSchemaVersion` 拒绝启动；`connection.in_transaction` 为真时拒绝且不提交/回滚调用方事务；FK 进入前记录原状态、结束（成败）恢复并显式复验；临时表只在事务内存在。

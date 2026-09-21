@@ -254,6 +254,7 @@
     },
     "AssessmentCriterionChange": {
       "additionalProperties": false,
+      "description": "observation 只声明本条目哪个维度变化；identical 仅当 status/anchor/score/reason 全等。\n\nreason 指 error_code、missing_conditions、caveats 与 rationale 的组合；引用来源的增减\n仍以 before/after 原文与 comparison.evidence_scope_changed 呈现，不折叠进本枚举。",
       "properties": {
         "criterion_id": {
           "title": "Criterion Id",
@@ -267,7 +268,9 @@
         },
         "observation": {
           "enum": [
-            "unchanged",
+            "identical",
+            "anchor_changed",
+            "reason_changed",
             "status_changed",
             "newly_assessable",
             "became_insufficient",
@@ -277,13 +280,28 @@
           ],
           "title": "Observation",
           "type": "string"
+        },
+        "score_changed": {
+          "title": "Score Changed",
+          "type": "boolean"
+        },
+        "anchor_changed": {
+          "title": "Anchor Changed",
+          "type": "boolean"
+        },
+        "reason_changed": {
+          "title": "Reason Changed",
+          "type": "boolean"
         }
       },
       "required": [
         "criterion_id",
         "before",
         "after",
-        "observation"
+        "observation",
+        "score_changed",
+        "anchor_changed",
+        "reason_changed"
       ],
       "title": "AssessmentCriterionChange",
       "type": "object"

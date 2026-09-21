@@ -224,6 +224,58 @@ class AssessmentTests(unittest.TestCase):
         changed.scope.rubric.revision = 2
         self.assertIn("rubric_mismatch", core.compare_assessment_snapshots(first, changed).reason_codes)
 
+    def test_comparison_requires_same_evaluator_identity(self):
+        self.link()
+        first = self.run_snapshot()
+        self.assertEqual(core.compare_assessment_snapshots(first, first.model_copy(deep=True)).status, "comparable")
+        for field, value, code in (("prompt_version", "criterion-assessor-v2", "prompt_version_mismatch"),
+                                   ("model_identifier", "another-model", "model_identifier_mismatch"),
+                                   ("model_identifier", None, "model_identifier_mismatch")):
+            with self.subTest(field=field, value=value):
+                changed = first.model_copy(deep=True)
+                setattr(changed, field, value)
+                compared = core.compare_assessment_snapshots(first, changed)
+                self.assertEqual(compared.status, "not_comparable")
+                self.assertIn(code, compared.reason_codes)
+                # 评估器身份不同不得产出任何逐条 observation，尤其不得读成材料变化。
+                self.assertEqual(compared.criteria, [])
+
+    def test_comparison_same_range_different_anchor_is_not_identical(self):
+        levels = criterion().model_dump()
+        levels["rubric_levels"][1].update(min_score=16, max_score=20)
+        self.install(rubric([Criterion.model_validate(levels)]))
+        self.link()
+        first = self.run_snapshot()
+        second = self.run_snapshot({"selected_anchor_id": "B"})
+        entry = core.compare_assessment_snapshots(first, second).criteria[0]
+        self.assertEqual(entry.observation, "anchor_changed")
+        self.assertFalse(entry.score_changed)
+        self.assertTrue(entry.anchor_changed)
+        self.assertFalse(entry.reason_changed)
+
+    def test_comparison_same_failure_status_different_reason_is_not_identical(self):
+        self.link()
+        first = self.run_snapshot({"selected_anchor_id": "invented"})
+        second = self.run_snapshot({"source_ids": ["invented"]})
+        compared = core.compare_assessment_snapshots(first, second)
+        entry = compared.criteria[0]
+        self.assertEqual(entry.before.status, entry.after.status, "execution_failed")
+        self.assertEqual((entry.before.error_code, entry.after.error_code), ("unknown_anchor", "unknown_source"))
+        self.assertEqual(entry.observation, "reason_changed")
+        self.assertTrue(entry.reason_changed)
+        self.assertFalse(entry.score_changed)
+        self.assertFalse(entry.anchor_changed)
+
+    def test_comparison_equivalent_result_is_identical(self):
+        self.link()
+        first = self.run_snapshot()
+        second = self.run_snapshot()
+        entry = core.compare_assessment_snapshots(first, second).criteria[0]
+        self.assertEqual(entry.observation, "identical")
+        self.assertFalse(entry.score_changed)
+        self.assertFalse(entry.anchor_changed)
+        self.assertFalse(entry.reason_changed)
+
     def test_lineage_replacement_and_unrelated_same_title(self):
         self.link()
         first = self.run_snapshot()

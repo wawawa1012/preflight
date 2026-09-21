@@ -1,6 +1,6 @@
 # Sprint 4 Explainable Assessment — backend handoff
 
-Branch: `wave4/assessment-core`, based on main `8c6bd43207bdfae27df545b5941562c2a9aef8da`. Worktree: `F:/project/Preflight-backend`. Old branch refs retained; do not merge main in this task. Implementer is Codex (the session cannot switch to DeepSeek). Independent read-only Codex contract checkpoint review passed; see [checkpoint](sprint4-assessment-checkpoint.md).
+Branch: `wave4/assessment-core`, based on main `8c6bd43207bdfae27df545b5941562c2a9aef8da`. Worktree: `F:/project/Preflight-backend`. Old branch refs retained; do not merge main in this task. Implementer is Codex (the session cannot switch to DeepSeek). Independent read-only Codex contract checkpoint review passed; see [checkpoint](sprint4-assessment-checkpoint.md). The post-implementation Assessment contract review returned APPROVE_WITH_CHANGES; both required-before-public-wire fixes (evaluator identity in comparability, precise observations) are applied in this branch before any frontend consumption.
 
 ## Files and responsibility
 
@@ -56,9 +56,9 @@ Schema version 2 adds `assessment_snapshots` plus index `(review_id, created_at)
 
 ## Comparability and before/after
 
-Require same Review, rubric identity/revision, full scoring hash, method version, source policy and ordered criterion scope. Material sets must match one-to-one by exact ID or forward immutable descendant replacement. Exact identities match first; ambiguous mappings, reverse ancestry, changed content under an identical ID, unrelated same-title materials or material-count changes are rejected. Labels/positions are recorded for display, not proof of lineage. Deleted intermediate ancestry may make later comparisons unavailable; v1 refuses to invent history.
+Require same Review, rubric identity/revision, full scoring hash, method version, source policy, evaluator identity and ordered criterion scope. Evaluator identity is the pair `prompt_version` + `model_identifier`; either differing makes the pair not comparable, and V1 deliberately has no cross-model equivalence, provider-family compatibility or benchmark exception. These fields stay distinct from `assessment_method_version`: the method names the code path, prompt and model name the evaluator. Material sets must match one-to-one by exact ID or forward immutable descendant replacement. Exact identities match first; ambiguous mappings, reverse ancestry, changed content under an identical ID, unrelated same-title materials or material-count changes are rejected. Labels/positions are recorded for display, not proof of lineage. Deleted intermediate ancestry may make later comparisons unavailable; v1 refuses to invent history.
 
-Accepted evidence can change: `evidence_scope_changed` exposes it. Return before/after results, status transitions and conservative observations: unchanged, status_changed, newly_assessable, became_insufficient, range_overlaps, range_shifted_upward/downward. Up/down means disjoint bounds, never a claim that material quality improved. Aggregation before/after stays visible, even when comparison is unavailable; no automatic numeric delta across incompatible snapshots.
+Accepted evidence can change: `evidence_scope_changed` exposes it. Return before/after results, status transitions and dimension-scoped observations: `identical` (status, anchor, mapped score and key reason all equal), `anchor_changed`, `reason_changed`, `status_changed`, `newly_assessable`, `became_insufficient`, `range_overlaps`, `range_shifted_upward/downward`. Key reason means error code, missing conditions, caveats and rationale. `score_changed`/`anchor_changed`/`reason_changed` booleans expose all changed dimensions at once, so a same-range different-anchor pair is never reported as an unchanged assessment and a same-status different-reason pair is never reported as identical. Up/down means disjoint bounds, never a claim that material quality improved. Aggregation before/after stays visible, even when comparison is unavailable; no automatic numeric delta across incompatible snapshots.
 
 ## Frontend API
 
@@ -93,11 +93,13 @@ Tests below are in `backend/tests/test_assessment.py` (prefix `test_` omitted).
 | 14 | Injection fixture cannot expand contract | prompt_injection_fixture_cannot_change_output_contract |
 | 15 | Old DB atomic upgrade preserves identity | v1_upgrade_identity_rollback_retry_and_fk; existing test_migrations covers legacy v0, caller transaction, FK restore, future version |
 
-Also tested: abstain, immutable SQL writes, source deletion during inference/after persistence, strict request body, bounded prompt, no secret diagnostics, unsupported weights/rules, mixed unscorable scope, no partial-total expansion, imported execution-switch rejection, schema/TS export, HTTP health/OpenAPI.
+Also tested: abstain, immutable SQL writes, source deletion during inference/after persistence, strict request body, bounded prompt, no secret diagnostics, unsupported weights/rules, mixed unscorable scope, no partial-total expansion, imported execution-switch rejection, schema/TS export, HTTP health/OpenAPI, evaluator-identity mismatch blocking all observations, same-range different-anchor, same-failure-status different-reason, and exact-equivalent `identical` observations.
 
 ## Deviations and open architecture decisions
 
 Verification completed: **549 backend tests passed** (524 baseline + 25 Assessment tests), contract export/check including new fixtures passed, `npm.cmd ci`, `npm.cmd run contracts`, `npm.cmd run build` passed, native Windows uvicorn with an isolated temporary database returned health/OpenAPI 200. Existing frontend large-chunk advisory remains; no performance work included. `git diff --check` passed. Main remained clean at the original base; old backend branch ref retained. **READY_FOR_FRONTEND: YES** for API/contract integration only.
+
+Review-fix verification (post-APPROVE_WITH_CHANGES): full backend suite **553 tests OK** (549 original + 4 new in `tests.test_assessment`), `tests.test_contract_export` 4 OK, `scripts/check_contracts.py` PASS with regenerated `contracts/schema.json` + `frontend/src/types/contracts.ts`, and `npm.cmd run build` (vite + vue-tsc) PASS. Migration code was not touched. The positive fixture pair now shares `prompt_version` + `model_identifier`; mismatches produce `not_comparable` with empty criteria.
 
 No weighted aggregation in v1; unsupported weights yield unavailable, not a guessed normalization. Non-executable criteria have a deterministic explanation rather than an extra LLM call. No new frameworks, rebind, composite evidence, persisted Finding, DB optimization, frontend page implementation, or live model benchmark. Full rubric hash intentionally rejects even some harmless metadata changes: strictness is preferable to false comparability.
 

@@ -114,13 +114,18 @@ export type ReasonCodes1 = string[];
 export type EvidenceScopeChanged = boolean;
 export type CriterionId2 = string;
 export type Observation =
-  | "unchanged"
+  | "identical"
+  | "anchor_changed"
+  | "reason_changed"
   | "status_changed"
   | "newly_assessable"
   | "became_insufficient"
   | "range_overlaps"
   | "range_shifted_upward"
   | "range_shifted_downward";
+export type ScoreChanged = boolean;
+export type AnchorChanged = boolean;
+export type ReasonChanged = boolean;
 export type Criteria1 = AssessmentCriterionChange[];
 export type CriterionId3 = string;
 export type Status3 = "assessed" | "insufficient_evidence" | "abstain" | "not_scorable";
@@ -833,11 +838,20 @@ export interface AssessmentComparison {
   aggregation_before: AssessmentAggregation;
   aggregation_after: AssessmentAggregation;
 }
+/**
+ * observation 只声明本条目哪个维度变化；identical 仅当 status/anchor/score/reason 全等。
+ *
+ * reason 指 error_code、missing_conditions、caveats 与 rationale 的组合；引用来源的增减
+ * 仍以 before/after 原文与 comparison.evidence_scope_changed 呈现，不折叠进本枚举。
+ */
 export interface AssessmentCriterionChange {
   criterion_id: CriterionId2;
   before: AssessmentResult;
   after: AssessmentResult;
   observation: Observation;
+  score_changed: ScoreChanged;
+  anchor_changed: AnchorChanged;
+  reason_changed: ReasonChanged;
 }
 /**
  * Only this narrow shape is accepted from the LLM; no scores or SourceRefs.

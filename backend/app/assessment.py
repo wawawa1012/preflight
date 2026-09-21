@@ -184,20 +184,31 @@ def _compatible_materials(before: EvaluationScope, after: EvaluationScope) -> bo
             and len({c[0] for c in mapping.values()}) == len(remaining_new))
 
 
+def _reason_fingerprint(result: AssessmentResult) -> tuple:
+    # 关键 reason 的等价比较：机器可读 code、缺口、注意事项与解释文本；不含 status/anchor/score。
+    return (result.error_code, tuple(result.missing_conditions), tuple(result.caveats), result.rationale)
+
+
 def _observation(before: AssessmentResult, after: AssessmentResult) -> str:
-    if after.status == "insufficient_evidence" and before.status != after.status:
-        return "became_insufficient"
-    if before.status != "assessed" and after.status == "assessed":
-        return "newly_assessable"
     if before.status != after.status:
+        if after.status == "insufficient_evidence":
+            return "became_insufficient"
+        if after.status == "assessed":
+            return "newly_assessable"
         return "status_changed"
-    if before.score is None or before.score == after.score:
-        return "unchanged"
-    if after.score.minimum > before.score.maximum:
-        return "range_shifted_upward"
-    if after.score.maximum < before.score.minimum:
-        return "range_shifted_downward"
-    return "range_overlaps"
+    if before.score != after.score:
+        if before.score is None or after.score is None:
+            return "status_changed"
+        if after.score.minimum > before.score.maximum:
+            return "range_shifted_upward"
+        if after.score.maximum < before.score.minimum:
+            return "range_shifted_downward"
+        return "range_overlaps"
+    if before.selected_anchor_id != after.selected_anchor_id:
+        return "anchor_changed"
+    if _reason_fingerprint(before) != _reason_fingerprint(after):
+        return "reason_changed"
+    return "identical"
 
 
 def compare_assessment_snapshots(before: AssessmentSnapshot, after: AssessmentSnapshot) -> AssessmentComparison:
@@ -208,6 +219,10 @@ def compare_assessment_snapshots(before: AssessmentSnapshot, after: AssessmentSn
         (a.review_id == b.review_id, "review_mismatch"),
         ((a.rubric.id, a.rubric.revision) == (b.rubric.id, b.rubric.revision), "rubric_mismatch"),
         (a.assessment_method_version == b.assessment_method_version, "method_mismatch"),
+        # 评估器身份独立于方法与材料：prompt_version 或 model_identifier 不同即不可比。
+        # V1 不做跨模型等价判断（provider family / benchmark 例外留待实证）。
+        (before.prompt_version == after.prompt_version, "prompt_version_mismatch"),
+        (before.model_identifier == after.model_identifier, "model_identifier_mismatch"),
         (a.scoring_definition_hash == b.scoring_definition_hash, "scoring_definition_mismatch"),
         (a.source_policy_version == b.source_policy_version, "source_policy_mismatch"),
         (a.criterion_ids == b.criterion_ids, "criterion_scope_mismatch"),
@@ -223,8 +238,11 @@ def compare_assessment_snapshots(before: AssessmentSnapshot, after: AssessmentSn
     changes = []
     if not reasons:
         for old, new in zip(before.results, after.results, strict=True):
-            changes.append(AssessmentCriterionChange(criterion_id=old.criterion_id, before=old,
-                           after=new, observation=_observation(old, new)))
+            changes.append(AssessmentCriterionChange(criterion_id=old.criterion_id, before=old, after=new,
+                observation=_observation(old, new),
+                score_changed=old.score != new.score,
+                anchor_changed=old.selected_anchor_id != new.selected_anchor_id,
+                reason_changed=_reason_fingerprint(old) != _reason_fingerprint(new)))
     return AssessmentComparison(before_id=before.id, after_id=after.id,
         status="not_comparable" if reasons else "comparable", reason_codes=reasons,
         evidence_scope_changed=canonical_hash([s.model_dump() for s in a.sources]) != canonical_hash([s.model_dump() for s in b.sources]),

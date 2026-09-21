@@ -2,7 +2,7 @@
 
 ## Sprint 4 后端 Assessment（2026-09-21，独立分支）
 
-`wave4/assessment-core` 从 main `8c6bd43` 实现可执行 anchors、accepted-links-v1、五态结果、冻结 scope/immutable snapshot、确定性总分区间与严格 lineage 比较；schema 2 正式迁移。完整 backend 549 tests OK、契约导出检查与前端构建通过、原生 uvicorn health/OpenAPI smoke 通过。未合并 main；前端页面与 live 模型质量验收未完成。详见 [Sprint 4 交付](architecture/sprint4-assessment-delivery.md)。
+`wave4/assessment-core` 从 main `8c6bd43` 实现可执行 anchors、accepted-links-v1、五态结果、冻结 scope/immutable snapshot、确定性总分区间与严格 lineage 比较；schema 2 正式迁移。Codex contract review（APPROVE_WITH_CHANGES）两项 public-wire 修正已落地：comparability 纳入 prompt/model 评估器身份，compare observation 删除含糊 `unchanged` 改为 `identical`/`anchor_changed`/`reason_changed` + 维度布尔。修正后完整 backend 553 tests OK、契约导出检查与 `npm.cmd run build` PASS。未合并 main；前端页面与 live 模型质量验收未完成。详见 [Sprint 4 交付](architecture/sprint4-assessment-delivery.md)。
 
 | 日期 | 交付 |
 | --- | --- |

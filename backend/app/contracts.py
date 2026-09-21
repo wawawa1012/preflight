@@ -940,11 +940,20 @@ class AssessmentSummary(Contract):
 
 
 class AssessmentCriterionChange(Contract):
+    """observation 只声明本条目哪个维度变化；identical 仅当 status/anchor/score/reason 全等。
+
+    reason 指 error_code、missing_conditions、caveats 与 rationale 的组合；引用来源的增减
+    仍以 before/after 原文与 comparison.evidence_scope_changed 呈现，不折叠进本枚举。
+    """
     criterion_id: str
     before: AssessmentResult
     after: AssessmentResult
-    observation: Literal["unchanged", "status_changed", "newly_assessable", "became_insufficient",
+    observation: Literal["identical", "anchor_changed", "reason_changed", "status_changed",
+                         "newly_assessable", "became_insufficient",
                          "range_overlaps", "range_shifted_upward", "range_shifted_downward"]
+    score_changed: bool
+    anchor_changed: bool
+    reason_changed: bool
 
 
 class AssessmentComparison(Contract):
