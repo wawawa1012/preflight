@@ -5,13 +5,17 @@ import { reviewContextKey } from './reviewContext'
 import { useSessionStore } from '../../stores/session'
 import { createRequestScope } from '../../utils/requestScope'
 import {
-  AssessmentContractPending,
-  assessmentAvailable,
-  compareSnapshots,
-  generateSnapshot,
-  listSnapshots,
+  compareAssessments,
+  generateAssessment,
+  getAssessment,
+  listAssessments,
 } from '../../services/assessment'
-import type { AssessmentComparisonVM, AssessmentSnapshotVM, AssessmentSourceVM } from '../../types/assessment'
+import type {
+  AssessmentComparisonVM,
+  AssessmentListItemVM,
+  AssessmentSnapshotVM,
+  AssessmentSourceVM,
+} from '../../types/assessment'
 import { ASSESSMENT_TRUTH_NOTE } from '../../utils/assessmentFormat'
 import EmptyState from '../../components/review/EmptyState.vue'
 import AssessmentSummary from '../../components/review/assessment/AssessmentSummary.vue'
@@ -20,7 +24,7 @@ import CriterionAssessmentCard from '../../components/review/assessment/Criterio
 import AssessmentCompare from '../../components/review/assessment/AssessmentCompare.vue'
 
 // 可解释评估（Assessment）host：一次审查在固定标准/材料范围/方法下的评估快照。
-// 状态语义：尚未生成 / 未接入 / 快照列表 / 单快照 / 前后对比，全部经过 request scope。
+// 状态语义：快照列表（summary）/ 选中快照（detail 单独拉取）/ 前后对比，全部经过 request scope。
 // 页面不算总分、不推断 comparable、不解释 locator.kind；来源统一打开现有 Source Reader。
 const context = inject(reviewContextKey)
 if (!context) throw new Error('ReviewAssessmentView 必须在 ReviewWorkspaceView 内使用')
@@ -32,19 +36,22 @@ const session = useSessionStore()
 
 const reviewId = computed(() => review.value?.id ?? '')
 
-const available = assessmentAvailable()
 const loading = ref(false)
 const loadError = ref('')
-const snapshots = ref<AssessmentSnapshotVM[]>([])
+const summaries = ref<AssessmentListItemVM[]>([])
 const currentId = ref('')
+
+const detailLoading = ref(false)
+const detailError = ref('')
+const current = ref<AssessmentSnapshotVM | null>(null)
+
 const generating = ref(false)
 const actionError = ref('')
 
-const current = computed(() => snapshots.value.find((snapshot) => snapshot.id === currentId.value) ?? null)
 // 上一个快照：可比对的候选；是否真可比较由 backend 在 compare 响应里判定。
-const previous = computed(() => {
-  const index = snapshots.value.findIndex((snapshot) => snapshot.id === currentId.value)
-  return index >= 0 ? (snapshots.value[index + 1] ?? null) : null
+const previousId = computed(() => {
+  const index = summaries.value.findIndex((summary) => summary.id === currentId.value)
+  return index >= 0 ? (summaries.value[index + 1]?.id ?? null) : null
 })
 
 const comparing = ref(false)
@@ -52,20 +59,47 @@ const comparison = ref<AssessmentComparisonVM | null>(null)
 const compareError = ref('')
 
 const listScope = createRequestScope()
+const detailScope = createRequestScope()
 const actionScope = createRequestScope()
 const compareScope = createRequestScope()
 
+async function loadDetail(id: string) {
+  if (id === '') {
+    current.value = null
+    return
+  }
+  const ticket = detailScope.begin({ reviewId: reviewId.value, snapshotId: id })
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    const snapshot = await getAssessment(ticket.context.snapshotId)
+    ticket.commit(() => {
+      current.value = snapshot
+    })
+  } catch (cause) {
+    ticket.commit(() => {
+      current.value = null
+      detailError.value = cause instanceof Error ? cause.message : '未知错误'
+    })
+  } finally {
+    ticket.commit(() => {
+      detailLoading.value = false
+    })
+  }
+}
+
 async function load() {
-  if (!available || reviewId.value === '') return
+  if (reviewId.value === '') return
   const ticket = listScope.begin({ reviewId: reviewId.value })
   loading.value = true
   loadError.value = ''
   try {
-    const list = await listSnapshots(ticket.context.reviewId)
+    const list = await listAssessments(ticket.context.reviewId)
     ticket.commit(() => {
-      snapshots.value = list
+      summaries.value = list
       currentId.value = list[0]?.id ?? ''
     })
+    if (ticket.isCurrent()) await loadDetail(list[0]?.id ?? '')
   } catch (cause) {
     ticket.commit(() => {
       loadError.value = cause instanceof Error ? cause.message : '未知错误'
@@ -79,15 +113,16 @@ async function load() {
 
 // 生成/重新评估：产生新 Snapshot，绝不原地修改旧 Snapshot。
 async function generate() {
-  if (!available || generating.value || reviewId.value === '') return
+  if (generating.value || reviewId.value === '') return
   const ticket = actionScope.begin({ reviewId: reviewId.value })
   generating.value = true
   actionError.value = ''
   try {
-    const snapshot = await generateSnapshot(ticket.context.reviewId)
+    const snapshot = await generateAssessment(ticket.context.reviewId)
     ticket.commit(() => {
-      snapshots.value = [snapshot, ...snapshots.value]
+      summaries.value = [{ id: snapshot.id, createdAt: snapshot.createdAt }, ...summaries.value]
       currentId.value = snapshot.id
+      current.value = snapshot
       comparison.value = null
     })
   } catch (cause) {
@@ -102,15 +137,15 @@ async function generate() {
 }
 
 async function compareWithPrevious() {
-  const before = previous.value
-  const after = current.value
-  if (!before || !after || comparing.value) return
-  const ticket = compareScope.begin({ reviewId: reviewId.value, beforeId: before.id, afterId: after.id })
+  const beforeId = previousId.value
+  const afterId = currentId.value
+  if (!beforeId || !afterId || comparing.value) return
+  const ticket = compareScope.begin({ reviewId: reviewId.value, beforeId, afterId })
   comparing.value = true
   compareError.value = ''
   comparison.value = null
   try {
-    const result = await compareSnapshots(ticket.context.reviewId, ticket.context.beforeId, ticket.context.afterId)
+    const result = await compareAssessments(ticket.context.beforeId, ticket.context.afterId)
     ticket.commit(() => {
       comparison.value = result
     })
@@ -130,6 +165,7 @@ function selectSnapshot(id: string) {
   currentId.value = id
   comparison.value = null
   compareError.value = ''
+  void loadDetail(id)
 }
 
 // 来源统一进入现有 Source Reader；返回经 session.readerVisit 的 origin 回到本页。
@@ -161,13 +197,16 @@ watch(
   () => review.value?.id,
   (id) => {
     listScope.invalidate()
+    detailScope.invalidate()
     actionScope.invalidate()
     compareScope.invalidate()
     loading.value = false
+    detailLoading.value = false
     generating.value = false
     comparing.value = false
-    snapshots.value = []
+    summaries.value = []
     currentId.value = ''
+    current.value = null
     comparison.value = null
     if (id) void load()
   },
@@ -176,6 +215,7 @@ watch(
 
 onBeforeUnmount(() => {
   listScope.invalidate()
+  detailScope.invalidate()
   actionScope.invalidate()
   compareScope.invalidate()
 })
@@ -190,15 +230,7 @@ onBeforeUnmount(() => {
       </p>
     </section>
 
-    <!-- 契约未接入：诚实空态，不伪装可用。 -->
-    <EmptyState
-      v-if="!available"
-      class="rounded-xl bg-slate-950/40"
-      title="可解释评估尚未接入"
-      hint="评估能力正在接入中。接入后，这里会按当前标准与已确认的材料依据给出逐条评估、依据与缺口。"
-    />
-
-    <p v-else-if="loading" class="text-sm text-slate-400">正在读取评估…</p>
+    <p v-if="loading" class="text-sm text-slate-400">正在读取评估…</p>
 
     <div v-else-if="loadError" class="rounded-xl bg-slate-950/40 px-5 py-4">
       <p class="text-sm text-red-400" role="alert">无法读取评估：{{ loadError }}</p>
@@ -207,7 +239,7 @@ onBeforeUnmount(() => {
 
     <template v-else>
       <EmptyState
-        v-if="snapshots.length === 0"
+        v-if="summaries.length === 0"
         class="rounded-xl bg-slate-950/40"
         title="尚未生成评估"
         hint="按当前标准与已确认的材料依据生成逐条评估；你可以看到每个结论为什么成立、还缺什么。"
@@ -217,7 +249,7 @@ onBeforeUnmount(() => {
         </UButton>
       </EmptyState>
 
-      <template v-else-if="current">
+      <template v-else>
         <div class="flex flex-wrap items-center gap-3">
           <select
             :value="currentId"
@@ -225,15 +257,15 @@ onBeforeUnmount(() => {
             class="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
             @change="selectSnapshot(($event.target as HTMLSelectElement).value)"
           >
-            <option v-for="snapshot in snapshots" :key="snapshot.id" :value="snapshot.id">
-              {{ snapshot.createdAt }} · {{ snapshot.materialScope }}
+            <option v-for="summary in summaries" :key="summary.id" :value="summary.id">
+              {{ summary.createdAt }}
             </option>
           </select>
           <UButton color="neutral" variant="subtle" icon="i-lucide-refresh-cw" :loading="generating" @click="generate">
             {{ generating ? '正在评估…' : '重新评估' }}
           </UButton>
           <UButton
-            v-if="previous"
+            v-if="previousId"
             color="neutral"
             variant="subtle"
             icon="i-lucide-git-compare"
@@ -245,19 +277,27 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="actionError" class="text-sm text-red-400" role="alert">评估失败：{{ actionError }}</p>
 
-        <AssessmentSnapshotMeta :snapshot="current" />
-        <AssessmentSummary :total="current.total" />
-
-        <ol class="space-y-4">
-          <li v-for="item in current.criteria" :key="item.criterionId">
-            <CriterionAssessmentCard :item="item" @open-source="openSource" />
-          </li>
-        </ol>
-
-        <div v-if="compareError" class="rounded-xl bg-slate-950/40 px-5 py-4">
-          <p class="text-sm text-red-400" role="alert">无法对比：{{ compareError }}</p>
+        <p v-if="detailLoading" class="text-sm text-slate-400">正在读取评估快照…</p>
+        <div v-else-if="detailError" class="rounded-xl bg-slate-950/40 px-5 py-4">
+          <p class="text-sm text-red-400" role="alert">无法读取评估快照：{{ detailError }}</p>
+          <UButton class="mt-3" size="sm" icon="i-lucide-refresh-cw" @click="loadDetail(currentId)">重试</UButton>
         </div>
-        <AssessmentCompare v-if="comparison" :comparison="comparison" @open-source="openSource" />
+
+        <template v-else-if="current">
+          <AssessmentSnapshotMeta :snapshot="current" />
+          <AssessmentSummary :total="current.total" />
+
+          <ol class="space-y-4">
+            <li v-for="item in current.criteria" :key="item.criterionId">
+              <CriterionAssessmentCard :item="item" @open-source="openSource" />
+            </li>
+          </ol>
+
+          <div v-if="compareError" class="rounded-xl bg-slate-950/40 px-5 py-4">
+            <p class="text-sm text-red-400" role="alert">无法对比：{{ compareError }}</p>
+          </div>
+          <AssessmentCompare v-if="comparison" :comparison="comparison" @open-source="openSource" />
+        </template>
       </template>
     </template>
 

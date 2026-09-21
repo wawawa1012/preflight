@@ -14,6 +14,8 @@ export function criterionStateLabel(state: CriterionAssessmentState): string {
       return '本次无法判断'
     case 'failed':
       return '评估执行失败'
+    case 'not_scorable':
+      return '该标准未定义量化评分'
   }
 }
 
@@ -51,15 +53,43 @@ export function totalText(total: AssessmentTotalVM): { headline: string; detail:
   }
 }
 
-// 比较：不可比较时说明哪一项变了；可比时逐条 Before → After。
-export const COMPARISON_ASPECT_LABELS: Record<string, string> = {
-  rubric: '标准版本',
-  method: '评估方法',
-  materials: '材料范围',
+// 比较：不可比较时按 backend reason code 如实说明；prompt/model 差异用普通用户语言，
+// 内部配置名（provider/model 标识）不进主路径。
+export const NOT_COMPARABLE_NOTES: Record<string, string> = {
+  review_mismatch: '两次评估不属于同一个审查，不能直接比较。',
+  rubric_mismatch: '使用的标准不同，两次结果不能直接比较。',
+  method_mismatch: '评估方法版本发生变化，两次结果不能直接比较。',
+  prompt_version_mismatch: '评估方法的执行条件发生变化，因此不能把两次结果直接归因于材料修改。',
+  model_identifier_mismatch: '本次使用的评估模型与上次不同，两次结果暂不直接比较。',
+  scoring_definition_mismatch: '标准的评分档位定义发生变化，两次结果不能直接比较。',
+  source_policy_mismatch: '评估使用的来源范围规则发生变化，两次结果不能直接比较。',
+  criterion_scope_mismatch: '两次评估覆盖的标准条目不同，不能直接比较。',
+  material_scope_mismatch: '材料范围发生变化，两次结果不能直接比较。',
+  invalid_snapshot: '其中一次评估快照无效，无法比较。',
 }
 
-export const RANGE_OVERLAP_NOTE = '两次评估区间有重叠'
-export const NEWLY_ASSESSABLE_NOTE = '本次已有足够依据进行评估'
+// 比较观察（observation）的用户文案：逐条解释「为什么列为这种变化」。
+export const COMPARISON_OBSERVATION_NOTES: Record<string, string> = {
+  identical: '本次评估结果未见变化',
+  anchor_changed: '评分档位发生变化',
+  reason_changed: '评估原因发生变化',
+  status_changed: '评估状态发生变化',
+  newly_assessable: '本次已有足够依据进行评估',
+  became_insufficient: '本次评估依据不足',
+  range_overlaps: '两次评估区间有重叠',
+  // range_shifted_upward / downward 无独立文案：before → after 的区间本身已说明方向。
+}
+
+// 三个变化维度独立为真、并列展示，互不覆盖。
+export const COMPARISON_FLAG_NOTES = {
+  score: '评分/区间发生变化',
+  anchor: '评分档位发生变化',
+  reason: '评估原因发生变化',
+} as const
+
+// 因果边界：同口径观察 ≠ 修改效果的因果证明。
+export const COMPARISON_TRUTH_NOTE =
+  '以下对比是同口径下观察到的评估变化，不构成修改效果的因果证明。'
 
 // 页面级诚实声明（页脚常量）。
 export const ASSESSMENT_TRUTH_NOTE =
