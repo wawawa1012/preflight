@@ -1,7 +1,7 @@
-// Review 质询检查（SSR 载入 + setup 行为级，不引入测试框架）：
+// Review 模拟评审检查（SSR 载入 + setup 行为级，不引入测试框架）：
 // ReviewGrillView 对本次审查里选中的一份材料生成可回到原文的针对性追问：
 // 打开只读材料库、零 POST（绝不自动生成追问）；
-// 选中一份材料后点「开始质询」才 POST /api/v1/grill（body 只含该 material_id）；
+// 选中一份材料后点「开始模拟评审」才 POST /api/v1/grill（body 只含该 material_id）；
 // 空追问是合法结果；结果是一副编号问题卡（01 起）：问题正文最醒目，
 // 「触发依据」只是卡片版式标签，依据 = 可点击引用 + 位置 + 查看原文（点开 Drawer，按需 GET 该材料 blocks，位置按 locatorLabel）；
 // 失败可见 + 重试：主文案说人话可操作，机器码只做低权重技术细节；措辞纪律。
@@ -120,8 +120,8 @@ try {
   const initial = await context()
   const initialHtml = await renderToString(initial.app)
   check(
-    'SSR 画出质询正式名称与成员入口',
-    initialHtml.includes('质询') && initialHtml.includes('针对已暴露的薄弱点'),
+    'SSR 画出模拟评审正式名称与成员入口',
+    initialHtml.includes('模拟评审 · 答辩演练') && initialHtml.includes('从材料原文触发评审席最可能的追问'),
   )
   check(
     '打开页面零 POST（绝不自动生成追问）',
@@ -138,7 +138,12 @@ try {
     '下拉 aria-label 用 选择材料',
     viewSource.includes('aria-label="选择材料"'),
   )
-  check('按钮文案 开始质询（加载中 正在质询…）', viewSource.includes('开始质询') && viewSource.includes('正在质询…'))
+  check(
+    '按钮文案 开始模拟评审（加载中 正在生成评审问题…，已有问题后重新生成）',
+    viewSource.includes('开始模拟评审') &&
+      viewSource.includes('正在生成评审问题…') &&
+      viewSource.includes('重新生成评审问题'),
+  )
 
   // B. setup 行为：选中材料后点生成才 POST 一次，body 只含该 material_id。
   resetState()
@@ -208,14 +213,14 @@ try {
   await failing.generate()
   check(
     '失败可见：主文案说人话，机器码只进技术细节',
-    failing.error.value?.message === '质询服务暂不可用，请稍后重试。' &&
+    failing.error.value?.message === '模拟评审暂不可用，请稍后重试。' &&
       failing.error.value?.detail === 'llm_timeout' &&
       failing.questions.value.length === 0,
     JSON.stringify(failing.error.value),
   )
   check(
     '未配置时给出就绪态文案',
-    failing.failureText('llm_unconfigured', '')?.message === '质询服务暂未就绪。',
+    failing.failureText('llm_unconfigured', '')?.message === '模拟评审暂未就绪。',
   )
   state.grillStatus = 200
   state.grillBody = questionsBody
@@ -282,8 +287,8 @@ try {
       routerSource.includes("path: '/grill', redirect: '/'"),
   )
   check(
-    'Workspace rail 有质询入口（同一次审查的视角）',
-    workspaceSource.includes("key: 'grill'") && workspaceSource.includes('质询'),
+    'Workspace rail 有模拟评审入口（同一次审查的视角）',
+    workspaceSource.includes("key: 'grill'") && workspaceSource.includes("label: '模拟评审'"),
   )
 } finally {
   await server.close()
