@@ -68,14 +68,14 @@
 
 ## 5. 解析接入边界（B2 接口）
 
-- B2 交付纯 `SourceNode`（不依赖公共 contracts）：`text`、`body_ordinal`，位置三选一：`line`；`paragraph`；`table/row/cell/cell_paragraph`。
-- 本 Pod 约定的消费接口（待 B2 落地对齐）：`app.source_adapters.read_source_nodes(filename: str, data: bytes) -> list[SourceNode]`，可选模块属性 `PARSER_VERSION: str`。接口缺失时 `parser_unavailable`，不猜 provider 内部函数名、不改 B2 文件。
-- 由本 Pod 转换为公共 `Block` / `Locator` 并分配身份：节点按 `body_ordinal` 排序，`Block.ordinal` 重新分配为 0 起连续；`body_ordinal` 必须唯一，空文本节点按空行规则跳过；line→`line`，paragraph→`paragraph`，table→`table_cell`。转换已用注入的 mock adapter 做确定性测试；DOCX 真实全链等 B2 adapter 落地。
+- B2 交付纯 `SourceNode`（不依赖公共 contracts）：`kind`、`text`、`body_ordinal` 与结构坐标（`line_index` / `paragraph_index` / `table_index`+`row_index`+`cell_index`+`cell_paragraph_index`）。
+- 实际消费接口（B2 `codex/next-parsers`，提交 8a0cacc/0eb2183）：`app.txt_adapter.parse_txt(data) -> ParsedSource`、`app.docx_adapter.parse_docx(data) -> ParsedSource`；`ParsedSource(format/parser_version/nodes/line_count)`，纯函数、不导入 contracts/storage、不做 IO。本 Pod 不改 B2 文件。
+- 由本 Pod 转换：`body_ordinal` 零基连续直接作为 `Block.ordinal`（不重排、不重新编号），`line_index→index`、`paragraph_index→index`、`table_index/row_index/cell_index/cell_paragraph_index→index/row_index/cell_index/paragraph_index`；坐标缺失或非连续即 400 `invalid_source_node`。DOCX 真实全链已用 B2 合成 fixtures 打通（preview→save→Evidence annotation/link）。
 - 旧 `POST /api/v1/preview/markdown` 入口保留；`POST /api/v1/preview` 按扩展名通用预览；`POST /api/v1/materials` 按格式解析后原子保存。
 - TXT：真实逐行定位、完整 revision loop（LF 归一化 + 空行回填，格式保持 `txt`）。
 - DOCX：首版上传 → 保存 → Evidence → Reader；`editable-source` 与 revision 明确 400 `format_not_editable`（不承诺原格式编辑）。
 - 单块超 prompt 上限：`prompt_planner` 现有行为（带 block_id 抛 `PromptTooLarge`）保持：明确失败、不截断。
-- 接口问题（若 B2 实际交付与上述不符）：只提出接口问题，不改 B2 文件；DOCX 解析保持关闭并报 `parser_unavailable`，不伪造 Block。
+- 接口问题（若 B2 实际交付与上述不符）：只提出接口问题，不改 B2 文件；解析器拒绝的 DOCX 结构原码透出，不静默展开、不伪造 Block。
 
 ## 6. 错误语义（新增/沿用）
 
@@ -87,7 +87,8 @@
 | block 不属于该材料 / 不存在 | 404 | `block_not_found` |
 | DOCX editable-source 或 revision | 400 | `format_not_editable` |
 | 不支持的扩展名 | 400 | `invalid_extension` |
-| B2 adapter 不可用 | 400 | `parser_unavailable` |
+| 解析拒绝（B2 parser） | 400 | `invalid_encoding` / `invalid_zip` / `invalid_xml` / `invalid_docx` / `unsupported_structure` / `archive_too_large` |
+| SourceNode 坐标缺失/body_ordinal 非连续 | 400 | `invalid_source_node` |
 
 ## 7. 验收清单（定向）
 

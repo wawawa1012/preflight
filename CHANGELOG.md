@@ -1,11 +1,19 @@
 # Progress log
 
+## 2026-09-21 — B2 parser 消费：TXT/DOCX 走真实 parser（合并 codex/next-parsers）
+分支 `codex/next-locator` 合并 B2 commits `8a0cacc`/`0eb2183`（merge `327cf7a`）；未修改 B2 的 `source_adapters.py`/`txt_adapter.py`/`docx_adapter.py` 及其专属测试。
+- `source_ingest.py` 适配实际接口：`from app.txt_adapter import parse_txt`、`from app.docx_adapter import parse_docx`（`data: bytes -> ParsedSource`）；删除 `read_source_nodes`/`ParserUnavailable` 假定。
+- 映射保持 B2 结构语义：`body_ordinal` 零基连续直接成为 `Block.ordinal`（不重排、不重新编号）；`line_index/paragraph_index/table_index/row_index/cell_index/cell_paragraph_index` 原样映射到公共 Locator；坐标缺失/非连续 400 `invalid_source_node`。
+- DOCX 不再返回 `parser_unavailable`：`SourceParseError` 的 `invalid_encoding`/`invalid_zip`/`invalid_xml`/`invalid_docx`/`unsupported_structure`/`archive_too_large` 原码透出为 400；合并单元格/嵌套表格/内容控件/文本框继续按 parser 明确拒绝，不静默展开。
+- TXT 与 DOCX 都走公共 Block/Locator 与既有 storage/Evidence pipeline；md 保留冻结行解析入口（`/api/v1/preview/markdown` 未动）。
+- 验证：parser+locator targeted（`tests.test_txt_adapter tests.test_docx_adapter tests.test_source_ingest tests.test_locator_persistence`）PASS；完整 backend `Ran 498 tests ... OK`；`export_contracts.py`+`check_contracts.py` PASS；TXT preview/save/revision 与 DOCX preview/save/Evidence-source（annotation→binding→link）HTTP smoke PASS。live 未调用真实 LLM。
+
 ## 2026-09-21 — Locator v1：完整定位持久化 + 统一 SourceRef + 下游适配（定向检查通过，未提交前跑完整套件）
 工作区 `F:\project\Preflight-backend` · 分支 `codex/next-locator` · base `5f12236` · checkpoint `eec27d4`。合同与迁移说明见 `docs/architecture/locator-v1-contract-migration.md`，Kimi/F1 消费字段差异见 `docs/architecture/locator-v1-consumer-notes.md`。
 - **契约（contracts.py + schema.json + generated TS + fixtures + CONTRACTS.md）**：`Locator.kind` 增加 `table_cell` 与 `row_index/cell_index/paragraph_index`；新增 `SourceRef`、`SourcePreview`；`SavedMaterial` 增加 `format/parser_version`、`line_count` 可空；`MaterialSummary` 增加 `format`；`EvidenceAnnotationCreate`/`CoachSourceRef` 增加可选显式 `start/end`；`DetectedStatement`/`ConsistencyCitation`/`CoachSource`/`MaterialPreflightCitation` 增加 `locator` 且 `line_number` 可空；`GrillQuestion` 增加程序回填 `locator`；`EditableSource.format` 扩为 `md|txt`。Markdown/TXT 旧 wire 值不变。
 - **统一来源复验（evidence.py）**：`resolve_source_ref(text, quote, start?, end?)` 成为唯一验证门；quote-only 保留第一次 occurrence 兼容行为，显式 span 必须逐字命中并拒绝静默回退，因此同一 Block 的第二次 occurrence 可精确选择。`SpanMismatch` 移入 evidence.py 并在 storage 再导出。`EvidenceAnnotationCreate` 可显式 `material_id` 断言归属，与 block 实际材料不符 400 `material_mismatch`（省略时服务端派生）。
 - **持久化与迁移（storage.py）**：materials 增加 `format/parser_version/source_bytes`，blocks 保存完整 Locator（内部列 `locator_index`，`index` 是保留字）；`PRAGMA user_version=1` 版本化迁移把 legacy `line_number` 回填为 kind='line' locator，保留 Block ID/annotation span/link/binding/revision；迁移在单事务内重建、提交前 `foreign_key_check`、失败整体回滚；迁移前强制确认外键已关（防 DROP CASCADE 误删）。新上传原文件字节与 material/blocks 同事务入库；legacy Markdown `source_bytes=null` 不伪造，editable-source 仍按 LF/空行规则重建。
-- **解析边界（source_ingest.py，新增）**：md/txt 走真实逐行节点；DOCX 通过延迟导入消费 B2 `app.source_adapters.read_source_nodes(filename, data)`（缺失即 400 `parser_unavailable`，不伪造 Block）；`SourceNode` 转公共 Block/Locator（paragraph→paragraph、table→table_cell），按 body_ordinal 排序并重分配 0 起连续 ordinal。新增 `POST /api/v1/preview`；旧 `/api/v1/preview/markdown` 不动；revision/editable-source 对 DOCX 400 `format_not_editable`。
+- **解析边界（source_ingest.py，新增）**：md/txt 走真实逐行节点；DOCX 消费 B2 parser（当时接口尚未交付，先以 `parser_unavailable` 占位，已由上一节实际接口替换）；`SourceNode` 转公共 Block/Locator（paragraph→paragraph、table→table_cell）。新增 `POST /api/v1/preview`；旧 `/api/v1/preview/markdown` 不动；revision/editable-source 对 DOCX 400 `format_not_editable`。
 - **下游适配**：Statement/Citation/Report/Grill/Coach/Repair/prompt 全部携带结构化 locator，`line_number` 非行来源为 null；Consistency finding/citation 一律按 Block.ordinal + span 排序（不再用 line_number）；preflight 引用展示前复验存储 span。一致性/评分算法、Proposal 验证门、Review/binding invariant 未改。
 - 验证（deterministic）：完整 backend `Ran 452 tests ... OK`；`scripts/export_contracts.py` + `scripts/check_contracts.py` PASS（新增 source_ref fixture 与负例）；TestClient HTTP smoke 覆盖 health/openapi/preview/materials/annotations/revisions/editable-source 与 400 错误码 PASS。mock：注入 fake B2 adapter 的 DOCX 转换测试 PASS。live：未调用任何真实 LLM/上游，未跑真实 DOCX 全链（等 B2 adapter 落地）。
 

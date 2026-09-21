@@ -32,14 +32,14 @@ logical_key 跨版本标识同一逻辑文件；document_id/block_id 属于不�
 
 ## API 冻结边界
 
-已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（旧 Markdown 临时预览）、POST /api/v1/preview（Locator v1 通用预览：md/txt/docx；docx 等 B2 parser 落地前返回 400 parser_unavailable）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化；Locator v1 起保存 format/parser_version/原文件字节）、DELETE /api/v1/materials/{id}（行内删除确认 + FK 级联清理）、POST /api/v1/evidence-annotations 与 GET /api/v1/materials/{id}/evidence-annotations、/api/v1/evidence-annotations/{id}（Iteration 3 证据层）、GET /api/v1/rubrics 与材料绑定 / 人工关联（Iteration 4）、单 criterion Agent 提案（Iteration 5）、材料级只读预审装配（Iteration 6）、关键陈述扫描（Iteration 7）、同材料数值一致性（Iteration 8）、答辩追问 Grill（含 Sprint 2 trigger/preparation）与答辩教练 Response Coach（Sprint 2，session-only）。以下业务接口是后续目标，不能当作可用服务。
+已实现：GET /api/v1/health、GET /api/v1/report（Iteration 1 只读 mock）、POST /api/v1/preview/markdown（旧 Markdown 临时预览）、POST /api/v1/preview（Locator v1 通用预览：md 走冻结行解析，txt/docx 走 B2 parser）、POST /api/v1/materials 与 GET /api/v1/materials、/api/v1/materials/{id}、/api/v1/materials/recent（Iteration 2B 持久化；Locator v1 起保存 format/parser_version/原文件字节）、DELETE /api/v1/materials/{id}（行内删除确认 + FK 级联清理）、POST /api/v1/evidence-annotations 与 GET /api/v1/materials/{id}/evidence-annotations、/api/v1/evidence-annotations/{id}（Iteration 3 证据层）、GET /api/v1/rubrics 与材料绑定 / 人工关联（Iteration 4）、单 criterion Agent 提案（Iteration 5）、材料级只读预审装配（Iteration 6）、关键陈述扫描（Iteration 7）、同材料数值一致性（Iteration 8）、答辩追问 Grill（含 Sprint 2 trigger/preparation）与答辩教练 Response Coach（Sprint 2，session-only）。以下业务接口是后续目标，不能当作可用服务。
 
 | 方法/路径 | 请求 | 响应 |
 | --- | --- | --- |
 | GET /api/v1/health | 无 | {status: "ok", contract_version: "0.1.0"}（已实现） |
 | GET /api/v1/report | 无 | RunReport（已实现，只读 mock） |
 | POST /api/v1/preview/markdown | multipart：file（仅 .md，UTF-8，≤1 MiB） | MarkdownPreview（已实现，临时预览，不保存；错误返回 400 + ApiError） |
-| POST /api/v1/preview | multipart：file（.md/.txt/.docx，≤1 MiB） | SourcePreview（已实现；docx 在 B2 adapter 落地前 400 parser_unavailable） |
+| POST /api/v1/preview | multipart：file（.md/.txt/.docx，≤1 MiB） | SourcePreview（已实现；解析拒绝 400，code 为 parser 的 invalid_encoding/invalid_zip/invalid_xml/invalid_docx/unsupported_structure/archive_too_large） |
 | POST /api/v1/materials | multipart：file（.md/.txt/.docx，服务端重新解析） | SavedMaterial，201（已实现，原文件字节/format/parser_version 与 material/blocks 同事务写入 SQLite） |
 | GET /api/v1/materials | 无 | MaterialSummary[]（已实现，摘要列表，按 created_at 倒序，不含 blocks） |
 | GET /api/v1/materials/{id} | 无 | SavedMaterial；未知 ID 返回 404 + ApiError |

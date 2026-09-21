@@ -125,7 +125,7 @@ async def preview_markdown(file: UploadFile = File(...)) -> MarkdownPreview:
     return build_preview(file.filename or "", data)
 
 
-# 通用预览：md/txt/docx 按扩展名解析；docx 等待 B2 source adapter（400 parser_unavailable）。
+# 通用预览：md 走冻结行解析，txt/docx 走 B2 parser；解析拒绝按 parser 错误码返回 400。
 @app.post("/api/v1/preview", response_model=SourcePreview)
 async def preview_source(file: UploadFile = File(...)) -> SourcePreview:
     data = await file.read(MAX_BYTES + 1)

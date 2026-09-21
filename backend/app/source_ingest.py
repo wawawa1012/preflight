@@ -1,53 +1,39 @@
-"""通用来源解析边界：md/txt 行解析 + B2 SourceNode → 公共 Block/Locator 转换。
+"""通用来源解析边界：消费 B2 纯 parser，转换成公共 Block/Locator。
 
-B2 交付纯 SourceNode（不依赖公共 contracts）：text、body_ordinal；位置三选一——
-line；paragraph；或 table/row/cell/cell_paragraph。本模块负责：
-- 把节点按 body_ordinal 顺序转成公共 Block，并分配 Block.ordinal（0 起连续）与临时身份；
-- line → Locator(kind="line")，paragraph → Locator(kind="paragraph")，
-  table → Locator(kind="table_cell", index=table, row_index, cell_index, paragraph_index)；
-- 非行格式的 line_count 为 null，绝不用 index 冒充行号。
+B2 接口（不依赖公共 contracts，本模块不修改其实现）：
+- app.txt_adapter.parse_txt(data) -> ParsedSource
+- app.docx_adapter.parse_docx(data) -> ParsedSource
+- app.source_adapters：ParsedSource(format/parser_version/nodes/line_count)、
+  SourceNode(kind/text/body_ordinal + 结构坐标)、SourceParseError(code/message/details)。
 
-DOCX 解析属于 B2 adapter；adapter 未落地时抛 ParserUnavailable（400 parser_unavailable），
-不伪造 Block、不静默截断。旧的 `.md` 预览入口仍走 markdown_preview.build_preview，语义不变。
+本模块职责：
+- 按扩展名选择 parser：md 走冻结的行解析（与旧 Markdown 语义一致），txt/docx 走 B2；
+- SourceNode → 公共 Block：body_ordinal 零基连续直接作为 Block.ordinal（保持 parser 结构语义，
+  不重新编号、不按 line_number 排序），结构位置原样映射到 Locator：
+  line_index→index，paragraph_index→index，
+  table_index/row_index/cell_index/cell_paragraph_index→index/row_index/cell_index/paragraph_index；
+- 非行来源 line_count 保持 null（TXT 给真实行数，DOCX 为 None）；
+- parser 的 SourceParseError 统一转成 400 PreviewRejected（错误码原样透出，不静默降级）。
+
+解析拒绝（合并单元格/嵌套表格/内容控件/文本框/损坏 ZIP/XML 等）完全由 B2 parser 决定，
+本层不扩大也不收窄 DOCX 支持范围。
 """
 import hashlib
-from dataclasses import dataclass
+from collections.abc import Sequence
 
 from .contracts import Block, Locator, SourcePreview
+from .docx_adapter import parse_docx
 from .markdown_preview import (
     MAX_BYTES,
     TEMPORARY_DOCUMENT_ID,
     PreviewRejected,
     decode_markdown,
     split_lines,
-    validate_filename,
 )
+from .source_adapters import ParsedSource, SourceNode, SourceParseError
+from .txt_adapter import parse_txt
 
 PARSER_VERSION_LINE = "line-v1"
-PARSER_VERSION_B2 = "b2-source-nodes-v1"
-
-SUPPORTED_FORMATS = ("md", "txt", "docx")
-
-
-class ParserUnavailable(PreviewRejected):
-    """格式已识别但对应 parser 不可用（当前只有 DOCX 等待 B2 adapter）。"""
-
-    def __init__(self, message: str, details: list[str] | None = None) -> None:
-        super().__init__("parser_unavailable", message, details)
-
-
-@dataclass(frozen=True)
-class SourceNode:
-    """B2 纯节点形状的本地镜像；也可由内置行解析生成，测试可注入。"""
-
-    text: str
-    body_ordinal: int
-    line: int | None = None
-    paragraph: int | None = None
-    table: int | None = None
-    row: int | None = None
-    cell: int | None = None
-    cell_paragraph: int | None = None
 
 
 def detect_format(filename: str) -> str:
@@ -60,74 +46,57 @@ def detect_format(filename: str) -> str:
     )
 
 
-def line_nodes(text: str) -> list[SourceNode]:
-    """真实逐行节点：空行不生成节点但计入 line_count；只含空格/Tab 的行不是空行。"""
-    nodes: list[SourceNode] = []
-    for line_number, line in enumerate(split_lines(text), start=1):
-        if line == "":
-            continue
-        nodes.append(SourceNode(text=line, body_ordinal=len(nodes), line=line_number))
-    return nodes
+def _invalid_node(message: str, details: list[str] | None = None) -> PreviewRejected:
+    return PreviewRejected("invalid_source_node", message, details or [])
 
 
 def locator_from_node(node: SourceNode) -> Locator:
-    """节点位置 → 公共 Locator；位置形式必须唯一，否则拒绝整份解析。"""
-    has_line = node.line is not None
-    has_paragraph = node.paragraph is not None
-    has_table = node.table is not None
-    if sum((has_line, has_paragraph, has_table)) != 1:
-        raise PreviewRejected(
-            "invalid_source_node",
-            "SourceNode 必须且只能提供 line / paragraph / table 中的一种位置",
-            [f"body_ordinal={node.body_ordinal}"],
-        )
-    if has_line:
-        if node.line < 1:
-            raise PreviewRejected("invalid_source_node", "line 必须从 1 开始", [f"line={node.line}"])
-        return Locator(kind="line", index=node.line, end_index=None, block_index=1)
-    if has_paragraph:
-        if node.paragraph < 1:
-            raise PreviewRejected(
-                "invalid_source_node", "paragraph 必须从 1 开始", [f"paragraph={node.paragraph}"]
+    """SourceNode 结构位置 → 公共 Locator；坐标缺失/越界即拒绝整份解析。"""
+    if node.kind == "line":
+        if node.line_index is None or node.line_index < 1:
+            raise _invalid_node("line 节点缺少一基 line_index", [f"body_ordinal={node.body_ordinal}"])
+        return Locator(kind="line", index=node.line_index, end_index=None, block_index=1)
+    if node.kind == "paragraph":
+        if node.paragraph_index is None or node.paragraph_index < 1:
+            raise _invalid_node(
+                "paragraph 节点缺少一基 paragraph_index", [f"body_ordinal={node.body_ordinal}"]
             )
-        return Locator(kind="paragraph", index=node.paragraph, end_index=None, block_index=1)
-    if node.row is None or node.cell is None or node.cell_paragraph is None:
-        raise PreviewRejected(
-            "invalid_source_node",
-            "table_cell 节点必须同时提供 row/cell/cell_paragraph",
-            [f"body_ordinal={node.body_ordinal}"],
+        return Locator(kind="paragraph", index=node.paragraph_index, end_index=None, block_index=1)
+    if node.kind == "table_cell":
+        coordinates = (node.table_index, node.row_index, node.cell_index, node.cell_paragraph_index)
+        if any(value is None or value < 1 for value in coordinates):
+            raise _invalid_node(
+                "table_cell 节点缺少完整的一基 table/row/cell/cell_paragraph 坐标",
+                [f"body_ordinal={node.body_ordinal}"],
+            )
+        return Locator(
+            kind="table_cell",
+            index=node.table_index,
+            end_index=None,
+            block_index=1,
+            row_index=node.row_index,
+            cell_index=node.cell_index,
+            paragraph_index=node.cell_paragraph_index,
         )
-    if min(node.table, node.row, node.cell, node.cell_paragraph) < 1:
-        raise PreviewRejected(
-            "invalid_source_node", "表格结构序号必须从 1 开始", [f"table={node.table}"]
-        )
-    return Locator(
-        kind="table_cell",
-        index=node.table,
-        end_index=None,
-        block_index=1,
-        row_index=node.row,
-        cell_index=node.cell,
-        paragraph_index=node.cell_paragraph,
-    )
+    raise _invalid_node(f"未知 SourceNode.kind：{node.kind}", [f"body_ordinal={node.body_ordinal}"])
 
 
-def blocks_from_nodes(nodes: list[SourceNode]) -> list[Block]:
-    """按 body_ordinal 排定正文顺序，重新分配 0 起连续的 Block.ordinal；空文本节点跳过。"""
-    ordered = sorted(nodes, key=lambda node: node.body_ordinal)
-    ordinals = [node.body_ordinal for node in ordered]
-    if len(set(ordinals)) != len(ordinals):
-        raise PreviewRejected("invalid_source_node", "body_ordinal 必须唯一", [])
+def blocks_from_nodes(nodes: Sequence[SourceNode]) -> list[Block]:
+    """保持 parser 的正文顺序与结构语义：body_ordinal 零基连续 → Block.ordinal。"""
     blocks: list[Block] = []
-    for node in ordered:
+    for index, node in enumerate(nodes):
+        if node.body_ordinal != index:
+            raise _invalid_node(
+                "parser 输出的 body_ordinal 必须零基连续",
+                [f"位置 {index} 收到 body_ordinal={node.body_ordinal}"],
+            )
         if node.text == "":
-            continue
-        ordinal = len(blocks)
+            raise _invalid_node("parser 不应输出空文本节点", [f"body_ordinal={node.body_ordinal}"])
         blocks.append(
             Block(
-                id=f"{TEMPORARY_DOCUMENT_ID}-block-{ordinal}",
+                id=f"{TEMPORARY_DOCUMENT_ID}-block-{index}",
                 document_id=TEMPORARY_DOCUMENT_ID,
-                ordinal=ordinal,
+                ordinal=index,
                 text=node.text,
                 locator=locator_from_node(node),
             )
@@ -135,45 +104,42 @@ def blocks_from_nodes(nodes: list[SourceNode]) -> list[Block]:
     return blocks
 
 
-def _b2_source_adapter():
-    """延迟导入 B2 模块；不存在时返回 None（不抛 ImportError 到调用方）。"""
+def _run_b2_parser(fmt: str, data: bytes) -> ParsedSource:
+    """把 B2 的 SourceParseError 原码转成 400 PreviewRejected；不吞错、不降级。"""
     try:
-        from . import source_adapters  # type: ignore[attr-defined]
-    except ImportError:
-        return None
-    return source_adapters
+        return parse_txt(data) if fmt == "txt" else parse_docx(data)
+    except SourceParseError as exc:
+        raise PreviewRejected(exc.code, exc.message, exc.details) from exc
 
 
-def _parse_with_b2(filename: str, data: bytes) -> tuple[list[SourceNode], str]:
-    adapter = _b2_source_adapter()
-    if adapter is None:
-        raise ParserUnavailable(
-            "DOCX parser 尚未集成（等待 B2 source adapter）", [f"filename={filename}"]
+def _markdown_nodes(text: str) -> list[SourceNode]:
+    """md 行节点：冻结的 Markdown 行规则，空行不产节点但计入 line_count。"""
+    nodes: list[SourceNode] = []
+    for line_index, line in enumerate(split_lines(text), start=1):
+        if line == "":
+            continue
+        nodes.append(
+            SourceNode(kind="line", text=line, body_ordinal=len(nodes), line_index=line_index)
         )
-    parse = getattr(adapter, "read_source_nodes", None)
-    if parse is None:
-        raise ParserUnavailable(
-            "B2 source adapter 未提供 read_source_nodes(filename, data) 接口",
-            [f"filename={filename}"],
-        )
-    nodes = parse(filename, data)
-    return list(nodes), getattr(adapter, "PARSER_VERSION", PARSER_VERSION_B2)
+    return nodes
 
 
 def build_source_preview(filename: str, data: bytes) -> SourcePreview:
-    """通用预览：按扩展名解析；不保存、不渲染。失败抛 PreviewRejected。"""
+    """通用预览：md 走冻结行解析，txt/docx 走 B2 parser；不保存、不渲染。"""
     fmt = detect_format(filename)
     if len(data) > MAX_BYTES:
         raise PreviewRejected("file_too_large", "文件超过 1 MiB 上限", [f"收到 {len(data)} 字节"])
 
-    line_count: int | None = None
-    if fmt == "docx":
-        nodes, parser_version = _parse_with_b2(filename, data)
-    else:
+    if fmt == "md":
         decoded = decode_markdown(data)
-        nodes = line_nodes(decoded)
-        line_count = len(split_lines(decoded))
+        nodes = _markdown_nodes(decoded)
+        line_count: int | None = len(split_lines(decoded))
         parser_version = PARSER_VERSION_LINE
+    else:
+        parsed = _run_b2_parser(fmt, data)
+        nodes = list(parsed.nodes)
+        line_count = parsed.line_count
+        parser_version = parsed.parser_version
 
     return SourcePreview(
         document_id=TEMPORARY_DOCUMENT_ID,
@@ -185,11 +151,3 @@ def build_source_preview(filename: str, data: bytes) -> SourcePreview:
         parser_version=parser_version,
         blocks=blocks_from_nodes(nodes),
     )
-
-
-def build_markdown_preview(filename: str, data: bytes):
-    """旧 `.md` 入口：仍走冻结的行解析实现，保证历史 wire 值不变。"""
-    from .markdown_preview import build_preview
-
-    validate_filename(filename)
-    return build_preview(filename, data)

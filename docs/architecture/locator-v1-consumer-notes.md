@@ -49,7 +49,9 @@ function locatorText(loc: Locator): string {
 
 ```jsonc
 // POST /api/v1/preview  （multipart: file，.md/.txt/.docx，≤1 MiB）
-// 200 SourcePreview；非支持后缀 400 invalid_extension；DOCX 暂 400 parser_unavailable
+// 200 SourcePreview；非支持后缀 400 invalid_extension
+// 解析拒绝 400，code 为 parser 的 invalid_encoding/invalid_zip/invalid_xml/invalid_docx/
+// unsupported_structure/archive_too_large（合并单元格/嵌套表格/内容控件/文本框等不静默展开）
 { "document_id": "preview", "filename": "notes.txt", "format": "txt",
   "line_count": 3, "parser_version": "line-v1",
   "blocks": [{ "id": "preview-block-0", "ordinal": 0, "text": "第一行",
@@ -82,7 +84,7 @@ function locatorText(loc: Locator): string {
 - 所有评分/一致性问题判定算法、Proposal 验证门、Review/binding invariant 未改；只改变定位字段与排序/展示来源。
 - `CONTRACTS.md` 中 Locator 语义与错误码已更新，以其为准。
 
-## 5. 未完成 / 待 B2
+## 5. B2 parser 状态与前端
 
-- DOCX 真实解析等待 B2 `app.source_adapters.read_source_nodes(filename, data)`；本轮只有 mock adapter 的确定性转换测试，未跑真实 DOCX 全链。
+- B2 parser（`codex/next-parsers`，8a0cacc/0eb2183）已合并：TXT/DOCX 走 `parse_txt`/`parse_docx` → 公共 Block/Locator，preview→save→Evidence annotation/link 全链已用合成 fixtures 验证；DOCX 不支持的复杂结构按 parser 错误码 400，不静默展开。
 - 前端本轮只重新生成了 `frontend/src/types/contracts.ts`；页面按上表适配由 frontend pod 负责（未手工改任何消费者）。

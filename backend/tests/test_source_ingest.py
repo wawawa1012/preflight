@@ -1,55 +1,44 @@
-"""通用来源解析边界：md/txt 行语义、B2 SourceNode 转换、DOCX 未集成拒绝与 mock 接入。
+"""通用来源解析边界：消费 B2 txt/docx parser 的集成测试。
 
 定向验证：
-- TXT 真实逐行定位，空行计入 line_count 但不生成 Block；
-- 旧 Markdown 预览入口与通用预览对 md 给出一致的 Block/line locator；
-- 无 B2 adapter 时 DOCX 明确 parser_unavailable，不伪造 Block；
-- 注入 B2 纯 SourceNode（paragraph/table_cell）后转换出正确公共 Locator 与 0 起连续 ordinal；
-- TXT revision loop 保留空行、原文件字节入库；
-- SourceNode 位置形式不合法时拒绝整份解析。
+- TXT/DOCX preview 均走 B2 parser 并转换成公共 Block/Locator；
+- body_ordinal 零基连续直接成为 Block.ordinal，结构坐标原样保留；
+- 非行来源 line_count=null（TXT 给真实行数）；`/preview/markdown` 与 md 行语义不变；
+- parser 拒绝（合并单元格/嵌套表格/内容控件/文本框/坏 ZIP/坏 XML）原码透出为 400；
+- DOCX 保存 → 读取 → Evidence annotation/link 全链在同一材料上可用；
+- TXT revision loop 保留空行、原文件字节入库。
 """
 import hashlib
-import sys
 import tempfile
-import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from app import main, storage
-from app.contracts import MaterialRevisionCreate
-from app.markdown_preview import build_preview
+from app.contracts import MaterialRevisionCreate, SourcePreview
+from app.markdown_preview import PreviewRejected, build_preview
+from app.source_adapters import SourceNode
 from app.source_ingest import (
     PARSER_VERSION_LINE,
-    ParserUnavailable,
-    SourceNode,
     blocks_from_nodes,
     build_source_preview,
     detect_format,
-    line_nodes,
     locator_from_node,
 )
-from app.markdown_preview import PreviewRejected
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+FIXTURES = BACKEND_DIR / "tests" / "fixtures" / "source_adapters"
 
 
-class LineNodeTest(unittest.TestCase):
-    def test_txt_lines_are_real_and_blank_lines_counted(self) -> None:
-        nodes = line_nodes("第一行\n\n第三行\n")
-        self.assertEqual([(node.line, node.text) for node in nodes], [(1, "第一行"), (3, "第三行")])
-        self.assertEqual([node.body_ordinal for node in nodes], [0, 1])
+def fixture(name: str) -> bytes:
+    return (FIXTURES / name).read_bytes()
 
-    def test_space_only_line_is_not_blank(self) -> None:
-        nodes = line_nodes("甲\n   \n乙")
-        self.assertEqual([node.line for node in nodes], [1, 2, 3])
 
-    def test_txt_preview_has_no_fake_lines_and_real_line_count(self) -> None:
-        preview = build_source_preview("notes.txt", "甲\n\n乙\n".encode("utf-8"))
-        self.assertEqual(preview.format, "txt")
-        self.assertEqual(preview.line_count, 3)
-        self.assertEqual(preview.sha256, hashlib.sha256("甲\n\n乙\n".encode("utf-8")).hexdigest())
-        self.assertEqual([block.locator.index for block in preview.blocks], [1, 3])
-        self.assertEqual([block.locator.kind for block in preview.blocks], ["line", "line"])
-        self.assertEqual([block.ordinal for block in preview.blocks], [0, 1])
+class GenericPreviewTest(unittest.TestCase):
+    def test_unsupported_extension_is_rejected(self) -> None:
+        with self.assertRaises(PreviewRejected) as caught:
+            detect_format("a.pdf")
+        self.assertEqual(caught.exception.code, "invalid_extension")
 
     def test_markdown_generic_preview_matches_legacy_entry(self) -> None:
         raw = "甲\n\n乙\n".encode("utf-8")
@@ -63,19 +52,54 @@ class LineNodeTest(unittest.TestCase):
             [block.model_dump() for block in legacy.blocks],
         )
 
-    def test_unsupported_extension_is_rejected(self) -> None:
-        with self.assertRaises(PreviewRejected) as caught:
-            detect_format("a.pdf")
-        self.assertEqual(caught.exception.code, "invalid_extension")
+    def test_txt_preview_uses_b2_parser_with_real_lines(self) -> None:
+        raw = fixture("txt_lines_bom_crlf_cn.txt")
+        preview = build_source_preview("notes.txt", raw)
+        self.assertEqual(preview.format, "txt")
+        self.assertEqual(preview.parser_version, "txt/1")
+        self.assertEqual(preview.line_count, 4)  # 空行计入行数
+        self.assertEqual([block.text for block in preview.blocks], ["标题行", "   ", "第三行\t带tab"])
+        self.assertEqual([block.locator.kind for block in preview.blocks], ["line", "line", "line"])
+        self.assertEqual([block.locator.index for block in preview.blocks], [1, 3, 4])
+        self.assertEqual([block.ordinal for block in preview.blocks], [0, 1, 2])
+        self.assertEqual(preview.sha256, hashlib.sha256(raw).hexdigest())
+
+    def test_txt_via_boundary_keeps_markdown_line_semantics(self) -> None:
+        payloads = ["标题\n\n  缩进行  \r\n最后一行\r\n", "甲\n \n乙", "", "\n\n", "没有末尾换行"]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                data = payload.encode("utf-8")
+                generic = build_source_preview("x.txt", data)
+                legacy = build_preview("x.md", data)
+                self.assertEqual(generic.line_count, legacy.line_count)
+                self.assertEqual(
+                    [(block.text, block.locator.index) for block in generic.blocks],
+                    [(block.text, block.locator.index) for block in legacy.blocks],
+                )
+
+    def test_non_bmp_span_indices_stay_code_points(self) -> None:
+        preview = build_source_preview("emoji.txt", "🧪🧪准确率 95% 🚀\n".encode("utf-8"))
+        block = preview.blocks[0]
+        self.assertEqual(block.text[2:9], "准确率 95%")
+        self.assertEqual(block.locator.index, 1)
 
 
 class SourceNodeConversionTest(unittest.TestCase):
     def test_paragraph_and_table_cell_become_public_locators(self) -> None:
-        nodes = [
-            SourceNode(text="正文一", body_ordinal=0, paragraph=1),
-            SourceNode(text="单元格", body_ordinal=1, table=2, row=3, cell=4, cell_paragraph=5),
-        ]
-        blocks = blocks_from_nodes(nodes)
+        blocks = blocks_from_nodes(
+            [
+                SourceNode(kind="paragraph", text="正文一", body_ordinal=0, paragraph_index=1),
+                SourceNode(
+                    kind="table_cell",
+                    text="单元格",
+                    body_ordinal=1,
+                    table_index=2,
+                    row_index=3,
+                    cell_index=4,
+                    cell_paragraph_index=5,
+                ),
+            ]
+        )
         self.assertEqual([block.ordinal for block in blocks], [0, 1])
         paragraph, cell = blocks
         self.assertEqual((paragraph.locator.kind, paragraph.locator.index), ("paragraph", 1))
@@ -85,68 +109,133 @@ class SourceNodeConversionTest(unittest.TestCase):
             ("table_cell", 2, 3, 4, 5, 1),
         )
 
-    def test_nodes_are_ordered_by_body_ordinal_and_ordinal_is_contiguous(self) -> None:
-        nodes = [
-            SourceNode(text="后", body_ordinal=9, paragraph=2),
-            SourceNode(text="前", body_ordinal=4, paragraph=1),
-        ]
-        blocks = blocks_from_nodes(nodes)
-        self.assertEqual([block.text for block in blocks], ["前", "后"])
-        self.assertEqual([block.ordinal for block in blocks], [0, 1])
-
-    def test_empty_text_nodes_are_skipped_like_markdown_blank_lines(self) -> None:
-        blocks = blocks_from_nodes(
-            [SourceNode(text="", body_ordinal=0, paragraph=1), SourceNode(text="有", body_ordinal=1, paragraph=2)]
-        )
-        self.assertEqual([block.text for block in blocks], ["有"])
-        self.assertEqual([block.locator.index for block in blocks], [2])
-
-    def test_ambiguous_or_missing_position_is_rejected(self) -> None:
+    def test_body_ordinal_must_be_consecutive_and_zero_based(self) -> None:
         with self.assertRaises(PreviewRejected) as caught:
-            locator_from_node(SourceNode(text="x", body_ordinal=0, line=1, paragraph=1))
-        self.assertEqual(caught.exception.code, "invalid_source_node")
-        with self.assertRaises(PreviewRejected):
-            locator_from_node(SourceNode(text="x", body_ordinal=0, table=1, row=1))  # 缺 cell/paragraph
-        with self.assertRaises(PreviewRejected):
-            locator_from_node(SourceNode(text="x", body_ordinal=0))
-        with self.assertRaises(PreviewRejected):
             blocks_from_nodes(
-                [SourceNode(text="a", body_ordinal=0, paragraph=1), SourceNode(text="b", body_ordinal=0, paragraph=2)]
+                [
+                    SourceNode(kind="paragraph", text="一", body_ordinal=0, paragraph_index=1),
+                    SourceNode(kind="paragraph", text="二", body_ordinal=2, paragraph_index=2),
+                ]
+            )
+        self.assertEqual(caught.exception.code, "invalid_source_node")
+
+    def test_empty_text_node_is_rejected_not_silently_skipped(self) -> None:
+        with self.assertRaises(PreviewRejected):
+            blocks_from_nodes([SourceNode(kind="paragraph", text="", body_ordinal=0, paragraph_index=1)])
+
+    def test_kind_specific_coordinates_are_required(self) -> None:
+        with self.assertRaises(PreviewRejected):
+            locator_from_node(SourceNode(kind="line", text="x", body_ordinal=0))
+        with self.assertRaises(PreviewRejected):
+            locator_from_node(SourceNode(kind="paragraph", text="x", body_ordinal=0))
+        with self.assertRaises(PreviewRejected):
+            locator_from_node(
+                SourceNode(kind="table_cell", text="x", body_ordinal=0, table_index=1, row_index=1)
+            )
+        with self.assertRaises(PreviewRejected):
+            locator_from_node(SourceNode(kind="sentence", text="x", body_ordinal=0))  # type: ignore[arg-type]
+
+
+class DocxPipelineTest(unittest.TestCase):
+    def test_docx_preview_keeps_parser_positions(self) -> None:
+        preview = build_source_preview("report.docx", fixture("docx_body_table_body.docx"))
+        self.assertEqual(preview.format, "docx")
+        self.assertEqual(preview.parser_version, "docx/1")
+        self.assertIsNone(preview.line_count)
+        self.assertEqual([block.ordinal for block in preview.blocks], [0, 1, 2, 3, 4])
+        self.assertEqual(
+            [(block.text, block.locator.kind) for block in preview.blocks],
+            [
+                ("正文第一段", "paragraph"),
+                ("甲组数据", "table_cell"),
+                ("重复项", "table_cell"),
+                ("乙组数据", "table_cell"),
+                ("结语段落", "paragraph"),
+            ],
+        )
+        first, cell, _, _, last = preview.blocks
+        self.assertEqual((first.locator.kind, first.locator.index), ("paragraph", 1))
+        self.assertEqual(
+            (cell.locator.index, cell.locator.row_index, cell.locator.cell_index, cell.locator.paragraph_index),
+            (1, 1, 1, 1),
+        )
+        self.assertEqual((last.locator.kind, last.locator.index), ("paragraph", 2))
+
+    def test_docx_rejections_keep_parser_error_codes(self) -> None:
+        cases = {
+            "reject_merged_cells.docx": "unsupported_structure",
+            "reject_nested_table.docx": "unsupported_structure",
+            "reject_content_control.docx": "unsupported_structure",
+            "reject_text_box.docx": "unsupported_structure",
+            "reject_broken_zip.docx": "invalid_zip",
+            "reject_bad_xml.docx": "invalid_xml",
+            "reject_missing_document.docx": "invalid_docx",
+        }
+        for name, code in cases.items():
+            with self.subTest(fixture=name):
+                with self.assertRaises(PreviewRejected) as caught:
+                    build_source_preview("bad.docx", fixture(name))
+                self.assertEqual(caught.exception.code, code)
+
+
+class DocxEvidencePlumbingTest(unittest.TestCase):
+    """DOCX 保存 → 读取 → annotation → link：Evidence source 全链都在同一材料上。"""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self._tmp.name) / "docx-plumbing.db"
+        self._original_connect = storage.connect
+        storage.connect = lambda db_path=storage.DEFAULT_DB_PATH: self._original_connect(self.db)
+        storage.init_db()
+        self.preview = build_source_preview("report.docx", fixture("docx_body_table_body.docx"))
+        self.material = storage.save_material(
+            self.preview, source_bytes=fixture("docx_body_table_body.docx")
+        )
+
+    def tearDown(self) -> None:
+        storage.connect = self._original_connect
+        self._tmp.cleanup()
+
+    def test_save_round_trip_and_source_bytes(self) -> None:
+        loaded = storage.get_material(self.material.id)
+        self.assertEqual(loaded.model_dump(), self.material.model_dump())
+        self.assertEqual(loaded.format, "docx")
+        self.assertEqual(loaded.parser_version, "docx/1")
+        self.assertIsNone(loaded.line_count)
+        self.assertEqual(
+            storage.get_source_bytes(self.material.id), fixture("docx_body_table_body.docx")
+        )
+
+    def test_docx_evidence_annotation_and_link(self) -> None:
+        cell_block = next(block for block in self.material.blocks if block.locator.kind == "table_cell")
+        annotation = storage.save_evidence_annotation(
+            cell_block.id, "甲组数据", db_path=self.db, material_id=self.material.id
+        )
+        self.assertEqual(annotation.material_id, self.material.id)
+        self.assertEqual(annotation.block_id, cell_block.id)
+        self.assertEqual((annotation.source.start, annotation.source.end), (0, 4))
+
+        storage.bind_material_rubric(self.material.id, "rubric_syn", 1, self.db)
+        link = storage.create_link(
+            self.material.id, annotation.id, "c_syn_1", "DOCX 表格单元格作为依据", db_path=self.db
+        )
+        self.assertEqual(link.annotation_id, annotation.id)
+
+    def test_second_occurrence_span_inside_docx_block(self) -> None:
+        # 单元格 fixture 的每块只含一次文本；显式 span 仍必须逐字命中。
+        cell_block = next(block for block in self.material.blocks if block.locator.kind == "table_cell")
+        with self.assertRaises(storage.SpanMismatch):
+            storage.save_evidence_annotation(
+                cell_block.id, "甲组数据", db_path=self.db, start=1, end=5
             )
 
-
-class DocxAdapterBoundaryTest(unittest.TestCase):
-    def test_docx_without_b2_adapter_is_explicitly_unavailable(self) -> None:
-        with self.assertRaises(ParserUnavailable) as caught:
-            build_source_preview("report.docx", b"fake-docx")
-        self.assertEqual(caught.exception.code, "parser_unavailable")
-
-    def test_docx_uses_b2_source_nodes_when_present(self) -> None:
-        module = types.ModuleType("app.source_adapters")
-
-        def read_source_nodes(filename: str, data: bytes):
-            self.assertEqual(filename, "report.docx")
-            self.assertEqual(data, b"fake-docx")
-            return [
-                SourceNode(text="正文一", body_ordinal=0, paragraph=1),
-                SourceNode(text="表格内文字", body_ordinal=1, table=1, row=1, cell=2, cell_paragraph=1),
-            ]
-
-        module.read_source_nodes = read_source_nodes
-        module.PARSER_VERSION = "b2-test-v9"
-        with mock.patch.dict(sys.modules, {"app.source_adapters": module}):
-            preview = build_source_preview("report.docx", b"fake-docx")
-        self.assertEqual(preview.format, "docx")
-        self.assertIsNone(preview.line_count)
-        self.assertEqual(preview.parser_version, "b2-test-v9")
-        kinds = [block.locator.kind for block in preview.blocks]
-        self.assertEqual(kinds, ["paragraph", "table_cell"])
-
-    def test_docx_adapter_without_interface_is_rejected(self) -> None:
-        module = types.ModuleType("app.source_adapters")
-        with mock.patch.dict(sys.modules, {"app.source_adapters": module}):
-            with self.assertRaises(ParserUnavailable):
-                build_source_preview("report.docx", b"fake-docx")
+    def test_docx_editable_source_and_revision_are_rejected(self) -> None:
+        with self.assertRaises(storage.FormatNotEditable):
+            main.material_editable_source(self.material.id)
+        with self.assertRaises(storage.FormatNotEditable):
+            main.create_material_revision(
+                self.material.id, MaterialRevisionCreate(text="新文本", filename="new.md")
+            )
 
 
 class TxtRevisionLoopTest(unittest.TestCase):
@@ -172,15 +261,13 @@ class TxtRevisionLoopTest(unittest.TestCase):
             MaterialRevisionCreate(text=child_text, filename="draft-v2.txt"),
         )
         self.assertEqual(created.material.format, "txt")
+        self.assertEqual(created.material.parser_version, "txt/1")
         self.assertEqual(created.material.line_count, 6)
         self.assertEqual([block.locator.index for block in created.material.blocks], [1, 3, 6])
         source = main.material_editable_source(created.material.id)
         self.assertEqual(source.format, "txt")
         self.assertEqual(source.text, child_text)
-        self.assertEqual(
-            storage.get_source_bytes(created.material.id), child_text.encode("utf-8")
-        )
-        # 父材料不可变
+        self.assertEqual(storage.get_source_bytes(created.material.id), child_text.encode("utf-8"))
         self.assertEqual(main.material_editable_source(self.parent.id).text, "第一行\n\n第三行")
 
     def test_docx_extension_revision_is_rejected(self) -> None:
@@ -188,6 +275,11 @@ class TxtRevisionLoopTest(unittest.TestCase):
             main.create_material_revision(
                 self.parent.id, MaterialRevisionCreate(text="内容", filename="draft.docx")
             )
+
+    def test_txt_save_keeps_preview_and_source_bytes_consistent(self) -> None:
+        self.assertEqual(self.parent.sha256, hashlib.sha256("第一行\n\n第三行\n".encode("utf-8")).hexdigest())
+        self.assertEqual(self.parent.parser_version, "txt/1")
+        self.assertEqual(self.parent.line_count, 3)
 
 
 if __name__ == "__main__":
