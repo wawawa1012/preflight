@@ -83,6 +83,17 @@ class FormatNotEditable(Exception):
         super().__init__(message)
 
 
+class MaterialMismatch(Exception):
+    """显式提供了 material_id 但 block 不属于该材料；由 API 层转 400 material_mismatch。"""
+
+    code = "material_mismatch"
+
+    def __init__(self, message: str = "block 不属于该材料", details: list[str] | None = None) -> None:
+        self.message = message
+        self.details = details or []
+        super().__init__(message)
+
+
 class InvalidCandidate(Exception):
     """候选未通过验证门，不能 accept（400 invalid_candidate）。"""
 
@@ -775,16 +786,24 @@ def save_evidence_annotation(
     db_path: Path = DEFAULT_DB_PATH,
     start: int | None = None,
     end: int | None = None,
+    material_id: str | None = None,
 ) -> EvidenceAnnotation | None:
     """服务端解析 quote 并派生 material_id；Block 不存在返回 None。
 
-    quote-only 走第一次 occurrence（兼容）；显式 start/end 逐字复验、失败抛 SpanMismatch，
-    绝不静默退回第一次匹配。校验与写入在同一连接内完成，失败时库中不留无效引用。
+    material_id 仅在客户端显式断言时校验：block 不属于该材料抛 MaterialMismatch（400），
+    否则 material_id 一律由 block 行派生。quote-only 走第一次 occurrence（兼容）；显式
+    start/end 逐字复验、失败抛 SpanMismatch，绝不静默退回第一次匹配。校验与写入在同一
+    连接内完成，失败时库中不留无效引用。
     """
     with closing(connect(db_path)) as connection, connection:
         block = connection.execute("SELECT id, material_id, text FROM blocks WHERE id = ?", (block_id,)).fetchone()
         if block is None:
             return None
+        if material_id is not None and material_id != block["material_id"]:
+            raise MaterialMismatch(
+                "block 不属于声明的材料",
+                [f"block_id={block_id}", f"material_id={material_id}", f"actual={block['material_id']}"],
+            )
         start, end = resolve_source_ref(block["text"], quote, start, end)
         annotation_id = f"ev_{uuid.uuid4().hex}"
         created_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()

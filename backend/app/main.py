@@ -69,6 +69,7 @@ from .storage import (
     CandidateInput,
     FormatNotEditable,
     InvalidCandidate,
+    MaterialMismatch,
     ParentNotInReview,
     RubricNotBound,
     SpanMismatch,
@@ -362,7 +363,13 @@ def create_repair_suggestion(material_id: str, payload: ConsistencyFinding) -> R
 @app.post("/api/v1/evidence-annotations", response_model=EvidenceAnnotation, status_code=201)
 def create_evidence_annotation(payload: EvidenceAnnotationCreate) -> EvidenceAnnotation:
     annotation = storage.save_evidence_annotation(
-        payload.block_id, payload.quote, payload.note, "human", start=payload.start, end=payload.end
+        payload.block_id,
+        payload.quote,
+        payload.note,
+        "human",
+        start=payload.start,
+        end=payload.end,
+        material_id=payload.material_id,
     )
     if annotation is None:
         raise LookupFailed("block_not_found", "找不到该 Block", [f"block_id={payload.block_id}"])
@@ -734,6 +741,12 @@ async def span_mismatch(request: Request, exc: SpanMismatch) -> JSONResponse:
 
 @app.exception_handler(FormatNotEditable)
 async def format_not_editable(request: Request, exc: FormatNotEditable) -> JSONResponse:
+    error = ApiError(code=exc.code, message=exc.message, details=exc.details)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(MaterialMismatch)
+async def material_mismatch(request: Request, exc: MaterialMismatch) -> JSONResponse:
     error = ApiError(code=exc.code, message=exc.message, details=exc.details)
     return JSONResponse(status_code=400, content=error.model_dump())
 

@@ -1224,6 +1224,18 @@
           "default": null,
           "title": "Note"
         },
+        "material_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Material Id"
+        },
         "start": {
           "anyOf": [
             {

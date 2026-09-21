@@ -13,7 +13,7 @@ Markdown/TXT 的旧 wire 值与旧展示不变；新增字段只增不改，非�
 | `SourceRef`（新） | `material_id, block_id, start, end, quote`（半开 code point span，`end > start`） |
 | `SavedMaterial` | 新增 `format`（必填）与 `parser_version?: string\|null`；`line_count` 变为可空 |
 | `MaterialSummary` | 新增 `format`（必填） |
-| `EvidenceAnnotationCreate` | 新增可选 `start` / `end`（必须同时提供；显式 span 精确选中 occurrence，失败 400 `span_mismatch`） |
+| `EvidenceAnnotationCreate` | 新增可选 `start` / `end`（必须同时提供；显式 span 精确选中 occurrence，失败 400 `span_mismatch`）与可选 `material_id`（显式归属断言，不符 400 `material_mismatch`；省略时服务端从 block 派生） |
 | `DetectedStatement` / `ConsistencyCitation` / `CoachSource` / `MaterialPreflightCitation` | 新增 `locator: Locator`；`line_number` 变为可空（`int \| null`） |
 | `GrillQuestion` | 新增程序回填 `locator: Locator`（模型不能提供） |
 | `CoachSourceRef` | 新增可选 `start` / `end`（必须同时提供） |
@@ -63,6 +63,7 @@ function locatorText(loc: Locator): string {
 { "block_id": "mat_x-blk-0", "quote": "重复片段", "start": 6, "end": 10 }
 // 400 span_mismatch：显式 span 与 quote/边界不符（不会静默退回第一次匹配）
 // 400 quote_not_found：quote-only 未命中；400 invalid_request：start/end 只给一个
+// 400 material_mismatch：显式 material_id 与 block 实际所属材料不符
 ```
 
 ```jsonc

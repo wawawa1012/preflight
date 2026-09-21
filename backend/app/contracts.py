@@ -331,10 +331,12 @@ class EvidenceAnnotation(Contract):
 class EvidenceAnnotationCreate(Contract):
     # 请求体：只提交 block 与 quote（可选精确 start/end）；proposed_by 不出现在 Create，防止客户端伪造溯源。
     # HTTP 路径固定写入 "human"；agent 物化路径由服务端设置。
-    # 显式 start/end 必须同时出现并逐字复验，失败 400 span_mismatch，不静默退回第一次匹配。
+    # material_id 可选：显式断言归属，与 block 实际所属材料不符时 400 material_mismatch；
+    # 不提供时由服务端从 block 行派生。显式 start/end 必须同时出现并逐字复验，失败 400 span_mismatch。
     block_id: str
     quote: str = Field(min_length=1)
     note: str | None = None
+    material_id: str | None = None
     start: int | None = Field(default=None, ge=0)
     end: int | None = Field(default=None, ge=1)
 

@@ -263,16 +263,17 @@ export type CreatedAt4 = string;
 export type BlockId4 = string;
 export type Quote3 = string;
 export type Note2 = string | null;
+export type MaterialId4 = string | null;
 export type Start3 = number | null;
 export type End3 = number | null;
-export type MaterialId4 = string;
+export type MaterialId5 = string;
 export type RubricId5 = string;
 export type RubricRevision5 = number;
 export type CreatedAt5 = string;
 export type RubricId6 = string;
 export type RubricRevision6 = number;
 export type Id18 = string;
-export type MaterialId5 = string;
+export type MaterialId6 = string;
 export type AnnotationId = string;
 export type RubricId7 = string;
 export type RubricRevision7 = number;
@@ -298,7 +299,7 @@ export type CreatedAnnotationId = string | null;
 export type CreatedLinkId = string | null;
 export type CreatedAt7 = string;
 export type Id20 = string;
-export type MaterialId6 = string;
+export type MaterialId7 = string;
 export type CriterionId5 = string;
 export type RubricId8 = string;
 export type RubricRevision8 = number;
@@ -311,7 +312,7 @@ export type CreatedAt8 = string;
 export type Candidates = ProposalCandidate[];
 export type CriterionId6 = string;
 export type Reason1 = string | null;
-export type MaterialId7 = string;
+export type MaterialId8 = string;
 export type Filename5 = string;
 export type BlockCount1 = number;
 export type RubricId9 = string;
@@ -338,7 +339,7 @@ export type SearchedFilename = string;
 export type Explanation2 = string;
 export type Criteria3 = MaterialPreflightCriterionRow[];
 export type Blocks4 = Block[];
-export type MaterialId8 = string;
+export type MaterialId9 = string;
 export type Filename6 = string;
 export type CreatedAt9 = string;
 export type BlockCount2 = number;
@@ -363,7 +364,7 @@ export type MaterialIdB1 = string;
 export type FilenameA = string;
 export type FilenameB = string;
 export type Findings1 = ConsistencyFinding[];
-export type MaterialId9 = string;
+export type MaterialId10 = string;
 export type Prompt = string;
 export type Quote7 = string;
 export type BlockId8 = string;
@@ -386,7 +387,7 @@ export type BlockId9 = string;
 export type Quote8 = string;
 export type Start7 = number | null;
 export type End7 = number | null;
-export type MaterialId10 = string;
+export type MaterialId11 = string;
 export type Question1 = string;
 export type UserAnswer = string;
 /**
@@ -412,7 +413,7 @@ export type SourceRefs =
       CoachSourceRef
     ];
 export type ReviewId = string | null;
-export type MaterialId11 = string;
+export type MaterialId12 = string;
 export type Status6 = "coached" | "abstain" | "insufficient_context";
 export type AbstainReason = string | null;
 /**
@@ -503,14 +504,14 @@ export type Text4 = string;
 export type Filename7 = string;
 export type ReviewId1 = string | null;
 export type Label3 = string | null;
-export type MaterialId12 = string;
-export type ParentAvailable = boolean;
 export type MaterialId13 = string;
+export type ParentAvailable = boolean;
+export type MaterialId14 = string;
 export type Available = boolean;
 export type CreatedAt11 = string;
-export type MaterialId14 = string;
-export type Children = RevisionChild[];
 export type MaterialId15 = string;
+export type Children = RevisionChild[];
+export type MaterialId16 = string;
 export type Format4 = "md" | "txt";
 export type Text5 = string;
 export type Normalization = "lf";
@@ -945,11 +946,12 @@ export interface EvidenceAnnotationCreate {
   block_id: BlockId4;
   quote: Quote3;
   note?: Note2;
+  material_id?: MaterialId4;
   start?: Start3;
   end?: End3;
 }
 export interface RubricBinding {
-  material_id: MaterialId4;
+  material_id: MaterialId5;
   rubric_id: RubricId5;
   rubric_revision: RubricRevision5;
   created_at: CreatedAt5;
@@ -960,7 +962,7 @@ export interface RubricBindingCreate {
 }
 export interface CriterionEvidenceLink {
   id: Id18;
-  material_id: MaterialId5;
+  material_id: MaterialId6;
   annotation_id: AnnotationId;
   rubric_id: RubricId7;
   rubric_revision: RubricRevision7;
@@ -992,7 +994,7 @@ export interface ProposalCandidate {
 }
 export interface AgentProposal {
   id: Id20;
-  material_id: MaterialId6;
+  material_id: MaterialId7;
   criterion_id: CriterionId5;
   rubric_id: RubricId8;
   rubric_revision: RubricRevision8;
@@ -1015,7 +1017,7 @@ export interface ProposalAcceptance {
   link: CriterionEvidenceLink;
 }
 export interface MaterialPreflightReport {
-  material_id: MaterialId7;
+  material_id: MaterialId8;
   filename: Filename5;
   block_count: BlockCount1;
   rubric_id: RubricId9;
@@ -1052,7 +1054,7 @@ export interface MaterialPreflightMissing {
   explanation: Explanation2;
 }
 export interface MaterialPreflightSummary {
-  material_id: MaterialId8;
+  material_id: MaterialId9;
   filename: Filename6;
   created_at: CreatedAt9;
   block_count: BlockCount2;
@@ -1105,7 +1107,7 @@ export interface CrossCompareResponse {
  * 答辩追问请求：只接受用户显式选中的一份材料。
  */
 export interface GrillRequest {
-  material_id: MaterialId9;
+  material_id: MaterialId10;
 }
 /**
  * 答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。
@@ -1139,7 +1141,7 @@ export interface CoachSourceRef {
  * 答辩教练请求：用户已经写出回答，教练只检查这条回答能否由给定来源支持。
  */
 export interface ResponseCoachRequest {
-  material_id: MaterialId10;
+  material_id: MaterialId11;
   question: Question1;
   user_answer: UserAnswer;
   source_refs?: SourceRefs;
@@ -1149,7 +1151,7 @@ export interface ResponseCoachRequest {
  * 答辩教练输出：只评价用户已写出的回答；不给分、不代写答案、不判定现实真假。
  */
 export interface ResponseCoachResponse {
-  material_id: MaterialId11;
+  material_id: MaterialId12;
   status: Status6;
   abstain_reason: AbstainReason;
   answered_aspects: AnsweredAspects;
@@ -1200,21 +1202,21 @@ export interface MaterialRevisionCreated {
   revision: MaterialRevision;
 }
 export interface RevisionParent {
-  material_id: MaterialId12;
+  material_id: MaterialId13;
   parent_available: ParentAvailable;
 }
 export interface RevisionChild {
-  material_id: MaterialId13;
+  material_id: MaterialId14;
   available: Available;
   created_at: CreatedAt11;
 }
 export interface RevisionContext {
-  material_id: MaterialId14;
+  material_id: MaterialId15;
   parent?: RevisionParent | null;
   children: Children;
 }
 export interface EditableSource {
-  material_id: MaterialId15;
+  material_id: MaterialId16;
   format: Format4;
   text: Text5;
   normalization: Normalization;

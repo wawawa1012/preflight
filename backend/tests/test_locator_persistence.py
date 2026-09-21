@@ -439,11 +439,19 @@ class SourceRefOccurrenceTest(unittest.TestCase):
         emoji = storage.save_evidence_annotation(block.id, "🚀", db_path=self.db, start=10, end=11)
         self.assertEqual(block.text[10:11], "🚀")
 
-    def test_wrong_material_block_is_rejected_at_api_layer(self) -> None:
+    def test_explicit_material_ownership_is_enforced(self) -> None:
         other = storage.save_material(build_preview("other.md", "别的材料\n".encode("utf-8")), self.db)
-        # block 存在但不属于 other：storage 只按 block 派生 material，API 层负责材料归属。
+        # 不声明 material_id：服务端从 block 派生，永远指向真实归属。
         annotation = storage.save_evidence_annotation(other.blocks[0].id, "别的材料", db_path=self.db)
         self.assertEqual(annotation.material_id, other.id)
+        # 显式声明错误材料：拒绝，不落行。
+        with self.assertRaises(storage.MaterialMismatch) as caught:
+            storage.save_evidence_annotation(
+                self.block.id, "重复片段", db_path=self.db, material_id="mat_other"
+            )
+        self.assertEqual(caught.exception.code, "material_mismatch")
+        with closing(storage.connect(self.db)) as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM evidence_annotations").fetchone()[0], 1)
         self.assertIsNone(storage.save_evidence_annotation("blk_missing", "任意", db_path=self.db))
 
     def test_unified_resolver_contract(self) -> None:
@@ -486,6 +494,20 @@ class LocatorApiTest(unittest.TestCase):
     def test_api_incomplete_span_pair_is_validation_error(self) -> None:
         with self.assertRaises(ValueError):
             EvidenceAnnotationCreate(block_id=self.block.id, quote="重复片段", start=6)
+
+    def test_api_explicit_material_mismatch_is_rejected(self) -> None:
+        annotation = main.create_evidence_annotation(
+            EvidenceAnnotationCreate(
+                block_id=self.block.id, quote="重复片段", material_id=self.parent.id
+            )
+        )
+        self.assertEqual(annotation.material_id, self.parent.id)
+        with self.assertRaises(storage.MaterialMismatch):
+            main.create_evidence_annotation(
+                EvidenceAnnotationCreate(
+                    block_id=self.block.id, quote="重复片段", material_id="mat_other"
+                )
+            )
 
     def test_api_docx_editable_source_and_revision_are_rejected(self) -> None:
         preview = SourcePreview(
