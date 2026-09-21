@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { Block, SavedMaterial } from '../../types/contracts'
 import { useSessionStore, type ReaderTarget } from '../../stores/session'
 import { locatorLabel } from '../../utils/locatorLabel'
+import { createAsyncGuard } from '../../utils/asyncGuard'
 
 // Source Reader v1：阅读原文并定位依据。
 // 结构围绕 material_id / block_id / span / server locator 设计（gutter 一律走 locatorLabel，
@@ -19,6 +20,8 @@ const materialId = computed(() => String(route.params.materialId ?? ''))
 const material = ref<SavedMaterial | null>(null)
 const loading = ref(true)
 const error = ref('')
+// 切材料后迟到的旧材料响应不得落地。
+const loadGuard = createAsyncGuard()
 
 // 引用序列：优先 session 里的 ReaderVisit（来自 Finding/Compare/Grill 的一组引用）；
 // 否则退化为 query 参数指定的单条目标。
@@ -62,18 +65,21 @@ const materialName = computed(() => {
 })
 
 async function loadMaterial() {
+  const token = loadGuard.next()
   loading.value = true
   error.value = ''
   material.value = null
   try {
     const response = await fetch(`/api/v1/materials/${encodeURIComponent(materialId.value)}`)
+    if (!loadGuard.isCurrent(token)) return
     const body = await response.json().catch(() => null)
     if (!response.ok) throw new Error(body && body.message ? body.message : `HTTP ${response.status}`)
     material.value = body as SavedMaterial
   } catch (cause) {
+    if (!loadGuard.isCurrent(token)) return
     error.value = cause instanceof Error ? cause.message : '未知错误'
   } finally {
-    loading.value = false
+    if (loadGuard.isCurrent(token)) loading.value = false
   }
 }
 
@@ -173,7 +179,20 @@ onUnmounted(() => session.closeReader())
         <UBadge v-if="activeBlock" color="neutral" variant="subtle" size="sm">
           {{ locatorLabel(activeBlock.locator) }}
         </UBadge>
+        <!-- DOCX 本期只能审查与查看原文：编辑入口如实说明限制，不暗示可保留 Word 格式。 -->
         <UButton
+          v-if="material && material.format === 'docx'"
+          color="neutral"
+          variant="subtle"
+          size="xs"
+          icon="i-lucide-pencil-line"
+          disabled
+          title="Word 文档暂不支持创建修改版；可以审查与查看原文"
+        >
+          编辑为修订稿
+        </UButton>
+        <UButton
+          v-else
           color="neutral"
           variant="subtle"
           size="xs"
@@ -213,7 +232,7 @@ onUnmounted(() => session.closeReader())
           class="flex gap-4 rounded-lg px-3 py-2 transition-colors"
           :class="isTarget(block) ? 'bg-amber-950/20 ring-1 ring-amber-500/40' : ''"
         >
-          <span class="w-14 shrink-0 select-none pt-0.5 text-right font-mono text-[11px] leading-6" :class="isTarget(block) ? 'text-amber-300/80' : 'text-slate-700'">
+          <span class="min-w-14 max-w-36 shrink-0 select-none pt-0.5 text-right font-mono text-[11px] leading-5" :class="isTarget(block) ? 'text-amber-300/80' : 'text-slate-700'">
             {{ locatorLabel(block.locator) }}
           </span>
           <p class="whitespace-pre-wrap break-words text-sm leading-6" :class="isTarget(block) ? 'text-slate-100' : 'text-slate-300'">

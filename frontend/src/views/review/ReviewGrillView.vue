@@ -104,6 +104,12 @@ function filenameOf(id: string) {
   return library.value.find((item) => item.id === id)?.filename ?? '未知材料'
 }
 
+// DOCX 可审查、可定位原文，但本期不承诺创建修改版（后端 400 format_not_editable）。
+function isEditableFormat(id: string) {
+  const format = library.value.find((item) => item.id === id)?.format
+  return format !== 'docx'
+}
+
 const blocks = ref<Block[]>([])
 const blocksUnavailable = ref(false)
 // blocks 拉取独立代次：换材料后迟到的旧材料 blocks 不得落地。
@@ -150,7 +156,7 @@ watch(
 
 const drawerOpen = ref(false)
 const drawerBlockId = ref('')
-const highlight = ref<{ line_number: number; start: number; end: number } | null>(null)
+const highlight = ref<{ start: number; end: number } | null>(null)
 
 async function loadLibrary() {
   loading.value = true
@@ -280,7 +286,7 @@ async function openQuestion(question: GrillQuestion) {
   highlight.value = null
   await ensureBlocks()
   const block = blockById(question.block_id)
-  if (block) highlight.value = { line_number: block.locator.index, start: question.start, end: question.end }
+  if (block) highlight.value = { start: question.start, end: question.end }
 }
 
 // 「在材料中打开」：该材料的全部追问映射成 ReaderTarget；materialId 取 block.document_id。
@@ -384,7 +390,7 @@ loadLibrary()
         <p class="text-xs font-medium text-slate-300">等待评审问题时，可以先核对这份材料的关键陈述</p>
         <ul class="mt-2 space-y-1.5">
           <li v-for="signal in signals.slice(0, 5)" :key="`${signal.block_id}:${signal.start}`" class="flex items-baseline gap-2 text-sm">
-            <span class="shrink-0 font-mono text-[10px] text-slate-600">第 {{ signal.line_number }} 行</span>
+            <span class="shrink-0 font-mono text-[10px] text-slate-600">{{ locatorLabel(signal.locator) }}</span>
             <span class="min-w-0 flex-1 truncate text-slate-300">“{{ signal.quote }}”</span>
           </li>
         </ul>
@@ -453,7 +459,15 @@ loadLibrary()
               <!-- 动作：回到触发依据确认出处，必要时改稿，或直接练习回答。 -->
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-book-open" @click="openInReader(question)">查看原文</UButton>
-                <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-pencil-line" :to="`${basePath}/reader/${materialId}/revise`">开始修改</UButton>
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="subtle"
+                  icon="i-lucide-pencil-line"
+                  :to="isEditableFormat(materialId) ? `${basePath}/reader/${materialId}/revise` : undefined"
+                  :disabled="!isEditableFormat(materialId)"
+                  :title="isEditableFormat(materialId) ? undefined : 'Word 文档暂不支持创建修改版；可以审查与查看原文'"
+                >开始修改</UButton>
                 <UButton
                   size="xs"
                   :color="coachOpenFor === questionKey(question) ? 'primary' : 'neutral'"

@@ -159,7 +159,7 @@ const blocksUnavailable = ref(false)
 
 const drawerOpen = ref(false)
 const drawerBlockId = ref('')
-const highlight = ref<{ line_number: number; start: number; end: number } | null>(null)
+const highlight = ref<{ start: number; end: number } | null>(null)
 
 async function loadLibrary() {
   loading.value = true
@@ -213,9 +213,12 @@ function blockById(blockId: string): Block | null {
   return allBlocks.value.find((block) => block.id === blockId) ?? null
 }
 
-function rowLocation(blockId: string, lineNumber: number): string {
-  const locator = blockById(blockId)?.locator
-  return locator ? locatorLabel(locator) : locatorLabel({ kind: 'line', index: lineNumber })
+// 位置以引用自带的 Locator 为准（kind 决定行 / 段 / 表格单元格）；
+// 旧快照无 locator 时才退回 line_number，且为 null 时不显示。
+function rowLocation(citation: ConsistencyFinding['citations'][number]): string {
+  if (citation.locator) return locatorLabel(citation.locator)
+  if (typeof citation.line_number === 'number') return locatorLabel({ kind: 'line', index: citation.line_number })
+  return ''
 }
 
 function materialOf(blockId: string): string | null {
@@ -270,7 +273,7 @@ async function ensureBlocks() {
 }
 
 async function openCitation(citation: ConsistencyFinding['citations'][number]) {
-  highlight.value = { line_number: citation.line_number, start: citation.start, end: citation.end }
+  highlight.value = { start: citation.start, end: citation.end }
   drawerBlockId.value = citation.block_id
   drawerOpen.value = true
   await ensureBlocks()
@@ -464,7 +467,7 @@ loadLibrary()
                         <div class="flex flex-wrap items-baseline gap-x-2 rounded-md px-2 py-1.5 transition hover:bg-slate-800/60">
                           <button type="button" class="group flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-left" @click="openCitation(citation)">
                             <span class="text-sm text-slate-300">“{{ citation.quote }}”</span>
-                            <span class="font-mono text-xs text-slate-500">{{ rowLocation(citation.block_id, citation.line_number) }}</span>
+                            <span class="font-mono text-xs text-slate-500">{{ rowLocation(citation) }}</span>
                             <span class="ml-auto text-[11px] text-slate-600 transition group-hover:text-violet-300">查看原文</span>
                           </button>
                           <button type="button" class="shrink-0 text-[11px] text-slate-500 transition hover:text-violet-300" @click="openInReader(finding, citation)">在材料中打开</button>

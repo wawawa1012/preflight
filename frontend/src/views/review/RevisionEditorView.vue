@@ -22,6 +22,8 @@ const inReview = computed(() => reviewId.value !== '')
 const parent = ref<SavedMaterial | null>(null)
 const loading = ref(true)
 const loadError = ref('')
+// DOCX 等非行格式请求 editable-source 会 400 format_not_editable：单独状态，不显示编辑器。
+const notEditable = ref(false)
 
 const originalText = ref('')
 const text = ref('')
@@ -65,7 +67,11 @@ async function load() {
     filename.value = parent.value.filename
     advice.value = session.takeRevisionAdvice(materialId.value)
   } catch (cause) {
-    loadError.value = cause instanceof Error ? cause.message : '未知错误'
+    if (cause instanceof ApiFailure && cause.code === 'format_not_editable') {
+      notEditable.value = true
+    } else {
+      loadError.value = cause instanceof Error ? cause.message : '未知错误'
+    }
   } finally {
     loading.value = false
   }
@@ -152,6 +158,17 @@ load()
       <p class="text-sm text-red-400" role="alert">无法读取材料：{{ loadError }}</p>
       <UButton class="mt-3" size="sm" icon="i-lucide-refresh-cw" @click="load">重试</UButton>
     </div>
+
+    <!-- DOCX 不承诺原格式编辑：明确说出限制与适用范围，不显示编辑器。 -->
+    <section v-else-if="notEditable" class="mt-8 rounded-xl border border-slate-800 bg-slate-950/40 p-6">
+      <h1 class="text-lg font-semibold text-slate-100">这份 Word 文档不能创建修改版</h1>
+      <p class="mt-2 text-sm leading-relaxed text-slate-300">修改版只支持 Markdown 与纯文本材料。</p>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <UButton color="neutral" variant="subtle" icon="i-lucide-arrow-left" @click="goBack">
+          {{ inReview ? '返回原文' : '返回材料' }}
+        </UButton>
+      </div>
+    </section>
 
     <!-- 保存成功：明确说出「创建了新材料」，原稿没有被修改。 -->
     <section v-else-if="saved" class="mt-8 rounded-xl border border-emerald-800/50 bg-emerald-950/20 p-6">

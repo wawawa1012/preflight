@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { MarkdownPreview } from '../types/contracts'
+import type { Block } from '../types/contracts'
+import { locatorLabel } from '../utils/locatorLabel'
 
 // annotatedCounts 可选：block_id → Annotation 条数（不是关联数）；preview 流不传，行为不变。
 const props = defineProps<{
-  blocks: MarkdownPreview['blocks']
+  blocks: Block[]
   annotatedCounts?: Record<string, number>
   highlightBlockId?: string
 }>()
@@ -29,7 +30,7 @@ function annotatedCount(blockId: string) {
       ]"
     >
       <span class="w-24 shrink-0 whitespace-nowrap pt-0.5 font-mono text-xs">
-        <span class="text-slate-300">line {{ block.locator.index }}</span>
+        <span class="text-slate-300">{{ locatorLabel(block.locator) }}</span>
         <span class="ml-1 text-slate-600">#{{ block.ordinal }}</span>
       </span>
       <p class="min-w-0 flex-1 whitespace-pre-wrap break-words font-mono text-sm text-slate-200">{{ block.text }}</p>

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { MaterialPreflightSummary, MaterialSummary } from '../types/contracts'
 import { formatSavedAt } from '../utils/format'
+import { formatLabel } from '../utils/formatLabel'
 import PageHeader from '../components/review/PageHeader.vue'
 import EmptyState from '../components/review/EmptyState.vue'
 
@@ -103,12 +104,6 @@ async function confirmDelete() {
   }
 }
 
-// 文件类型只从 filename 后缀展示，不新增字段。
-function formatLabel(filename: string) {
-  const parts = filename.split('.')
-  return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : 'FILE'
-}
-
 // 右侧 rail 只展示由列表响应直接计算的真实数据，不引入后端 KPI。
 const boundCount = computed(() => summaries.value.filter((item) => item.bound).length)
 // 列表已按保存时间倒序，第一条即最近保存。
@@ -139,7 +134,7 @@ loadMaterials()
       v-else-if="materials.length === 0"
       class="mt-10"
       title="还没有材料"
-      hint="上传第一份 Markdown 文件，即可开始按标准审查。"
+      hint="上传第一份材料文件，即可开始按标准审查。"
     >
       <UButton to="/materials/new" icon="i-lucide-plus">添加第一份材料</UButton>
     </EmptyState>
@@ -157,7 +152,7 @@ loadMaterials()
           >
             <span class="flex min-w-0 items-center gap-2">
               <span class="truncate text-sm">{{ item.filename }}</span>
-              <UBadge color="neutral" variant="subtle" size="sm">{{ formatLabel(item.filename) }}</UBadge>
+              <UBadge color="neutral" variant="subtle" size="sm">{{ formatLabel(item.format) }}</UBadge>
             </span>
             <span class="flex shrink-0 flex-wrap items-center gap-3 text-xs text-slate-500">
               <UBadge :color="relationshipColor(item)" variant="subtle" size="sm">{{ relationshipLabel(item) }}</UBadge>
@@ -195,7 +190,7 @@ loadMaterials()
           </div>
           <div class="flex items-baseline justify-between gap-3">
             <dt class="text-xs text-slate-500">支持格式</dt>
-            <dd class="text-sm font-medium text-slate-200">Markdown（.md，≤ 1 MiB）</dd>
+            <dd class="text-sm font-medium text-slate-200">Markdown / 纯文本 / Word 文档（.md / .txt / .docx，≤ 1 MiB）</dd>
           </div>
         </dl>
       </aside>

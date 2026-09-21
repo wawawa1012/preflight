@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
+import type { AgentProposal, Block, ConsistencyFinding, DetectedStatement, Locator, MaterialPreflightCitation, MaterialPreflightReport } from '../types/contracts'
 import EvidenceDrawer from '../components/EvidenceDrawer.vue'
 import RepairSuggestionPanel from '../components/RepairSuggestionPanel.vue'
 import PageHeader from '../components/review/PageHeader.vue'
@@ -68,7 +68,7 @@ const materialBlocks = ref<Block[]>([])
 const blocksUnavailable = ref(false)
 
 const drawerOpen = ref(false)
-const highlight = ref<{ line_number: number; start: number; end: number } | null>(null)
+const highlight = ref<{ start: number; end: number } | null>(null)
 const drawerBlockId = ref('')
 
 const allBlocks = computed(() => report.value?.blocks ?? materialBlocks.value)
@@ -85,15 +85,16 @@ const overviewCounts = computed(() => {
   return `${base} · 已确认依据 ${confirmedCriterionCount.value} / ${report.value.criteria.length} 项`
 })
 
-// 引用/信号行只说位置：kind 由该 Block 的 Locator 决定（md 显示行号，slide/page/paragraph 各自成句）。
-// Block 未到手（未绑定、blocks 未取）时退回 line_number —— 它就是 locator.index，本季只有 md 入库，不发明第二套编号。
+// 引用/信号行只说位置：优先用条目自带的 Locator（kind 决定行 / 段 / 表格单元格）。
+// 旧快照无 locator 时才退回 line_number，且为 null 时不显示（不发明第二套编号）。
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
-function rowLocation(blockId: string, lineNumber: number): string {
-  const locator = allBlocks.value.find((item) => item.id === blockId)?.locator
-  return locator ? locatorLabel(locator) : locatorLabel({ kind: 'line', index: lineNumber })
+function rowLocation(item: { locator?: Locator; line_number?: number | null }): string {
+  if (item.locator) return locatorLabel(item.locator)
+  if (typeof item.line_number === 'number') return locatorLabel({ kind: 'line', index: item.line_number })
+  return ''
 }
 
 async function loadReport() {
@@ -200,8 +201,8 @@ function blockAt(offset: number): Block | null {
   return blocks[index + offset] ?? null
 }
 
-async function openHighlight(target: { block_id: string; line_number: number; start: number; end: number }) {
-  highlight.value = { line_number: target.line_number, start: target.start, end: target.end }
+async function openHighlight(target: { block_id: string; start: number; end: number }) {
+  highlight.value = { start: target.start, end: target.end }
   drawerBlockId.value = target.block_id
   drawerOpen.value = true
   await ensureBlocks()
@@ -407,7 +408,7 @@ loadProposals()
                   class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
                   @click="openHighlight(citation)"
                 >
-                  <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · {{ rowLocation(citation.block_id, citation.line_number) }}</span>
+                  <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}”<template v-if="rowLocation(citation)"> · {{ rowLocation(citation) }}</template></span>
                 </button>
               </li>
             </ul>
@@ -515,7 +516,7 @@ loadProposals()
                 class="w-full rounded-md bg-slate-900/60 p-2 text-left transition hover:bg-slate-800/60"
                 @click="openCitation(citation)"
               >
-                <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}” · {{ rowLocation(citation.block_id, citation.line_number) }}</span>
+                <span class="font-mono text-xs text-slate-300">“{{ citation.quote }}”<template v-if="rowLocation(citation)"> · {{ rowLocation(citation) }}</template></span>
                 <span class="ml-2 text-xs text-emerald-400">原文已校验</span>
                 <span class="ml-2 inline-flex">
                   <UBadge :color="citation.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
@@ -548,7 +549,7 @@ loadProposals()
             @click="openHighlight(signal)"
           >
             <UBadge color="neutral" variant="subtle" size="sm">{{ signalLabel(signal.signal) }}</UBadge>
-            <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}” · {{ rowLocation(signal.block_id, signal.line_number) }}</span>
+            <span class="ml-2 font-mono text-xs text-slate-300">“{{ signal.quote }}”<template v-if="rowLocation(signal)"> · {{ rowLocation(signal) }}</template></span>
           </button>
         </li>
       </ul>

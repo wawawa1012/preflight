@@ -3,8 +3,8 @@ import { computed } from 'vue'
 import type { Block } from '../types/contracts'
 import { locatorLabel } from '../utils/locatorLabel'
 
+// 只实际使用 code point span；位置由 Block 的 Locator 决定，不再携带 line_number。
 interface DrawerHighlight {
-  line_number: number
   start: number
   end: number
 }

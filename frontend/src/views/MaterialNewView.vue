@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import type { MarkdownPreview } from '../types/contracts'
+import type { SourcePreview } from '../types/contracts'
 import BlockList from '../components/BlockList.vue'
 import MaterialHeader from '../components/MaterialHeader.vue'
+import { formatLabel } from '../utils/formatLabel'
 
 // /materials/new 是添加材料工作台：选择文件 → 校验并预览 → 保存；
 // 保存成功后 router.replace 到稳定的 /materials/:id/report，本页不保留持久身份。
@@ -11,7 +12,7 @@ const router = useRouter()
 
 const selectedFile = ref<File | null>(null)
 const previewedFile = ref<File | null>(null)
-const preview = ref<MarkdownPreview | null>(null)
+const preview = ref<SourcePreview | null>(null)
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
@@ -25,10 +26,42 @@ const steps = ['上传文件', '校验并预览', '保存为稳定材料']
 // 步骤条只反映选择进度；生成预览后整个上传区退场，不再需要步骤条。
 const currentStep = computed(() => (selectedFile.value ? 1 : 0))
 
+// 与 input accept 同一集合：前端只做后缀提示，真实解析以服务端为准。
+const SUPPORTED_EXTENSIONS = ['md', 'markdown', 'txt', 'docx']
+const SUPPORTED_EXTENSION_HINT = '只支持 .md / .txt / .docx 文件'
+
+function hasSupportedExtension(name: string) {
+  const lower = name.toLowerCase()
+  return SUPPORTED_EXTENSIONS.some((extension) => lower.endsWith(`.${extension}`))
+}
+
+// parser 错误码 → 人话；其他错误保持通用 HTTP/未知错误风格。
+const PREVIEW_ERROR_MESSAGES: Record<string, string> = {
+  invalid_extension: SUPPORTED_EXTENSION_HINT,
+  invalid_encoding: '文件编码无法识别，请使用 UTF-8 文本',
+  invalid_zip: '这份 Word 文档无法解析，请另存为标准 .docx 后重试',
+  invalid_xml: '这份 Word 文档无法解析，请另存为标准 .docx 后重试',
+  invalid_docx: '这份 Word 文档无法解析，请另存为标准 .docx 后重试',
+  unsupported_structure: '这份 Word 文档含有暂不支持的结构（如合并单元格、嵌套表格、文本框），未做展开',
+  archive_too_large: '文件超过大小限制',
+}
+
+function previewErrorMessage(body: { code?: string; message?: string } | null, status: number) {
+  const code = body?.code
+  if (code && PREVIEW_ERROR_MESSAGES[code]) return PREVIEW_ERROR_MESSAGES[code]
+  if (body?.message) return body.message
+  return `HTTP ${status}`
+}
+
 const previewMeta = computed(() => {
   const current = preview.value
   if (!current) return ''
-  return `${current.size_bytes} 字节 · ${current.line_count} 行 · ${current.blocks.length} 段原文 · sha256 ${current.sha256.slice(0, 12)}…`
+  const parts = [formatLabel(current.format), `${current.size_bytes} 字节`]
+  // docx 无真实行号：line_count 为 null 时不显示，绝不伪造「null 行」。
+  if (typeof current.line_count === 'number') parts.push(`${current.line_count} 行`)
+  parts.push(`${current.blocks.length} 段原文`)
+  parts.push(`sha256 ${current.sha256.slice(0, 12)}…`)
+  return parts.join(' · ')
 })
 
 // 选择文件的唯一入口：input change 与 drag/drop 都走这里，保证校验与清状态一致。
@@ -38,9 +71,9 @@ function acceptFile(file: File | null) {
   preview.value = null
   previewedFile.value = null
   error.value = ''
-  if (file && !file.name.toLowerCase().endsWith('.md')) {
+  if (file && !hasSupportedExtension(file.name)) {
     selectedFile.value = null
-    error.value = '只支持 .md 文件'
+    error.value = SUPPORTED_EXTENSION_HINT
     return
   }
   selectedFile.value = file
@@ -90,7 +123,7 @@ async function upload() {
   if (busy.value) return
   const file = selectedFile.value
   if (!file) {
-    error.value = '请先选择一份 .md 文件'
+    error.value = '请先选择一份 .md / .txt / .docx 文件'
     return
   }
   loading.value = true
@@ -100,12 +133,12 @@ async function upload() {
   try {
     const form = new FormData()
     form.append('file', file)
-    const response = await fetch('/api/v1/preview/markdown', { method: 'POST', body: form })
+    const response = await fetch('/api/v1/preview', { method: 'POST', body: form })
     const body = await response.json().catch(() => null)
     if (!response.ok) {
-      throw new Error(body && body.message ? body.message : `HTTP ${response.status}`)
+      throw new Error(previewErrorMessage(body, response.status))
     }
-    preview.value = body as MarkdownPreview
+    preview.value = body as SourcePreview
     previewedFile.value = file
   } catch (cause) {
     // 失败时不保留任何结果，也不退回本地数据。
@@ -155,7 +188,7 @@ async function saveMaterial() {
           <p class="text-sm font-medium text-violet-400">MATERIALS / ADD</p>
           <h1 class="mt-2 text-3xl font-semibold tracking-tight">添加材料</h1>
           <p class="mt-2 text-sm text-slate-400">
-            把一份 Markdown 保存后按原文件行号切开，进入核验页。
+            保存材料后按原文块切开，进入核验页；位置随格式显示为行 / 段 / 表格单元格。
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-3">
@@ -180,7 +213,7 @@ async function saveMaterial() {
           {{ step }}
         </li>
       </ol>
-      <p class="mt-3 text-xs text-slate-500">行号由程序生成，不由模型编造。</p>
+      <p class="mt-3 text-xs text-slate-500">位置由程序生成，不由模型编造。</p>
 
       <div
         class="mt-6 cursor-pointer rounded-lg border-2 border-dashed px-6 py-10 text-center transition"
@@ -196,15 +229,15 @@ async function saveMaterial() {
         <input
           ref="fileInput"
           type="file"
-          accept=".md,text/markdown"
+          accept=".md,.markdown,.txt,.docx"
           :disabled="busy"
           class="sr-only"
           @change="onFileChange"
         />
         <template v-if="!selectedFile">
           <UIcon name="i-lucide-file-up" class="mx-auto text-3xl text-slate-500" />
-          <p class="mt-4 text-sm text-slate-300">点击选择或拖入 Markdown 文件</p>
-          <p class="mt-1 text-xs text-slate-500">.md · UTF-8 · 单文件不超过 1 MiB · 保存时会再次校验文件内容</p>
+          <p class="mt-4 text-sm text-slate-300">点击选择或拖入 .md / .txt / .docx 文件</p>
+          <p class="mt-1 text-xs text-slate-500">.md / .txt / .docx · 单文件不超过 1 MiB · 保存时由服务端重新解析</p>
         </template>
         <template v-else>
           <UIcon name="i-lucide-file-check" class="mx-auto text-3xl text-violet-400" />

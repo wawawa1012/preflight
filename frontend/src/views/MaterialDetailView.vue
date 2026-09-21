@@ -15,6 +15,8 @@ import type {
 import BlockList from '../components/BlockList.vue'
 import MaterialHeader from '../components/MaterialHeader.vue'
 import { formatSavedAt } from '../utils/format'
+import { formatLabel } from '../utils/formatLabel'
+import { locatorLabel } from '../utils/locatorLabel'
 import { confirmedCount, latestCompletedProposal, latestProposal, passedCount } from '../utils/preflightFacts'
 
 const route = useRoute()
@@ -520,9 +522,9 @@ function ensurePreflightClock() {
 
 onUnmounted(stopPreflightClock)
 
-function lineForBlock(blockId: string) {
+function blockLocation(blockId: string) {
   const block = material.value?.blocks.find(item => item.id === blockId)
-  return block ? block.locator.index : '?'
+  return locatorLabel(block?.locator ?? null)
 }
 
 async function runPreflight(criterion: Rubric['criteria'][number]) {
@@ -768,15 +770,15 @@ async function goToBlock(blockId: string) {
   }, 1600)
 }
 
-function lineFor(annotation: EvidenceAnnotation) {
-  const block = material.value?.blocks.find(item => item.id === annotation.block_id)
-  return block ? block.locator.index : '?'
-}
-
 const meta = computed(() => {
   const current = material.value
   if (!current) return ''
-  return `${current.size_bytes} 字节 · ${current.line_count} 行 · ${current.blocks.length} 段原文 · sha256 ${current.sha256.slice(0, 12)}…`
+  const parts = [formatLabel(current.format), `${current.size_bytes} 字节`]
+  // docx 无真实行号：line_count 为 null 时不显示。
+  if (typeof current.line_count === 'number') parts.push(`${current.line_count} 行`)
+  parts.push(`${current.blocks.length} 段原文`)
+  parts.push(`sha256 ${current.sha256.slice(0, 12)}…`)
+  return parts.join(' · ')
 })
 
 async function init() {
@@ -1034,7 +1036,7 @@ init()
                         class="rounded-md border border-slate-800 p-2"
                       >
                         <p class="font-mono text-xs text-slate-300">
-                          “{{ candidate.quote }}” · line {{ lineForBlock(candidate.block_id) }}
+                          “{{ candidate.quote }}” · {{ blockLocation(candidate.block_id) }}
                         </p>
                         <p class="mt-1 text-xs text-slate-500">
                           {{ candidate.rationale }}
@@ -1155,7 +1157,7 @@ init()
             <li v-for="item in annotations" :key="item.id" class="px-3 py-2">
               <p class="font-mono text-sm text-slate-200">“{{ item.source.quote }}”</p>
               <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span>line {{ lineFor(item) }}</span>
+                <span>{{ blockLocation(item.block_id) }}</span>
                 <UBadge :color="item.proposed_by === 'agent' ? 'info' : 'neutral'" variant="subtle" size="sm">
                   {{ item.proposed_by }}
                 </UBadge>
@@ -1284,7 +1286,7 @@ init()
                 标注
               </UButton>
               <div v-else class="w-full rounded-md border border-slate-800 bg-slate-950/60 p-3">
-                <p class="text-xs text-slate-500">引用 line {{ block.locator.index }} · quote 必须是原文子串，可改窄</p>
+                <p class="text-xs text-slate-500">引用 {{ locatorLabel(block.locator) }} · quote 必须是原文子串，可改窄</p>
                 <input
                   v-model="quoteInput"
                   class="mt-2 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-sm text-slate-200"

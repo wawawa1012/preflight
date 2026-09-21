@@ -26,7 +26,9 @@ function run(action: ActionItemAction) {
     <div class="flex items-start justify-between gap-3">
       <p class="text-sm font-medium text-slate-100">{{ item.what }}</p>
       <span class="flex shrink-0 items-center gap-3">
-        <span v-if="item.meta" class="text-[11px] text-slate-600">{{ item.meta }}</span>
+        <span v-if="item.meta || item.context" class="text-[11px] text-slate-600">
+          {{ [item.meta, item.context].filter(Boolean).join(' · ') }}
+        </span>
         <button
           v-if="dismissible"
           type="button"
@@ -42,6 +44,9 @@ function run(action: ActionItemAction) {
     >{{ item.detail }}</p>
     <p class="mt-2 text-xs leading-relaxed text-slate-400">{{ item.why }}</p>
     <p class="mt-2 text-[11px] text-slate-600">来源：{{ item.where }}</p>
+    <p v-if="item.sources.length > 1" class="mt-1 text-[11px] text-slate-600">
+      涉及：{{ item.sources.map((source) => source.label).join('、') }}
+    </p>
     <div class="mt-4 flex flex-wrap gap-2">
       <UButton
         v-for="action in item.actions"

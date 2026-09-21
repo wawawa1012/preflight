@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { RunReport } from '../types/contracts'
+import { locatorLabel } from '../utils/locatorLabel'
 
 type Finding = RunReport['findings'][number]
 type EvidenceItem = RunReport['evidence'][number]
-type LocatorKind = RunReport['blocks'][number]['locator']['kind']
 
 const report = ref<RunReport | null>(null)
 const loading = ref(true)
@@ -39,13 +39,6 @@ const relationColors: Record<EvidenceItem['relation'], 'success' | 'error' | 'ne
   context: 'neutral',
 }
 
-const locatorNames: Record<LocatorKind, string> = {
-  page: 'Page',
-  slide: 'Slide',
-  paragraph: 'Paragraph',
-  line: 'Line',
-}
-
 async function loadReport() {
   loading.value = true
   error.value = ''
@@ -73,8 +66,7 @@ function documentLabel(blockId: string) {
   const block = blockById(blockId)
   if (!block) return '未知位置'
   const document = report.value?.documents.find(item => item.id === block.document_id)
-  const locator = block.locator
-  return `${document ? document.filename : block.document_id} · ${locatorNames[locator.kind]} ${locator.index}`
+  return `${document ? document.filename : block.document_id} · ${locatorLabel(block.locator)}`
 }
 
 function evidenceRows(finding: Finding) {
