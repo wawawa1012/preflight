@@ -78,9 +78,10 @@ fetch('/api/v1/rubrics')
 // rail：同一次审查的五个视角；概览用精确匹配，其余按子路径前缀。
 const views = [
   { key: '', label: '概览', icon: 'i-lucide-layout-dashboard' },
+  { key: 'evidence', label: '依据', icon: 'i-lucide-scan-search' },
   { key: 'consistency', label: '一致性', icon: 'i-lucide-git-compare' },
   { key: 'diff', label: '修改效果', icon: 'i-lucide-git-compare-arrows' },
-  { key: 'grill', label: '质询', icon: 'i-lucide-messages-square' },
+  { key: 'grill', label: '模拟评审', icon: 'i-lucide-messages-square' },
   { key: 'members', label: '材料', icon: 'i-lucide-files' },
 ] as const
 

@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { Block, MaterialSummary } from '../../types/contracts'
+import type { Block, DetectedStatement, MaterialSummary } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
 import { useSessionStore, type ReaderTarget } from '../../stores/session'
 import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
 import EmptyState from '../../components/review/EmptyState.vue'
+import ResponseCoachPanel from '../../components/review/ResponseCoachPanel.vue'
 import { locatorLabel } from '../../utils/locatorLabel'
 import { identityLine } from '../../utils/materialIdentity'
+import { createAsyncGuard } from '../../utils/asyncGuard'
 
-// 质询：对本次审查里选中的一份材料，生成可回到原文的针对性追问。打开只读材料库；POST 只由按钮触发。
-// 快照 key = `${reviewId}:grill`；从 reader 返回或切页回来时恢复选择与追问。
-// 恢复等 review.id 就绪（watch immediate）再执行，避免异步加载期间用空 reviewId 恢复/保存。
+// 模拟评审 / 答辩演练（后台角色：Challenge Examiner）：对选中材料生成可回到原文的针对性追问。
+// 延迟体验：模型生成期间先展示确定性准备材料（关键陈述信号），不是只有 spinner。
+// stale guard：换材料/重新生成后，迟到的旧响应直接丢弃。
+// 快照 key = `${reviewId}:grill`；coach 回答草稿 session-only（session.coachDrafts）。
 interface GrillQuestion {
   prompt: string
   quote: string
@@ -51,6 +54,53 @@ const questions = ref<GrillQuestion[]>([])
 const generated = ref(false)
 const emptyResult = computed(() => generated.value && questions.value.length === 0)
 
+// 模拟评审：stale guard + 确定性准备材料（关键陈述信号）+ 练习回答展开态。
+// 两条守卫分开：信号拉取不得打断进行中的问题生成。
+const guard = createAsyncGuard()
+const signalGuard = createAsyncGuard()
+const signals = ref<DetectedStatement[]>([])
+const signalsUnavailable = ref(false)
+const coachOpenFor = ref('')
+
+// Coach 草稿 key 需要区分「同一来源位置的两条不同问题」：backend 尚无稳定 question_id，
+// 用 session-local 的确定性散列（问题文本 + 来源位置），不新增持久实体。
+function questionKey(question: GrillQuestion): string {
+  let hash = 2166136261
+  for (let index = 0; index < question.prompt.length; index += 1) {
+    hash ^= question.prompt.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `${question.block_id}:${question.start}:${(hash >>> 0).toString(36)}`
+}
+
+function toggleCoach(question: GrillQuestion) {
+  const key = questionKey(question)
+  coachOpenFor.value = coachOpenFor.value === key ? '' : key
+}
+
+function coachStorageKey(question: GrillQuestion): string {
+  return `${reviewId.value}:${materialId.value}:${questionKey(question)}`
+}
+
+// 关键陈述信号是确定性 GET：选中材料即可见，模型等待期间用户有真实内容可看。
+async function loadSignals(id: string) {
+  if (id === '') return
+  signalsUnavailable.value = false
+  const token = signalGuard.next()
+  try {
+    const response = await fetch(`/api/v1/materials/${encodeURIComponent(id)}/statement-signals`)
+    if (!signalGuard.isCurrent(token)) return
+    const body = await response.json().catch(() => null)
+    if (!response.ok) {
+      signalsUnavailable.value = true
+      return
+    }
+    signals.value = Array.isArray(body) ? (body as DetectedStatement[]) : []
+  } catch {
+    if (signalGuard.isCurrent(token)) signalsUnavailable.value = true
+  }
+}
+
 function labelOf(id: string) {
   return members.value.find((member) => member.material_id === id)?.label ?? filenameOf(id)
 }
@@ -73,6 +123,10 @@ watch(
   (id) => {
     if (!id || id === restoredReviewId) return
     restoredReviewId = id
+    // 切换 Review：作废在飞的生成与信号响应，防止旧 Review 的迟到结果污染新上下文。
+    guard.invalidate()
+    signalGuard.invalidate()
+    generating.value = false
     // 先重置到默认，再恢复该 review 的快照；只接受仍在成员里的 id。
     const previousMaterialId = materialId.value
     skipMaterialClear = false
@@ -117,14 +171,15 @@ async function loadLibrary() {
 }
 
 function failureText(code: string, message: string): { message: string; detail: string } {
-  if (code === 'llm_unconfigured') return { message: '质询服务暂未就绪。', detail: code }
-  if (code === 'llm_timeout') return { message: '质询服务暂不可用，请稍后重试。', detail: code }
+  if (code === 'llm_unconfigured') return { message: '模拟评审暂未就绪。', detail: code }
+  if (code === 'llm_timeout') return { message: '模拟评审暂不可用，请稍后重试。', detail: code }
   if (code === 'material_not_found') return { message: '材料不存在，请重新选择。', detail: code }
-  return { message: '质询服务暂不可用，请稍后重试。', detail: message !== '' ? `${code} · ${message}` : code }
+  return { message: '模拟评审暂不可用，请稍后重试。', detail: message !== '' ? `${code} · ${message}` : code }
 }
 
 async function generate() {
   if (generating.value || materialId.value === '') return
+  const token = guard.next()
   generating.value = true
   error.value = null
   questions.value = []
@@ -136,6 +191,8 @@ async function generate() {
       body: JSON.stringify({ material_id: materialId.value }),
     })
     const body = await response.json().catch(() => null)
+    // 迟到响应：用户已换材料或重新运行，直接丢弃。
+    if (!guard.isCurrent(token)) return
     if (!response.ok) {
       const code = body?.code ? body.code : `HTTP ${response.status}`
       error.value = failureText(code, body?.message ? body.message : '')
@@ -144,9 +201,10 @@ async function generate() {
     questions.value = Array.isArray(body) ? (body as GrillQuestion[]) : []
     generated.value = true
   } catch (cause) {
-    error.value = { message: '质询服务暂不可用，请稍后重试。', detail: cause instanceof Error ? cause.message : '网络错误' }
+    if (!guard.isCurrent(token)) return
+    error.value = { message: '模拟评审暂不可用，请稍后重试。', detail: cause instanceof Error ? cause.message : '网络错误' }
   } finally {
-    generating.value = false
+    if (guard.isCurrent(token)) generating.value = false
   }
 }
 
@@ -155,7 +213,12 @@ function retry() {
 }
 
 // 换材料后旧追问与旧原文一并作废；恢复快照时由 skipMaterialClear 跳过本次清空。
-watch(materialId, () => {
+watch(materialId, (id, previousId) => {
+  guard.invalidate()
+  coachOpenFor.value = ''
+  signals.value = []
+  signalsUnavailable.value = false
+  if (id) void loadSignals(id)
   if (skipMaterialClear) {
     skipMaterialClear = false
     return
@@ -239,11 +302,12 @@ async function openInReader(question: GrillQuestion) {
   session.openReader({
     reviewId: reviewId.value,
     reviewTitle: reviewTitle.value,
+    materialId: clickedBlock.document_id,
     materialLabel: labelOf(clickedBlock.document_id),
     materialFilename: filenameOf(clickedBlock.document_id),
     targets,
     index: index < 0 ? 0 : index,
-    origin: { fullPath: route.fullPath, label: '质询' },
+    origin: { fullPath: route.fullPath, label: '模拟评审' },
   })
   await router.push(
     `/reviews/${reviewId.value}/reader/${clickedBlock.document_id}?b=${question.block_id}&s=${question.start}&e=${question.end}`,
@@ -256,14 +320,14 @@ loadLibrary()
 <template>
   <div class="space-y-8">
     <section>
-      <h2 class="text-sm font-medium tracking-wide text-slate-200">质询</h2>
-      <p class="mt-1 text-xs text-slate-500">针对已暴露的薄弱点，提前列出评审席的针对性追问。</p>
+      <h2 class="text-sm font-medium tracking-wide text-slate-200">模拟评审 · 答辩演练</h2>
+      <p class="mt-1 text-xs text-slate-500">从材料原文触发评审席最可能的追问；每道题都能回到出处，也可以直接练习回答。</p>
 
       <EmptyState
         v-if="members.length < 1"
         class="mt-4 rounded-xl bg-slate-950/40"
         title="本次审查还没有材料"
-        hint="先在材料页加入至少一份材料，再开始质询。"
+        hint="先在材料页加入至少一份材料，再开始模拟评审。"
       >
         <UButton :to="`${basePath}/members`" icon="i-lucide-files">管理材料</UButton>
       </EmptyState>
@@ -287,9 +351,22 @@ loadLibrary()
           </option>
         </select>
         <UButton icon="i-lucide-crosshair" :loading="generating" :disabled="materialId === ''" @click="generate">
-          {{ generating ? '正在质询…' : '开始质询' }}
+          {{ generating ? '正在生成评审问题…' : generated ? '重新生成评审问题' : '开始模拟评审' }}
         </UButton>
       </div>
+
+      <!-- 延迟体验：模型生成期间先看确定性准备材料，不是只有 spinner。 -->
+      <div v-if="generating && signals.length > 0" class="mt-4 rounded-xl border border-slate-800 p-4">
+        <p class="text-xs font-medium text-slate-300">等待评审问题时，可以先核对这份材料的关键陈述</p>
+        <ul class="mt-2 space-y-1.5">
+          <li v-for="signal in signals.slice(0, 5)" :key="`${signal.block_id}:${signal.start}`" class="flex items-baseline gap-2 text-sm">
+            <span class="shrink-0 font-mono text-[10px] text-slate-600">第 {{ signal.line_number }} 行</span>
+            <span class="min-w-0 flex-1 truncate text-slate-300">“{{ signal.quote }}”</span>
+          </li>
+        </ul>
+        <p v-if="signals.length > 5" class="mt-2 text-[11px] text-slate-600">共 {{ signals.length }} 条，其余在材料报告里。</p>
+      </div>
+      <p v-else-if="generating" class="mt-4 text-xs text-slate-500">正在生成评审问题，通常需要几秒钟…</p>
 
       <div v-if="error" class="mt-4" role="alert">
         <p class="text-sm text-red-400">{{ error.message }}</p>
@@ -332,6 +409,27 @@ loadLibrary()
                 </button>
                 <button type="button" class="shrink-0 text-[11px] text-slate-500 transition hover:text-violet-300" @click="openInReader(question)">在材料中打开</button>
               </div>
+
+              <!-- 你需要准备什么：回到触发依据确认出处，必要时改稿，或直接练习回答。 -->
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-book-open" @click="openInReader(question)">查看原文</UButton>
+                <UButton size="xs" color="neutral" variant="subtle" icon="i-lucide-pencil-line" :to="`${basePath}/reader/${materialId}/revise`">开始修改</UButton>
+                <UButton
+                  size="xs"
+                  :color="coachOpenFor === questionKey(question) ? 'primary' : 'neutral'"
+                  variant="subtle"
+                  icon="i-lucide-mic"
+                  @click="toggleCoach(question)"
+                >
+                  {{ coachOpenFor === questionKey(question) ? '收起练习' : '练习回答' }}
+                </UButton>
+              </div>
+              <ResponseCoachPanel
+                v-if="coachOpenFor === questionKey(question)"
+                :storage-key="coachStorageKey(question)"
+                :question="question.prompt"
+                :material-id="materialId"
+              />
             </div>
           </div>
         </li>

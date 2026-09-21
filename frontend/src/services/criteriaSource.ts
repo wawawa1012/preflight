@@ -1,21 +1,60 @@
-import type { Rubric } from '../types/contracts'
+import type { CriterionDraft, Rubric, RubricDraft, RubricPublish } from '../types/contracts'
+import { ApiFailure } from './reviews'
 
-// Criteria Builder / 自动首次 binding 的正式 wire contract 仍在 DS + Codex Gate 中。
-// 本模块是 Wizard 与后端之间的唯一适配边界：Wizard 只面向 CriteriaResolution 编程，
-// 不接触任何 Builder API 字段。契约冻结后在此实现 paste/upload/manual 三个分支。
-export type CriteriaSource =
-  | { kind: 'existing'; rubricKey: string }
-  | { kind: 'paste'; text: string }
-  | { kind: 'upload'; filename: string }
-  | { kind: 'manual' }
+// Criteria Builder 真实接线（冻结契约 C1）：
+// draft = POST /api/v1/rubrics/draft（plain_text/markdown 走模型，rubric_json 纯程序解析）；
+// publish = POST /api/v1/rubrics（confirmed:true，每次调用生成新的不可变标准，非幂等）。
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, init)
+  const body = (await response.json().catch(() => null)) as { code?: string; message?: string } | null
+  if (!response.ok) {
+    throw new ApiFailure(response.status, body?.code ?? `http_${response.status}`, body?.message ?? `HTTP ${response.status}`)
+  }
+  return body as T
+}
 
-export type CriteriaResolution =
-  | { status: 'ready'; rubricId: string; rubricRevision: number }
-  | { status: 'unavailable'; reason: 'builder_contract_pending' }
+export interface DraftSource {
+  text: string
+  source_type?: 'plain_text' | 'markdown' | 'rubric_json'
+  source_name?: string
+}
 
-export function resolveCriteriaSource(source: CriteriaSource, rubrics: Rubric[]): CriteriaResolution {
-  if (source.kind !== 'existing') return { status: 'unavailable', reason: 'builder_contract_pending' }
-  const rubric = rubrics.find((entry) => `${entry.id}:${entry.revision}` === source.rubricKey)
-  if (!rubric) return { status: 'unavailable', reason: 'builder_contract_pending' }
-  return { status: 'ready', rubricId: rubric.id, rubricRevision: rubric.revision }
+export const criteriaBuilderApi = {
+  draft: (source: DraftSource) =>
+    request<RubricDraft>('/api/v1/rubrics/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(source),
+    }),
+  // 非幂等：网络层失败时响应不确定，调用方必须给用户诚实恢复状态，禁止自动重试。
+  publish: (draft: RubricDraft) => {
+    const payload: RubricPublish = { ...draft, confirmed: true }
+    return request<Rubric>('/api/v1/rubrics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  },
+}
+
+// 手工创建不经过模型：直接给一份可编辑的空草稿。
+export function emptyManualDraft(): RubricDraft {
+  return {
+    title: '',
+    source_note: '手工创建',
+    source_type: 'manual',
+    source_text: '',
+    model_assisted: false,
+    criteria: [emptyCriterion(0)],
+  }
+}
+
+export function emptyCriterion(order: number): CriterionDraft {
+  return {
+    id: `manual-${Date.now()}-${order}`,
+    title: '',
+    requirement: '',
+    required_evidence: [],
+    order,
+  }
 }

@@ -38,9 +38,9 @@ const saved = ref<SavedMaterial | null>(null)
 const advice = ref<RevisionAdvice | null>(null)
 
 const parentIdentity = computed(() => {
-  // ReaderVisit 不带 materialId，用 filename 匹配来判断 label 是否属于当前材料。
+  // ReaderVisit 现在带 materialId：同名文件下也能准确取到这次审查里的 label。
   const visit = session.readerVisit
-  const visitLabel = visit && visit.materialFilename === (parent.value?.filename ?? '') ? visit.materialLabel : ''
+  const visitLabel = visit && visit.materialId === materialId.value ? visit.materialLabel : ''
   return materialIdentity(visitLabel, parent.value?.filename ?? '')
 })
 const childName = computed(() => (label.value.trim() !== '' ? label.value.trim() : filename.value))

@@ -8,6 +8,7 @@ import EvidenceDrawer from '../../components/EvidenceDrawer.vue'
 import EmptyState from '../../components/review/EmptyState.vue'
 import { locatorLabel } from '../../utils/locatorLabel'
 import { materialIdentity, identityLine } from '../../utils/materialIdentity'
+import { createAsyncGuard } from '../../utils/asyncGuard'
 
 // 一致性：在本次审查的成员里显式选两份材料做数值对照。打开只读材料库；POST 只由按钮触发。
 // 快照 key = `${reviewId}:consistency`；从 reader 返回或切页回来时恢复选择与结果。
@@ -60,12 +61,15 @@ function sideIdentity(materialId: string) {
 // 恢复/保存都等 review.id 就绪：review 由 inject 异步加载，setup 时可能为空，
 // 用 watch(review.id, ..., { immediate: true }) 在 id 到达后恢复，避免空 reviewId key 恢复 miss。
 let restoredReviewId = ''
+const compareGuard = createAsyncGuard()
 
 watch(
   () => review.value?.id,
   (id) => {
     if (!id || id === restoredReviewId) return
     restoredReviewId = id
+    // 切换 Review：作废在飞比较响应，防止旧 Review 的结果落进新上下文。
+    compareGuard.invalidate()
     // 先重置到默认，再恢复该 review 的快照；只接受仍在成员里的 id，否则回落到默认前两名。
     materialIdA.value = ''
     materialIdB.value = ''
@@ -128,6 +132,8 @@ async function compare() {
   }
   checking.value = true
   compareError.value = ''
+  // stale guard：运行期间切换 Review 或再次运行时，迟到响应直接丢弃。
+  const token = compareGuard.next()
   const payload: CrossCompareRequest = { material_id_a: materialIdA.value, material_id_b: materialIdB.value }
   try {
     const response = await fetch('/api/v1/comparisons', {
@@ -136,15 +142,18 @@ async function compare() {
       body: JSON.stringify(payload),
     })
     const body = await response.json().catch(() => null)
+    if (!compareGuard.isCurrent(token)) return
     if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`)
     const compared = body as CrossCompareResponse
     await ensureBlocks([compared.material_id_a, compared.material_id_b])
+    if (!compareGuard.isCurrent(token)) return
     result.value = compared
   } catch (cause) {
+    if (!compareGuard.isCurrent(token)) return
     result.value = null
     compareError.value = cause instanceof Error ? cause.message : '未知错误'
   } finally {
-    checking.value = false
+    if (compareGuard.isCurrent(token)) checking.value = false
   }
 }
 
@@ -285,6 +294,7 @@ async function openInReader(finding: ConsistencyFinding, citation: ConsistencyFi
   session.openReader({
     reviewId: reviewId.value,
     reviewTitle: reviewTitle.value,
+    materialId: clickedBlock.document_id,
     materialLabel: labelOf(clickedBlock.document_id),
     materialFilename: filenameOf(clickedBlock.document_id),
     targets,

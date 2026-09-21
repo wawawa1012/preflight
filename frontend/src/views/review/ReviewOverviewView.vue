@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import type { MaterialPreflightSummary, MaterialSummary } from '../../types/contracts'
+import { useRouter } from 'vue-router'
+import type { ConsistencyFinding, MaterialPreflightSummary, MaterialSummary } from '../../types/contracts'
 import { reviewContextKey } from './reviewContext'
 import { useSessionStore } from '../../stores/session'
+import { reviewsApi } from '../../services/reviews'
 import { materialIdentity } from '../../utils/materialIdentity'
 import type { ActionItemModel } from '../../types/action'
 import ActionItem from '../../components/action/ActionItem.vue'
@@ -15,6 +17,26 @@ const context = inject(reviewContextKey)
 if (!context) throw new Error('ReviewOverviewView 必须在 ReviewWorkspaceView 内使用')
 const { review } = context
 const session = useSessionStore()
+const router = useRouter()
+
+// 删除本次审查：两步确认；文案必须说清楚材料和材料的审查标准绑定都不受影响。
+const confirmingDelete = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
+
+async function deleteReview() {
+  if (deleting.value || reviewId.value === '') return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await reviewsApi.remove(reviewId.value)
+    router.replace('/')
+  } catch (cause) {
+    deleteError.value = cause instanceof Error ? cause.message : '未知错误'
+  } finally {
+    deleting.value = false
+  }
+}
 
 const materials = ref<MaterialSummary[]>([])
 const summaries = ref<MaterialPreflightSummary[]>([])
@@ -24,11 +46,15 @@ const factsError = ref('')
 const signalCounts = ref<Record<string, number> | null>(null)
 
 interface ConsistencySnapshot {
-  result: { findings: unknown[] } | null
+  result: { findings: ConsistencyFinding[] } | null
 }
 interface GrillSnapshot {
+  materialId: string
   questions: unknown[]
   generated: boolean
+}
+interface DiffSnapshot {
+  result: { resolved: unknown[]; unchanged: unknown[]; new: unknown[] } | null
 }
 
 async function loadFacts() {
@@ -115,6 +141,9 @@ const consistencySnapshot = computed(
 const grillSnapshot = computed(
   () => session.capabilitySnapshots[`${reviewId.value}:grill`] as GrillSnapshot | undefined,
 )
+const diffSnapshot = computed(
+  () => session.capabilitySnapshots[`${reviewId.value}:diff`] as DiffSnapshot | undefined,
+)
 const signalTotal = computed(() =>
   signalCounts.value === null ? null : Object.values(signalCounts.value).reduce((total, count) => total + count, 0),
 )
@@ -145,8 +174,8 @@ const roles = computed<RoleState[]>(() => {
           : '等待材料',
     action: factsError.value
       ? undefined
-      : firstBoundId.value
-        ? { to: `/materials/${firstBoundId.value}/report`, label: '查看依据报告' }
+      : boundMembers.value.length > 0
+        ? { to: `${basePath.value}/evidence`, label: '运行依据审计' }
         : firstMemberId.value
           ? { to: `/materials/${firstMemberId.value}`, label: '去绑定标准' }
           : undefined,
@@ -199,7 +228,7 @@ const roles = computed<RoleState[]>(() => {
     state: grill?.generated ? `本次会话已生成 ${grill.questions.length} 条追问` : '尚未运行',
     action:
       members.value.length >= 1
-        ? { to: `${basePath.value}/grill`, label: grill?.generated ? '查看追问' : '开始质询' }
+        ? { to: `${basePath.value}/grill`, label: grill?.generated ? '查看评审问题' : '开始模拟评审' }
         : undefined,
   })
   return rows
@@ -221,7 +250,7 @@ const nextActions = computed(() => {
   if (members.value.length >= 2) {
     actions.push({ to: `${basePath.value}/consistency`, label: '运行一致性检查', icon: 'i-lucide-git-compare', primary: true })
   }
-  actions.push({ to: `${basePath.value}/grill`, label: '开始质询', icon: 'i-lucide-messages-square', primary: members.value.length < 2 })
+  actions.push({ to: `${basePath.value}/grill`, label: '开始模拟评审', icon: 'i-lucide-messages-square', primary: members.value.length < 2 })
   if (firstBoundId.value) {
     actions.push({ to: `/materials/${firstBoundId.value}/report`, label: '查看依据报告', icon: 'i-lucide-scan-search' })
   }
@@ -229,23 +258,111 @@ const nextActions = computed(() => {
   return actions
 })
 
-// ActionItem：由真实会话快照推导的待处理事项，排在通用动作之前。
-// 数据只来自本会话真实跑过的结果；没有快照就不渲染，不造完成度。
-const actionItems = computed<ActionItemModel[]>(() => {
-  const items: ActionItemModel[] = []
+// Action Inbox：从真实来源聚合「现在应该处理什么」。
+// 语义按 issue 类型区分（待核对数值 / 值得核对的关键陈述 / 待确认依据 / 答辩准备），
+// 不按 Agent 分栏；「暂时忽略」只承诺本次会话。没有状态来源的事项不造。
+interface InboxEntry {
+  item: ActionItemModel
+  tone: 'amber' | 'emerald' | 'violet'
+}
+const inboxEntries = computed<InboxEntry[]>(() => {
+  const entries: InboxEntry[] = []
+
+  // 待核对数值：来自本会话真实跑过的一致性结果，逐条列出（最多 5 条）。
   const consistency = consistencySnapshot.value?.result
-  if (consistency && consistency.findings.length > 0) {
-    items.push({
-      key: `${reviewId.value}:consistency:${consistency.findings.length}`,
-      what: `一致性检查发现 ${consistency.findings.length} 处待核对项`,
-      why: '同一信息在材料间存在不同说法，结论可能建立在不兼容的口径上，需要逐条确认。',
-      where: review.value?.title ?? '',
-      actions: [{ key: 'view', label: '查看一致性检查', to: `${basePath.value}/consistency`, primary: true }],
-      meta: '由：一致性检查（程序）',
+  if (consistency) {
+    for (const finding of consistency.findings.slice(0, 5)) {
+      entries.push({
+        tone: 'amber',
+        item: {
+          key: `${reviewId.value}:consistency:${finding.kind}:${finding.measure}`,
+          what: `待核对数值：${finding.measure}`,
+          detail: finding.values.join(' / '),
+          why: finding.explanation,
+          where: review.value?.title ?? '',
+          actions: [{ key: 'view', label: '查看一致性检查', to: `${basePath.value}/consistency`, primary: true }],
+          meta: '由：一致性检查（程序）',
+        },
+      })
+    }
+  }
+
+  // 待确认依据：来自装配摘要（确定性）。
+  for (const member of members.value) {
+    const summary = summaryOf(member.material_id)
+    const missing = summary?.bound ? (summary.criteria_without_citations ?? 0) : 0
+    if (missing > 0) {
+      entries.push({
+        tone: 'amber',
+        item: {
+          key: `${reviewId.value}:evidence:${member.material_id}`,
+          what: `待确认依据：当前范围尚未发现引用 ${missing} 项`,
+          why: '没有原文依据支撑的要求，评审时无法自证。',
+          where: identityOf(member.material_id, member.label).primary,
+          actions: [
+            { key: 'run', label: '运行依据审计', to: `${basePath.value}/evidence`, primary: true },
+            { key: 'open', label: '打开材料', to: `/materials/${member.material_id}` },
+          ],
+          meta: '由：依据审计员（模型）',
+        },
+      })
+    }
+  }
+
+  // 值得核对的关键陈述：来自确定性 statement-signals。
+  if (signalCounts.value !== null) {
+    for (const member of members.value) {
+      const count = signalCounts.value[member.material_id] ?? 0
+      if (count > 0) {
+        entries.push({
+          tone: 'amber',
+          item: {
+            key: `${reviewId.value}:signals:${member.material_id}:${count}`,
+            what: `值得核对的关键陈述 ${count} 条`,
+            why: '数字、比例、比较级与绝对化表述最容易被评审追问，提前确认出处。',
+            where: identityOf(member.material_id, member.label).primary,
+            actions: [{ key: 'view', label: '查看信号', to: `/materials/${member.material_id}/report`, primary: true }],
+            meta: '由：关键陈述检查（程序）',
+          },
+        })
+      }
+    }
+  }
+
+  // 答辩准备：来自本会话真实生成的模拟评审问题。
+  const grill = grillSnapshot.value
+  if (grill?.generated && grill.questions.length > 0) {
+    entries.push({
+      tone: 'violet',
+      item: {
+        key: `${reviewId.value}:grill:${grill.questions.length}`,
+        what: `答辩准备：${grill.questions.length} 条可能的评审追问`,
+        why: '这些问题由材料原文触发，提前准备回答或修改材料。',
+        where: review.value?.title ?? '',
+        actions: [{ key: 'view', label: '查看模拟评审', to: `${basePath.value}/grill`, primary: true }],
+        meta: '由：质询官（按需模型）',
+      },
     })
   }
-  return items
+
+  return entries
 })
+
+// 修改效果是状态变化而不是待办：不进 Action Inbox，只在有真实 diff 快照时给一行事实。
+const diffSummary = computed(() => {
+  const diff = diffSnapshot.value?.result
+  if (!diff) return null
+  return {
+    resolved: diff.resolved.length,
+    unchanged: diff.unchanged.length,
+    added: diff.new.length,
+    to: `${basePath.value}/diff`,
+  }
+})
+
+const dismissed = computed(() => new Set(session.dismissedActionKeys))
+const visibleEntries = computed(() => inboxEntries.value.filter((entry) => !dismissed.value.has(entry.item.key)))
+const dismissedCount = computed(() => inboxEntries.value.length - visibleEntries.value.length)
 </script>
 
 <template>
@@ -318,12 +435,30 @@ const actionItems = computed<ActionItemModel[]>(() => {
       <p v-if="factsError" class="mt-2 text-xs text-red-400" role="alert">材料事实加载失败：{{ factsError }}</p>
     </section>
 
-    <!-- 下一步：先列真实待处理事项（ActionItem），再给情境化动作；不做 dashboard。 -->
+    <!-- 下一步：Action Inbox——先回答「现在应该处理什么」，再给情境化动作；不做 dashboard。 -->
     <section aria-label="下一步" class="rounded-xl border border-slate-800 p-5">
-      <h2 class="text-xs font-medium uppercase tracking-wider text-slate-500">下一步</h2>
-      <div v-if="actionItems.length > 0" class="mt-3 space-y-3">
-        <ActionItem v-for="item in actionItems" :key="item.key" :item="item" />
+      <h2 class="text-xs font-medium uppercase tracking-wider text-slate-500">现在应该处理什么</h2>
+      <div v-if="visibleEntries.length > 0" class="mt-3 space-y-3">
+        <ActionItem
+          v-for="entry in visibleEntries"
+          :key="entry.item.key"
+          :item="entry.item"
+          :tone="entry.tone"
+          dismissible
+          @dismiss="session.dismissAction"
+        />
       </div>
+      <p v-else class="mt-3 text-xs text-slate-600">当前会话还没有需要处理的事项；运行一致性或依据审计后会出现在这里。</p>
+      <p v-if="dismissedCount > 0" class="mt-2 text-[11px] text-slate-600">
+        已暂时忽略 {{ dismissedCount }} 项（仅本次会话有效，刷新后恢复显示）。
+      </p>
+      <!-- 修改效果是会话内的状态变化，不是待办：只复述事实，不伪装成 action。 -->
+      <p v-if="diffSummary" class="mt-2 text-[11px] text-slate-500">
+        修改效果 · 本次会话：本次未再检出 {{ diffSummary.resolved }} · 仍存在 {{ diffSummary.unchanged }} · 新增 {{ diffSummary.added }}
+        <RouterLink :to="diffSummary.to" class="text-slate-400 underline decoration-slate-700 underline-offset-2 hover:text-slate-200">
+          查看修改效果
+        </RouterLink>
+      </p>
       <div class="mt-3 flex flex-wrap gap-2">
         <UButton
           v-for="action in nextActions"
@@ -337,8 +472,32 @@ const actionItems = computed<ActionItemModel[]>(() => {
         </UButton>
       </div>
       <p class="mt-3 text-xs leading-relaxed text-slate-600">
-        一致性、修改效果与质询都在这次审查的上下文中进行——材料以你起的名字出现，不再需要从整个材料库重新猜测。
+        一致性、修改效果与模拟评审都在这次审查的上下文中进行——材料以你起的名字出现，不再需要从整个材料库重新猜测。
       </p>
+    </section>
+
+    <!-- 删除本次审查：两步确认；必须说清楚材料和材料的审查标准绑定都不受影响。 -->
+    <section aria-label="删除本次审查" class="rounded-xl border border-slate-800/60 p-5">
+      <template v-if="!confirmingDelete">
+        <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-trash-2" @click="confirmingDelete = true">
+          删除本次审查
+        </UButton>
+      </template>
+      <template v-else>
+        <p class="text-sm text-slate-200">确定删除「{{ review?.title }}」吗？</p>
+        <p class="mt-2 text-xs leading-relaxed text-slate-400">
+          删除只会移除这次审查的上下文与材料清单。<span class="text-slate-300">不会删除任何材料，也不会修改材料当前使用的审查标准。</span>
+        </p>
+        <p v-if="deleteError" class="mt-2 text-sm text-red-400" role="alert">删除失败：{{ deleteError }}</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <UButton color="error" size="sm" :loading="deleting" @click="deleteReview">
+            {{ deleting ? '正在删除…' : '确认删除' }}
+          </UButton>
+          <UButton color="neutral" variant="subtle" size="sm" :disabled="deleting" @click="confirmingDelete = false">
+            取消
+          </UButton>
+        </div>
+      </template>
     </section>
   </div>
 </template>

@@ -1,32 +1,9 @@
-import type { SavedMaterial } from '../types/contracts'
+import type {
+  EditableSource,
+  MaterialRevisionCreate,
+  MaterialRevisionCreated,
+} from '../types/contracts'
 import { ApiFailure } from './reviews'
-
-// Revision v1 类型本地定义：contracts.ts 由 Backend/Contract Pod 独占同步中，
-// 契约落地后这些类型应迁回 types/contracts.ts，本文件只保留 client 函数。
-export interface EditableSource {
-  material_id: string
-  format: 'md'
-  text: string
-  normalization: 'lf'
-}
-
-export interface MaterialRevision {
-  child_material_id: string
-  parent_material_id: string
-  created_at: string
-}
-
-export interface MaterialRevisionCreated {
-  material: SavedMaterial
-  revision: MaterialRevision
-}
-
-export interface MaterialRevisionCreate {
-  text: string
-  filename: string
-  review_id?: string
-  label?: string
-}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)

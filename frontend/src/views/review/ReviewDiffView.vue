@@ -297,6 +297,7 @@ async function openInReader(finding: ConsistencyFinding, citation: ConsistencyFi
   session.openReader({
     reviewId: reviewId.value,
     reviewTitle: reviewTitle.value,
+    materialId: clickedBlock.document_id,
     materialLabel: labelOf(clickedBlock.document_id),
     materialFilename: filenameOf(clickedBlock.document_id),
     targets,

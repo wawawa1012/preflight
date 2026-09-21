@@ -52,4 +52,26 @@ export const reviewsApi = {
       throw new ApiFailure(response.status, body?.code ?? `http_${response.status}`, body?.message ?? `HTTP ${response.status}`)
     }
   },
+  // 删除 Review 只删除审查上下文与成员关系；材料与材料的审查标准绑定都不受影响。
+  remove: async (reviewId: string) => {
+    const response = await fetch(`/api/v1/reviews/${encodeURIComponent(reviewId)}`, { method: 'DELETE' })
+    if (!response.ok && response.status !== 404) {
+      const body = (await response.json().catch(() => null)) as { code?: string; message?: string } | null
+      throw new ApiFailure(response.status, body?.code ?? `http_${response.status}`, body?.message ?? `HTTP ${response.status}`)
+    }
+  },
+  // 材料的审查标准应用（B1）：未绑定→首次绑定(201)；同标准→幂等(200)；已绑定其他标准→409 binding_conflict。
+  // 前端只呈现结果，绝不自动换绑。
+  bindMaterial: async (materialId: string, rubricId: string, rubricRevision: number) => {
+    const response = await fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/rubric-binding`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rubric_id: rubricId, rubric_revision: rubricRevision }),
+    })
+    const body = (await response.json().catch(() => null)) as { code?: string; message?: string } | null
+    if (!response.ok) {
+      throw new ApiFailure(response.status, body?.code ?? `http_${response.status}`, body?.message ?? `HTTP ${response.status}`)
+    }
+    return response.status === 201 ? ('created' as const) : ('existing' as const)
+  },
 }

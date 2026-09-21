@@ -13,6 +13,7 @@ export interface ReaderTarget {
 export interface ReaderVisit {
   reviewId: string
   reviewTitle: string
+  materialId: string
   materialLabel: string
   materialFilename: string
   targets: ReaderTarget[]
@@ -38,6 +39,10 @@ export const useSessionStore = defineStore('session', {
     capabilitySnapshots: {} as Record<string, unknown>,
     // 修订稿编辑器的建议上下文：进入编辑器时消费一次。
     revisionAdvice: null as RevisionAdvice | null,
+    // ActionItem 的「暂时忽略」：只承诺当前 session，刷新即失效，UI 必须明示这一点。
+    dismissedActionKeys: [] as string[],
+    // Response Coach 草稿：session-only，不是长期保存。key = `${reviewId}:${questionKey}`。
+    coachDrafts: {} as Record<string, { answer: string }>,
   }),
   actions: {
     openReader(visit: ReaderVisit) {
@@ -61,6 +66,15 @@ export const useSessionStore = defineStore('session', {
       if (!advice || advice.materialId !== materialId) return null
       this.revisionAdvice = null
       return advice
+    },
+    dismissAction(key: string) {
+      if (!this.dismissedActionKeys.includes(key)) this.dismissedActionKeys.push(key)
+    },
+    restoreAction(key: string) {
+      this.dismissedActionKeys = this.dismissedActionKeys.filter((item) => item !== key)
+    },
+    saveCoachDraft(key: string, answer: string) {
+      this.coachDrafts[key] = { answer }
     },
   },
 })

@@ -302,7 +302,7 @@ loadProposals()
       <section class="rounded-lg bg-slate-950/40 p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h2 class="text-sm font-medium text-slate-200">审查团队</h2>
-          <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描。依据审计、修复建议、质询才会调用模型。</span>
+          <span class="text-xs text-slate-500">一致性与关键陈述由程序扫描。依据审计、修复建议、模拟评审才会调用模型。</span>
         </div>
         <ul class="mt-3 grid gap-2 sm:grid-cols-3">
           <li>
@@ -348,7 +348,7 @@ loadProposals()
           <span v-else> · 点待核对项后才运行</span>
           <span class="mx-2 text-slate-700">·</span>
           <span class="text-slate-300">质询官</span>
-          · 需要时在质询页生成追问
+          · 需要时在模拟评审中生成追问
         </p>
       </section>
 

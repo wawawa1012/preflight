@@ -7,6 +7,7 @@ import ReviewConsistencyView from '../views/review/ReviewConsistencyView.vue'
 import ReviewDiffView from '../views/review/ReviewDiffView.vue'
 import ReviewGrillView from '../views/review/ReviewGrillView.vue'
 import ReviewMembersView from '../views/review/ReviewMembersView.vue'
+import ReviewEvidenceView from '../views/review/ReviewEvidenceView.vue'
 import SourceReaderView from '../views/review/SourceReaderView.vue'
 import RevisionEditorView from '../views/review/RevisionEditorView.vue'
 import ReportView from '../views/ReportView.vue'
@@ -28,6 +29,7 @@ export const router = createRouter({
       component: ReviewWorkspaceView,
       children: [
         { path: '', name: 'review-overview', component: ReviewOverviewView },
+        { path: 'evidence', name: 'review-evidence', component: ReviewEvidenceView },
         { path: 'consistency', name: 'review-consistency', component: ReviewConsistencyView },
         { path: 'diff', name: 'review-diff', component: ReviewDiffView },
         { path: 'grill', name: 'review-grill', component: ReviewGrillView },
