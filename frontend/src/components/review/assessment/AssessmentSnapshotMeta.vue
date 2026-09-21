@@ -11,12 +11,19 @@ const createdAtText = computed(() => formatSavedAt(props.snapshot.createdAt))
 </script>
 
 <template>
-  <!-- LEAF-TODO(DS)：主行 = 评估时间 + 标准版本 + 材料范围；方法版本进 details/次级。 -->
-  <section>
-    <p>评估于 {{ createdAtText }} · {{ props.snapshot.rubricTitle }} · v{{ props.snapshot.rubricRevision }} · {{ props.snapshot.materialScope }}</p>
-    <details>
-      <summary>评估方法</summary>
-      <p>{{ props.snapshot.methodNote }}</p>
+  <section class="text-xs text-slate-500">
+    <!-- 主行保持一行级的低调密度：评估时间 · 标准版本 · 材料范围。 -->
+    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <span>评估于 {{ createdAtText }}</span>
+      <span aria-hidden="true" class="text-slate-700">·</span>
+      <span>{{ props.snapshot.rubricTitle }} · v{{ props.snapshot.rubricRevision }}</span>
+      <span aria-hidden="true" class="text-slate-700">·</span>
+      <span>{{ props.snapshot.materialScope }}</span>
+    </div>
+    <!-- 评估方法收进次级详情，不占主行。 -->
+    <details class="mt-1">
+      <summary class="cursor-pointer text-slate-600 hover:text-slate-400">评估方法</summary>
+      <p class="mt-1 leading-relaxed text-slate-500">{{ props.snapshot.methodNote }}</p>
     </details>
   </section>
 </template>

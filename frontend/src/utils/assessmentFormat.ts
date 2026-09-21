@@ -64,3 +64,7 @@ export const NEWLY_ASSESSABLE_NOTE = '本次已有足够依据进行评估'
 // 页面级诚实声明（页脚常量）。
 export const ASSESSMENT_TRUTH_NOTE =
   '评估结果按当前标准与已确认的材料依据得出，不是对作品真实质量的客观评分。'
+
+// 卡片分节标签（与模拟评审卡的「触发依据 / 你需要准备什么」同族）。
+export const SOURCES_SECTION_LABEL = '依据'
+export const MISSING_SECTION_LABEL = '还缺什么'
