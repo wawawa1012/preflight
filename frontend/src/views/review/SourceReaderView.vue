@@ -185,20 +185,9 @@ onUnmounted(() => session.closeReader())
         <UBadge v-if="activeBlock" color="neutral" variant="subtle" size="sm">
           {{ locatorLabel(activeBlock.locator) }}
         </UBadge>
-        <!-- DOCX 本期只能审查与查看原文：编辑入口如实说明限制，不暗示可保留 Word 格式。 -->
+        <!-- DOCX 本期只能审查与查看原文：不提供点了没反应的编辑按钮，限制由下方 inline 说明如实表达。 -->
         <UButton
-          v-if="material && material.format === 'docx'"
-          color="neutral"
-          variant="subtle"
-          size="xs"
-          icon="i-lucide-pencil-line"
-          disabled
-          title="Word 文档暂不支持创建修改版；可以审查与查看原文"
-        >
-          编辑为修订稿
-        </UButton>
-        <UButton
-          v-else
+          v-if="material && material.format !== 'docx'"
           color="neutral"
           variant="subtle"
           size="xs"

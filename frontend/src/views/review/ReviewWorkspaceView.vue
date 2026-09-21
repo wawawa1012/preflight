@@ -105,6 +105,7 @@ const views = [
   { key: 'consistency', label: '一致性', icon: 'i-lucide-git-compare' },
   { key: 'diff', label: '修改效果', icon: 'i-lucide-git-compare-arrows' },
   { key: 'grill', label: '模拟评审', icon: 'i-lucide-messages-square' },
+  { key: 'assessment', label: '评估', icon: 'i-lucide-clipboard-check' },
   { key: 'members', label: '材料', icon: 'i-lucide-files' },
 ] as const
 
