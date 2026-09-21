@@ -7,6 +7,7 @@ import RepairSuggestionPanel from '../components/RepairSuggestionPanel.vue'
 import PageHeader from '../components/review/PageHeader.vue'
 import { locatorLabel } from '../utils/locatorLabel'
 import { latestCompletedProposal, latestProposal, passedCount, pendingPassedCount } from '../utils/preflightFacts'
+import { failureFromResponse, toUserFacingError } from '../utils/userFacingError'
 
 // 材料级预审报告：装配结果（需要绑定）与材料级信号（不需要绑定）各自装、各自画。
 const route = useRoute()
@@ -25,6 +26,28 @@ const findingsUnavailable = ref(false)
 
 // 修复建议：每条待核对问题一个入口；点开才由面板调用 LLM，材料原文不动。
 const repairFinding = ref<ConsistencyFinding | null>(null)
+
+// 修复建议运行状态按 finding 记录：只有「成功结果」才计数，运行/失败/成功分开。
+// 切换 finding 后迟到的旧结果不会贴到新问题上（面板侧有 token 守卫，这里按 key 隔离）。
+type RepairRunState = 'running' | 'succeeded' | 'failed'
+const repairStates = ref<Record<string, RepairRunState>>({})
+
+function findingKey(finding: ConsistencyFinding): string {
+  const first = finding.citations[0]
+  return `${finding.kind}:${finding.measure}:${first ? `${first.block_id}:${first.start}` : 'no-citation'}`
+}
+
+function onRepairStatus(state: RepairRunState) {
+  const finding = repairFinding.value
+  if (!finding) return
+  repairStates.value = { ...repairStates.value, [findingKey(finding)]: state }
+}
+
+const repairRunningCount = computed(() => Object.values(repairStates.value).filter((state) => state === 'running').length)
+const repairSucceededCount = computed(
+  () => Object.values(repairStates.value).filter((state) => state === 'succeeded').length,
+)
+const repairFailedCount = computed(() => Object.values(repairStates.value).filter((state) => state === 'failed').length)
 
 // I7 材料级信号：同样与绑定无关，一到手就画。
 const signals = ref<DetectedStatement[]>([])
@@ -91,11 +114,11 @@ async function loadReport() {
       return
     }
     if (!response.ok) {
-      throw new Error(body && body.message ? body.message : `HTTP ${response.status}`)
+      throw failureFromResponse(response.status, body)
     }
     report.value = body as MaterialPreflightReport
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '未知错误'
+    error.value = toUserFacingError(cause, '无法读取审查结果，请重试').message
   } finally {
     loading.value = false
   }
@@ -223,11 +246,6 @@ function failedWithoutCompleted(criterionId: string) {
   return latest?.status === 'failed' && completedFor(criterionId) === null
 }
 
-function verifyFailureText(code: string, message: string) {
-  if (code === 'material_too_large') return '材料超出单次核验上限，本行未核验'
-  return message || code
-}
-
 async function verifyCriterion(criterionId: string) {
   verifyingIds.value = [...verifyingIds.value, criterionId]
   try {
@@ -238,15 +256,14 @@ async function verifyCriterion(criterionId: string) {
     })
     const body = await response.json().catch(() => null)
     if (!response.ok) {
-      const code = body && body.code ? body.code : `HTTP ${response.status}`
-      throw new Error(verifyFailureText(code, body && body.message ? body.message : code))
+      throw failureFromResponse(response.status, body)
     }
     const next = { ...rowError.value }
     delete next[criterionId]
     rowError.value = next
   } catch (cause) {
     // 失败只写在该行（如 material_too_large），不升级成整页红字主句，也不吞掉。
-    rowError.value = { ...rowError.value, [criterionId]: cause instanceof Error ? cause.message : '未知错误' }
+    rowError.value = { ...rowError.value, [criterionId]: toUserFacingError(cause, '本条依据审计失败，请稍后重试').message }
   } finally {
     verifyingIds.value = verifyingIds.value.filter((item) => item !== criterionId)
   }
@@ -344,7 +361,9 @@ loadProposals()
         </ul>
         <p class="mt-3 text-xs text-slate-500">
           <button type="button" class="text-slate-300 hover:underline" @click="scrollToSection('pending-findings')">修复顾问</button>
-          <span v-if="repairFinding"> · 已生成 1 条建议</span>
+          <span v-if="repairRunningCount > 0"> · 正在生成 {{ repairRunningCount }} 条建议…</span>
+          <span v-else-if="repairSucceededCount > 0"> · 已生成 {{ repairSucceededCount }} 条建议</span>
+          <span v-else-if="repairFailedCount > 0"> · 最近一次生成失败，可在面板重试</span>
           <span v-else> · 点待核对项后才运行</span>
           <span class="mx-2 text-slate-700">·</span>
           <span class="text-slate-300">质询官</span>
@@ -366,7 +385,7 @@ loadProposals()
         <ul v-else class="mt-3 space-y-3">
           <li
             v-for="finding in findings"
-            :key="`${finding.kind}:${finding.measure}:${finding.citations[0].block_id}:${finding.citations[0].start}`"
+            :key="findingKey(finding)"
             class="rounded-md border border-slate-800 p-2"
           >
             <div class="flex flex-wrap items-center gap-2">
@@ -404,6 +423,7 @@ loadProposals()
               :material-id="materialId"
               :material-label="report?.filename ?? ''"
               :finding="repairFinding"
+              :on-status="onRepairStatus"
               @open-citation="openHighlight"
               @close="repairFinding = null"
             />

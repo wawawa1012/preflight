@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { getCurrentInstance, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ConsistencyCitation, ConsistencyFinding, RepairSuggestion } from '../types/contracts'
 import { useSessionStore } from '../stores/session'
+import { createAsyncGuard } from '../utils/asyncGuard'
+import { failureFromResponse, toUserFacingError } from '../utils/userFacingError'
 
 // 修复建议面板：收到一条待核对问题就调一次 LLM，只展示改稿方向；材料原文只读。
 // POST 只在这里发生：报告页只负责选中哪一条问题，不搬 LLM 逻辑。
-const props = defineProps<{ materialId: string; materialLabel?: string; finding: ConsistencyFinding | null }>()
+// onStatus 把运行/成功/失败如实回报给宿主，宿主计数只认成功结果，不把「选中」当「已生成」。
+const props = defineProps<{
+  materialId: string
+  materialLabel?: string
+  finding: ConsistencyFinding | null
+  onStatus?: (state: 'running' | 'succeeded' | 'failed') => void
+}>()
 const emit = defineEmits<{
   (e: 'open-citation', citation: ConsistencyCitation): void
   (e: 'close'): void
@@ -19,18 +27,19 @@ const suggestion = ref<RepairSuggestion | null>(null)
 const generating = ref(false)
 const error = ref('')
 
-function failureText(code: string, message: string) {
-  if (code === 'llm_unconfigured') return '后端未配置 LLM，配置后重试'
-  if (code === 'llm_timeout') return '生成超时，可重试'
-  if (code === 'citation_mismatch') return '引用与材料原文对不上，未生成建议'
-  return message || code
+// 迟到响应守卫：切换 finding / 材料或组件卸载后，旧响应一律丢弃——不写状态、不报成功。
+const guard = createAsyncGuard()
+
+function reportStatus(state: 'running' | 'succeeded' | 'failed') {
+  props.onStatus?.(state)
 }
 
 async function generate(finding: ConsistencyFinding) {
-  if (generating.value) return
+  const token = guard.next()
   generating.value = true
   error.value = ''
   suggestion.value = null
+  reportStatus('running')
   try {
     const response = await fetch(`/api/v1/materials/${encodeURIComponent(props.materialId)}/repair-suggestions`, {
       method: 'POST',
@@ -38,16 +47,17 @@ async function generate(finding: ConsistencyFinding) {
       body: JSON.stringify(finding),
     })
     const body = await response.json().catch(() => null)
-    if (!response.ok) {
-      const code = body && body.code ? body.code : `HTTP ${response.status}`
-      throw new Error(failureText(code, body && body.message ? body.message : code))
-    }
+    if (!guard.isCurrent(token)) return
+    if (!response.ok) throw failureFromResponse(response.status, body)
     suggestion.value = body as RepairSuggestion
+    reportStatus('succeeded')
   } catch (cause) {
+    if (!guard.isCurrent(token)) return
     // 失败必须可见：写清原因，并留下「重试」按钮，不静默吞掉。
-    error.value = cause instanceof Error ? cause.message : '未知错误'
+    error.value = toUserFacingError(cause, '生成修复建议失败，请重试').message
+    reportStatus('failed')
   } finally {
-    generating.value = false
+    if (guard.isCurrent(token)) generating.value = false
   }
 }
 
@@ -70,12 +80,22 @@ function startEditing() {
 
 // 点「生成修复建议」→ 选中 finding → 这里发一次请求；打开页面时 finding 为空，不发请求。
 watch(
-  () => props.finding,
-  (finding) => {
-    if (finding) void generate(finding)
+  [() => props.materialId, () => props.finding],
+  ([, finding]) => {
+    guard.invalidate()
+    if (finding) {
+      void generate(finding)
+    } else {
+      suggestion.value = null
+      error.value = ''
+      generating.value = false
+    }
   },
   { immediate: true },
 )
+
+// 组件卸载即作废在途响应；getCurrentInstance 守卫让 setup 也可在无实例的检查里直接调用。
+if (getCurrentInstance()) onBeforeUnmount(() => guard.invalidate())
 </script>
 
 <template>

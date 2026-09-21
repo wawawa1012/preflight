@@ -3,7 +3,8 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { MaterialSummary, Rubric, RubricDraft } from '../../types/contracts'
 import { ApiFailure, reviewsApi } from '../../services/reviews'
-import { criteriaBuilderApi, emptyManualDraft } from '../../services/criteriaSource'
+import { criteriaBuilderApi, emptyManualDraft, preparePublish, RUBRIC_JSON_EXAMPLE } from '../../services/criteriaSource'
+import { failureFromResponse, toUserFacingError } from '../../utils/userFacingError'
 import PageHeader from '../../components/review/PageHeader.vue'
 import RubricDraftEditor from '../../components/review/RubricDraftEditor.vue'
 
@@ -51,11 +52,15 @@ const submitError = ref('')
 const conflictMaterial = ref('')
 // 冲突发生在 create 之后时，重试直接复用已建 Review，避免重复建单。
 const createdReviewId = ref('')
+// create 成功即锁定其真实 rubric_id/revision：effectiveRubric 以它为准，重试不允许 UI 换标准。
+const createdRubric = ref<Rubric | null>(null)
+// 已成功加入的材料：部分失败重试时只补未加入的，不重复 PUT。
+const addedSeatIds = ref<string[]>([])
 
 async function loadRubrics() {
   const response = await fetch('/api/v1/rubrics')
   const body = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(body?.message ?? `HTTP ${response.status}`)
+  if (!response.ok) throw failureFromResponse(response.status, body)
   rubrics.value = Array.isArray(body) ? (body as Rubric[]) : []
 }
 
@@ -65,7 +70,7 @@ async function load() {
   try {
     const materialResponse = await fetch('/api/v1/materials')
     const materialBody = await materialResponse.json().catch(() => null)
-    if (!materialResponse.ok) throw new Error(materialBody?.message ?? `HTTP ${materialResponse.status}`)
+    if (!materialResponse.ok) throw failureFromResponse(materialResponse.status, materialBody)
     await loadRubrics()
     materials.value = Array.isArray(materialBody) ? (materialBody as MaterialSummary[]) : []
     seats.value = materials.value.map((material) => ({
@@ -75,7 +80,7 @@ async function load() {
       label: '',
     }))
   } catch (cause) {
-    loadError.value = cause instanceof Error ? cause.message : '未知错误'
+    loadError.value = toUserFacingError(cause, '无法加载表单数据，请重试').message
   } finally {
     loading.value = false
   }
@@ -91,15 +96,17 @@ const confirmStepIndex = computed(() => (needsDraftStep.value ? 3 : 2))
 const selectedRubric = computed(
   () => rubrics.value.find((rubric) => rubricKey.value === `${rubric.id}:${rubric.revision}`) ?? null,
 )
-const effectiveRubric = computed<Rubric | null>(() =>
-  criteriaKind.value === 'existing' ? selectedRubric.value : publishedRubric.value,
-)
+// 已创建 Review 的标准是锁定的：即使 UI 里改了选择，本次提交仍只认创建时的 rubric_id/revision。
+const effectiveRubric = computed<Rubric | null>(() => {
+  if (createdRubric.value) return createdRubric.value
+  return criteriaKind.value === 'existing' ? selectedRubric.value : publishedRubric.value
+})
 const checkedSeats = computed(() => seats.value.filter((seat) => seat.checked))
 
 const criteriaOptions: { kind: CriteriaKind; name: string; note: string }[] = [
   { kind: 'existing', name: '使用已有标准', note: '从已发布的审查标准中选择' },
   { kind: 'paste', name: '粘贴审查要求', note: '粘贴要求文本，生成可编辑的标准草稿' },
-  { kind: 'upload', name: '上传要求文件', note: '支持 Markdown / TXT / 结构化标准 JSON' },
+  { kind: 'upload', name: '上传要求文件', note: '支持 Markdown / TXT；结构化 JSON 属高级导入' },
   { kind: 'manual', name: '手工创建', note: '不依赖模型，逐条编写审查要求' },
 ]
 
@@ -142,7 +149,7 @@ async function generateDraft() {
     if (draft.value) step.value = draftStepIndex
   } catch (cause) {
     // 模型失败不卡死：错误可见，可改走手工创建，输入内容保留。
-    draftError.value = cause instanceof Error ? cause.message : '未知错误'
+    draftError.value = toUserFacingError(cause, '生成标准草稿失败，请重试或改用手工创建').message
   } finally {
     generating.value = false
   }
@@ -155,26 +162,23 @@ function switchToManual() {
   step.value = draftStepIndex
 }
 
-const draftValid = computed(() => {
-  const current = draft.value
-  if (!current) return false
-  if (current.title.trim() === '') return false
-  if (current.criteria.length === 0) return false
-  return current.criteria.every((criterion) => criterion.title.trim() !== '' && criterion.requirement.trim() !== '')
-})
+// 发布前校验：必填、数量、source_text 长度；手工草稿在此产出由最终确认内容组成的快照。
+const publishCheck = computed(() => (draft.value ? preparePublish(draft.value) : { ok: false, problems: [], payload: null }))
+const draftValid = computed(() => publishCheck.value.ok)
 
 // —— 发布：只有用户显式确认才发生 ——
 async function publish() {
-  if (!draft.value || !draftValid.value || publishing.value || publishedRubric.value) return
+  const prepared = publishCheck.value
+  if (!draft.value || !prepared.ok || !prepared.payload || publishing.value || publishedRubric.value) return
   publishing.value = true
   publishError.value = ''
   publishUnknown.value = false
   try {
-    publishedRubric.value = await criteriaBuilderApi.publish(draft.value)
+    publishedRubric.value = await criteriaBuilderApi.publish(prepared.payload)
   } catch (cause) {
     if (cause instanceof ApiFailure) {
       // 服务端明确拒绝（草稿不合法等）：标准未创建，修正后可由用户再次点击。
-      publishError.value = cause.message
+      publishError.value = toUserFacingError(cause, '发布失败，请重试').message
     } else {
       // 网络层失败：响应不确定，标准可能已创建——不自动重试，给用户诚实恢复路径。
       publishUnknown.value = true
@@ -221,12 +225,16 @@ async function submit() {
       })
       reviewId = review.id
       createdReviewId.value = reviewId
+      // 创建成功即锁定该 Review 的真实标准版本，之后 UI 的选择不参与提交。
+      createdRubric.value = rubric
     }
     for (const seat of checkedSeats.value) {
+      if (addedSeatIds.value.includes(seat.materialId)) continue
       try {
         const seatLabel = seat.label.trim()
         // 加入成员即完成绑定语义：未绑定→后端首次绑定；同标准→幂等；已绑定其他标准→409 binding_conflict。
         await reviewsApi.upsertMaterial(reviewId, seat.materialId, seatLabel === '' ? {} : { label: seatLabel })
+        addedSeatIds.value = [...addedSeatIds.value, seat.materialId]
       } catch (cause) {
         if (cause instanceof ApiFailure && cause.code === 'binding_conflict') {
           conflictMaterial.value = seat.filename
@@ -236,7 +244,7 @@ async function submit() {
     }
     router.replace(`/reviews/${reviewId}`)
   } catch (cause) {
-    submitError.value = cause instanceof Error ? cause.message : '未知错误'
+    submitError.value = toUserFacingError(cause, '创建审查失败，请重试').message
   } finally {
     submitting.value = false
   }
@@ -359,6 +367,16 @@ load()
             class="block w-full text-sm text-slate-400 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-sm file:text-slate-200"
             @change="uploadFile = ($event.target as HTMLInputElement).files?.[0] ?? null"
           />
+          <div class="mt-3 rounded-md bg-slate-900/60 px-3 py-2">
+            <p class="text-[11px] leading-relaxed text-slate-400">
+              JSON 是高级导入：需要自己写好 title 与 criteria，保存为 .json 文件后在这里上传；
+              普通使用请粘贴文本或上传 Markdown / TXT。
+            </p>
+            <details class="mt-1">
+              <summary class="cursor-pointer text-[11px] text-slate-500">查看最小合法 JSON 示例</summary>
+              <pre class="mt-2 overflow-x-auto rounded bg-slate-950/60 p-2 text-[11px] leading-relaxed text-slate-300">{{ RUBRIC_JSON_EXAMPLE }}</pre>
+            </details>
+          </div>
         </div>
 
         <p v-else class="mt-4 text-xs text-slate-500">从一份空白标准开始，逐条写下你的审查要求。</p>
@@ -411,7 +429,9 @@ load()
             <UButton icon="i-lucide-check" :loading="publishing" :disabled="!draftValid || publishing" @click="publish">
               {{ publishing ? '正在发布…' : '确认并发布标准' }}
             </UButton>
-            <p v-if="!draftValid" class="mt-2 text-xs text-amber-300">标准需要名称，且每条要求都有标题与内容。</p>
+            <ul v-if="publishCheck.problems.length > 0" class="mt-2 space-y-0.5 text-xs text-amber-300">
+              <li v-for="problem in publishCheck.problems" :key="problem">{{ problem }}</li>
+            </ul>
           </template>
         </div>
       </section>
@@ -441,13 +461,19 @@ load()
           </div>
         </dl>
 
+        <p v-if="createdReviewId" class="mt-3 rounded-md bg-slate-950/40 px-3 py-2 text-xs leading-relaxed text-slate-400">
+          这次审查已经创建，标准锁定为「{{ effectiveRubric?.title }} · v{{ effectiveRubric?.revision }}」。
+          重试只会继续加入材料，不会更换标准；如需换标准请新建审查。
+        </p>
+
         <label class="mt-4 block">
           <span class="text-xs text-slate-500">给这次审查起个名字</span>
           <input
             v-model="title"
             type="text"
+            :disabled="createdReviewId !== ''"
             placeholder="例如：2026 春季项目申报材料终审"
-            class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none"
+            class="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-violet-500 focus:outline-none disabled:opacity-60"
           />
         </label>
 
@@ -468,7 +494,7 @@ load()
           下一步
         </UButton>
         <UButton v-else type="button" icon="i-lucide-check" :loading="submitting" :disabled="!canSubmit" @click="submit">
-          {{ submitting ? '正在创建…' : '开始审查' }}
+          {{ submitting ? '正在创建…' : createdReviewId ? '继续加入材料' : '开始审查' }}
         </UButton>
       </div>
     </template>

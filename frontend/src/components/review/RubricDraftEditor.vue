@@ -16,10 +16,15 @@ function updateCriterion(index: number, patch: Partial<CriterionDraft>) {
   update({ criteria: criteria as RubricDraft['criteria'] })
 }
 
+// 结构性改动（删除/新增/移动）后，按当前显示顺序统一重编号 order；
+// criterion identity 原样保留，order 不携带历史，杜绝重复 order。
+function commitCriteria(criteria: CriterionDraft[]) {
+  update({ criteria: criteria.map((criterion, index) => ({ ...criterion, order: index })) as RubricDraft['criteria'] })
+}
+
 function removeCriterion(index: number) {
-  const remaining = props.modelValue.criteria.filter((_, i) => i !== index)
-  // criteria 契约要求非空；删空时由发布按钮的校验拦住，这里允许删到 0 再补。
-  update({ criteria: remaining as RubricDraft['criteria'] })
+  // criteria 契约要求非空；删空时由发布前校验拦住，这里允许删到 0 再补。
+  commitCriteria(props.modelValue.criteria.filter((_, i) => i !== index))
 }
 
 function moveCriterion(index: number, offset: -1 | 1) {
@@ -28,12 +33,11 @@ function moveCriterion(index: number, offset: -1 | 1) {
   if (target < 0 || target >= criteria.length) return
   const [item] = criteria.splice(index, 1)
   criteria.splice(target, 0, item)
-  update({ criteria: criteria.map((criterion, i) => ({ ...criterion, order: i })) as RubricDraft['criteria'] })
+  commitCriteria(criteria)
 }
 
 function addCriterion() {
-  const criteria = [...props.modelValue.criteria, emptyCriterion(props.modelValue.criteria.length)]
-  update({ criteria: criteria as RubricDraft['criteria'] })
+  commitCriteria([...props.modelValue.criteria, emptyCriterion(props.modelValue.criteria.length)])
 }
 
 function setEvidence(index: number, raw: string) {
