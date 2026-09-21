@@ -6,6 +6,7 @@ import ReviewOverviewView from '../views/review/ReviewOverviewView.vue'
 import ReviewConsistencyView from '../views/review/ReviewConsistencyView.vue'
 import ReviewDiffView from '../views/review/ReviewDiffView.vue'
 import ReviewGrillView from '../views/review/ReviewGrillView.vue'
+import ReviewAssessmentView from '../views/review/ReviewAssessmentView.vue'
 import ReviewMembersView from '../views/review/ReviewMembersView.vue'
 import ReviewEvidenceView from '../views/review/ReviewEvidenceView.vue'
 import SourceReaderView from '../views/review/SourceReaderView.vue'
@@ -33,6 +34,7 @@ export const router = createRouter({
         { path: 'consistency', name: 'review-consistency', component: ReviewConsistencyView },
         { path: 'diff', name: 'review-diff', component: ReviewDiffView },
         { path: 'grill', name: 'review-grill', component: ReviewGrillView },
+        { path: 'assessment', name: 'review-assessment', component: ReviewAssessmentView },
         { path: 'members', name: 'review-members', component: ReviewMembersView },
       ],
     },

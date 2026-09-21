@@ -29,3 +29,11 @@
 | Diff/Benchmark | 证明修复有效 | fingerprint、TP/FP/FN、基线 | 统计论文全套 | 45 分钟：人工算一个 case 的 F1 |
 
 Nuxt UI 纯 Vue 接入参考：https://ui.nuxt.com/docs/getting-started/installation/vue
+# Sprint 4 最小学习任务
+
+| 技术点 | 2–4 个概念 | 可略过 | 20–60 分钟任务 |
+| --- | --- | --- | --- |
+| 可执行评分契约 | 描述 metadata、显式版本、anchor 白名单、代码映射 | 任意评分 DSL | 30 分钟：读 assessment fixture，把 A 改为不存在的 ID，观察验证拒绝；移除执行版本，确认不产生数字 |
+| 确定性区间聚合 | Decimal、上下界、弃权、不可用原因 | 概率置信区间与中点估计 | 25 分钟：手算两个档位区间的和，再将一项改为 insufficient_evidence，核对总分 null |
+| 不可变评估范围 | 读取事务、输入 manifest、内容哈希、版本 lineage | Event sourcing 框架 | 40 分钟：运行删除材料后读取 snapshot 的测试，区分快照原文与当前材料；比较子修订和同名无关材料 |
+| 正式增量迁移 | user_version、原子 DDL、回滚重试、历史身份 | DB 性能优化 | 30 分钟：运行 v1→v2 失败注入测试，检查版本未推进和旧 ID 未丢失，再 retry |

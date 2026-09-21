@@ -408,3 +408,44 @@ print(
     "rubric draft checks, grill preparation checks, response coach checks, "
     "source ref/locator v1 checks, negative cases"
 )
+
+# Assessment fixtures must validate both the public shape and code-owned numeric mapping.
+from app.contracts import AssessmentSnapshot, AssessorProposal
+from app.assessment import validate_snapshot, compare_assessment_snapshots, validate_proposal
+
+assessment_fixture = json.loads((ROOT / "contracts/fixtures/assessment.json").read_text(encoding="utf-8"))
+assert assessment_fixture["test_only"] is True
+assessment_before = AssessmentSnapshot.model_validate(assessment_fixture["before"])
+assessment_after = AssessmentSnapshot.model_validate(assessment_fixture["after"])
+for snapshot in (assessment_before, assessment_after):
+    validate_snapshot(snapshot)
+assert (assessment_before.prompt_version, assessment_before.model_identifier) == (
+    assessment_after.prompt_version, assessment_after.model_identifier), "fixture 评估器身份必须一致才可比"
+comparison = compare_assessment_snapshots(assessment_before, assessment_after)
+assert comparison.status == "comparable"
+assert comparison.criteria[0].observation == "newly_assessable"
+assert comparison.criteria[0].score_changed is True
+assert comparison.criteria[0].anchor_changed is True
+assert assessment_before.aggregation.score is None
+assert assessment_after.aggregation.score.minimum == 16
+# 评估器身份变化必须整体不可比：不得给出可被读成材料变化的条目 observation。
+for field, value, code in (("prompt_version", "criterion-assessor-v2", "prompt_version_mismatch"),
+                           ("model_identifier", "another-model", "model_identifier_mismatch")):
+    tampered = assessment_after.model_copy(deep=True)
+    setattr(tampered, field, value)
+    blocked = compare_assessment_snapshots(assessment_before, tampered)
+    assert blocked.status == "not_comparable" and code in blocked.reason_codes and not blocked.criteria
+# compare observation 必须精确：裸 unchanged 已删除，维度差异单独可判。
+observation = schema["$defs"]["AssessmentCriterionChange"]["properties"]
+for field in ("score_changed", "anchor_changed", "reason_changed"):
+    assert field in observation, f"AssessmentCriterionChange 必须导出 {field}"
+assert "unchanged" not in observation["observation"]["enum"]
+assert {"identical", "anchor_changed", "reason_changed"} <= set(observation["observation"]["enum"])
+for invalid in assessment_fixture["invalid_outputs"]:
+    try:
+        validate_proposal(assessment_after.scope, "c1", AssessorProposal.model_validate(invalid))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid assessment output was accepted")
+print("PASS: Assessment snapshot fixtures, numeric mapping, comparison and hostile output rejection")

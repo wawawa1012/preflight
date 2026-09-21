@@ -1,5 +1,23 @@
 # Progress log
 
+## 2026-09-21 — Sprint 4 Explainable Assessment backend core（wave4/assessment-core）
+
+- 从真实干净 main `8c6bd43` 在 `F:/project/Preflight-backend` 建分支，保留旧 refs；未合并 main。独立只读 Codex 完成唯一 contract checkpoint review。
+- 复用评分 metadata，显式 `anchors-v1` + anchor IDs/条件/exact 或 range；manual/rubric_json 发布执行规则。无定义 not_scorable，不推导百分比。既有 CriterionAssessment/RunReport 语义不变。
+- `accepted-links-v1` + SourceAuthority 复验；严格模型 JSON/criterion-local source/anchor allowlist；单项失败隔离，安全 error_code，无原始 provider 错误或密钥留档。
+- 新增冻结 EvaluationScope、不可变 AssessmentSnapshot、确定性 sum_points_v1 区间聚合与版本兼容比较；任何无法诚实计算的项阻止总分，不当零、不折算满分。非单位权重总分暂不支持。
+- 正式 schema 1→2：仅新增快照表、review/time 索引和防 UPDATE trigger；统一事务、FK 检查、版本推进、失败回滚重试。历史快照不受源材料/Review 删除影响。
+- 四个 Assessment API + JSON Schema/TS 导出 + synthetic fixtures + 接入/状态/15 项矩阵文档。前端页未实现，live 模型质量未验收。
+- 验证：完整后端 **549 tests OK**（基线 524，新增 25）；contract export/check PASS；npm ci/contracts/build PASS；Windows 原生 uvicorn 临时数据库 health/OpenAPI 200。构建保留现有 chunk >500 kB 提示，未做性能优化。
+- 详情：[Sprint 4 交付与前端接入](docs/architecture/sprint4-assessment-delivery.md)。
+
+### 2026-09-21 — Assessment contract review 修正（APPROVE_WITH_CHANGES）
+
+- Comparability 纳入评估器身份：`prompt_version` 或 `model_identifier` 与 method/rubric/scoring hash/source policy/材料范围一并比较，任一不同即 `prompt_version_mismatch`/`model_identifier_mismatch` 且 `criteria` 为空、不产生可归因于材料变化的 observation；method/prompt/model 三个概念保持分离，V1 不做跨模型等价判断。
+- 删除含糊 `unchanged`：`AssessmentCriterionChange.observation` 改为 `identical`/`anchor_changed`/`reason_changed` 加既有状态与区间码，并新增 `score_changed`/`anchor_changed`/`reason_changed` 布尔；同数值区间不同 anchor、同状态不同 reason 均不得再被读成整个评估未变化。
+- 同步重新导出 `contracts/schema.json` 与 generated TS，更新 `contracts/fixtures/assessment.json`（评估器身份对齐）和 `scripts/check_contracts.py`（新增身份不匹配与裸 `unchanged` 回归断言）。
+- 验证：完整 backend 553 tests OK（原 549 + 新增 4）、`tests.test_contract_export` 4 OK、`scripts/check_contracts.py` PASS、`npm.cmd run build`（vite + vue-tsc）PASS；未触碰 migration。
+
 ## 2026-09-21 — Architecture Stabilization：migration 生命周期 + SourceAuthority（分支 codex/next-locator）
 Codex 静态 review 判定 migration BLOCK；本轮只做正确性修复与收拢，不加功能、不改 wire contract。
 - **Migration 生命周期（migrations.py 新增）**：DDL 前显式 `BEGIN IMMEDIATE`（`with connection` 不会在首条 DDL 前 BEGIN）；schema 创建 + legacy 重建 + `foreign_key_check` + `user_version` 写入成为单一原子边界；DDL 逐条 `execute`（`executescript` 会隐式 COMMIT）；`version == supported` no-op，`version > supported` → `UnsupportedSchemaVersion` 拒绝启动；`connection.in_transaction` 为真时拒绝且不提交/回滚调用方事务；FK 进入前记录原状态、结束（成败）恢复并显式复验；临时表只在事务内存在。

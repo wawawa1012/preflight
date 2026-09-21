@@ -94,6 +94,9 @@ def validate_imported_scoring(criterion: Criterion, source_text: str) -> list[st
     if criterion.weight is not None and not _number_supported(quotes, criterion.weight):
         problems.append(f"{criterion.id}: weight={criterion.weight:g} 未被任何来源片段支持")
     for level in criterion.rubric_levels or []:
+        for bound in (level.min_score, level.max_score):
+            if bound is not None and not _number_supported(quotes, bound):
+                problems.append(f"{criterion.id}: anchor bound 未被来源片段支持")
         if not _text_supported(quotes, level.label):
             problems.append(f"{criterion.id}: 档位「{level.label}」未在来源片段中出现")
         if level.description and not _text_supported(quotes, level.description):

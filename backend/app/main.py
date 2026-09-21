@@ -6,6 +6,9 @@ from pydantic import BaseModel
 from typing import Literal
 
 from . import (
+    assessment,
+    assessment_runner,
+    assessment_store,
     criteria_builder,
     cross_compare,
     database,
@@ -20,6 +23,10 @@ from . import (
 from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
+    AssessmentSnapshot,
+    AssessmentSummary,
+    AssessmentComparison,
+    AssessmentCreate,
     AgentProposal,
     AgentProposalCreate,
     ApiError,
@@ -662,6 +669,37 @@ def remove_review_material(review_id: str, material_id: str) -> Response:
             "membership_not_found", "该材料不在该 Review 中", [f"review_id={review_id}", f"material_id={material_id}"]
         )
     return Response(status_code=204)
+
+
+@app.post("/api/v1/reviews/{review_id}/assessments", response_model=AssessmentSnapshot, status_code=201)
+def create_assessment(review_id: str, payload: AssessmentCreate | None = None) -> AssessmentSnapshot:
+    return assessment_runner.run_assessment(review_id)
+
+
+@app.get("/api/v1/reviews/{review_id}/assessments", response_model=list[AssessmentSummary])
+def list_assessments(review_id: str) -> list[AssessmentSummary]:
+    return assessment_store.list_snapshots(review_id)
+
+
+@app.get("/api/v1/assessments/{snapshot_id}", response_model=AssessmentSnapshot)
+def get_assessment(snapshot_id: str) -> AssessmentSnapshot:
+    return assessment_store.get_snapshot(snapshot_id)
+
+
+@app.get("/api/v1/assessments/{before_id}/compare/{after_id}", response_model=AssessmentComparison)
+def compare_assessments(before_id: str, after_id: str) -> AssessmentComparison:
+    return assessment.compare_assessment_snapshots(assessment_store.get_snapshot(before_id),
+                                                   assessment_store.get_snapshot(after_id))
+
+
+@app.exception_handler(assessment_store.AssessmentNotFound)
+async def assessment_not_found(request: Request, exc: assessment_store.AssessmentNotFound) -> JSONResponse:
+    return JSONResponse(status_code=404, content=ApiError(code=exc.code, message="找不到评估所需对象", details=[]).model_dump())
+
+
+@app.exception_handler(assessment.AssessmentInvalid)
+async def assessment_invalid(request: Request, exc: assessment.AssessmentInvalid) -> JSONResponse:
+    return JSONResponse(status_code=409, content=ApiError(code=exc.code, message="评估范围或契约校验失败", details=[]).model_dump())
 
 
 @app.exception_handler(PreviewRejected)

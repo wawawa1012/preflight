@@ -22,6 +22,10 @@ class ContractExportTest(unittest.TestCase):
     def test_bundle_exports_expected_identities(self) -> None:
         fields = set(ContractBundle.model_fields)
         for name in (
+            "assessment_snapshot",
+            "assessment_summary",
+            "assessment_comparison",
+            "assessor_proposal",
             "finding_set_diff_request",
             "finding_set_diff_response",
             "rubric_draft_request",
@@ -63,6 +67,10 @@ class ContractExportTest(unittest.TestCase):
     def test_generated_typescript_is_fresh(self) -> None:
         source = (ROOT / "frontend/src/types/contracts.ts").read_text(encoding="utf-8")
         for marker in (
+            "AssessmentSnapshot",
+            "AssessmentComparison",
+            "scoring_definition_version",
+            "insufficient_evidence",
             "FindingSetDiffResponse",
             "statement_scan_limit",
             "scoring_sources",

@@ -777,7 +777,7 @@ const meta = computed(() => {
   // docx 无真实行号：line_count 为 null 时不显示。
   if (typeof current.line_count === 'number') parts.push(`${current.line_count} 行`)
   parts.push(`${current.blocks.length} 段原文`)
-  parts.push(`sha256 ${current.sha256.slice(0, 12)}…`)
+  // sha256 不进普通主流程 metadata；当前没有 diagnostics 区域，先隐藏，不为此新增子系统。
   return parts.join(' · ')
 })
 
