@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-09-21 — Locator v1 checkpoint：契约与迁移增量（定向 review，未实现完）
+工作区 `F:\project\Preflight-backend` · 分支 `codex/next-locator` · base `5f12236`。只交付可 review 的契约/迁移说明，不等 DOCX 全链完成：
+- `docs/architecture/locator-v1-contract-migration.md`：冻结最小定位协议（line/paragraph/table_cell、body_ordinal 排序、非行 `line_number`=null）、SourceRef 复验与错误语义、`user_version=1` 迁移与 FK/回滚策略、B2 SourceNode 消费边界。
+- 后续增量：contracts/evidence/storage/下游适配/生成物同步；实现前不改任何既有 wire 行为。
+
 ## 2026-09-20 — Sprint 2 Actionable Review / Backend Track（待 Backend QA，未提交）
 
 工作区 `F:\project\Preflight-backend` · 分支 `sprint2/backend` · 只动 backend/contracts/docs 与 generated `frontend/src/types/contracts.ts`：
