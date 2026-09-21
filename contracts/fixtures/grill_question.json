@@ -1,0 +1,21 @@
+{
+  "test_only": true,
+  "request": {
+    "material_id": "mat_fixture"
+  },
+  "question": {
+    "prompt": "95% 与 90% 的测试条件分别是什么？",
+    "quote": "95%",
+    "block_id": "mat_fixture-blk-0",
+    "start": 9,
+    "end": 12,
+    "trigger": "numeric_discrepancy",
+    "why": "同一度量词在材料中出现多个数值，可能被问数值口径与差异原因。",
+    "preparation": [
+      "测试条件（数据集、环境、时间窗口）",
+      "样本量",
+      "指标定义与计算口径",
+      "最终采用哪一处数值及理由"
+    ]
+  }
+}

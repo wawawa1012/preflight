@@ -41,6 +41,13 @@ class ContractExportTest(unittest.TestCase):
             "revision_context",
             "editable_source",
             "consistency_finding",
+            "grill_request",
+            "grill_question",
+            "coach_source_ref",
+            "response_coach_request",
+            "response_coach_response",
+            "coach_claim",
+            "coach_source",
         ):
             self.assertIn(name, fields, f"ContractBundle 缺少 {name}")
         self.assertIsNot(FindingSetDiffResponse, VersionDiff)
@@ -64,6 +71,10 @@ class ContractExportTest(unittest.TestCase):
             "RubricDraft",
             "MaterialRevision",
             "ReviewDetail",
+            "GrillQuestion",
+            "ResponseCoachRequest",
+            "ResponseCoachResponse",
+            "CoachSource",
         ):
             self.assertIn(marker, source, f"generated contracts.ts 缺少 {marker}；请运行 npm.cmd --prefix frontend run contracts")
         self.assertIn("VersionDiff", source)
@@ -74,6 +85,12 @@ class ContractExportTest(unittest.TestCase):
             self.assertIn(field, interface_body)
         self.assertIn("statement_scan_limit: ", source)
         self.assertNotIn("statement_scan_limit?: ", source)
+        # Sprint 2：Grill preparation 与 Coach source authority 必须在生成类型里。
+        grill_start = source.index("export interface GrillQuestion")
+        grill_body = source[grill_start : source.index("}", grill_start)]
+        for field in ("trigger", "why", "preparation"):
+            self.assertIn(field, grill_body)
+        self.assertIn("CoachSource", source)
 
 
 if __name__ == "__main__":

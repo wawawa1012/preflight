@@ -342,23 +342,154 @@ export type MaterialIdB1 = string;
 export type FilenameA = string;
 export type FilenameB = string;
 export type Findings1 = ConsistencyFinding[];
+export type MaterialId8 = string;
+export type Prompt = string;
+export type Quote6 = string;
+export type BlockId7 = string;
+export type Start4 = number;
+export type End4 = number;
+export type Trigger = "numeric_discrepancy" | "numeric_statement" | "comparative" | "absolute" | "generic";
+export type Why1 = string;
+/**
+ * @maxItems 6
+ */
+export type Preparation =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string];
+export type BlockId8 = string;
+export type Quote7 = string;
+export type MaterialId9 = string;
+export type Question1 = string;
+export type UserAnswer = string;
+/**
+ * @maxItems 8
+ */
+export type SourceRefs =
+  | []
+  | [CoachSourceRef]
+  | [CoachSourceRef, CoachSourceRef]
+  | [CoachSourceRef, CoachSourceRef, CoachSourceRef]
+  | [CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef]
+  | [CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef]
+  | [CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef]
+  | [CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef, CoachSourceRef]
+  | [
+      CoachSourceRef,
+      CoachSourceRef,
+      CoachSourceRef,
+      CoachSourceRef,
+      CoachSourceRef,
+      CoachSourceRef,
+      CoachSourceRef,
+      CoachSourceRef
+    ];
+export type ReviewId = string | null;
+export type MaterialId10 = string;
+export type Status6 = "coached" | "abstain" | "insufficient_context";
+export type AbstainReason = string | null;
+/**
+ * @maxItems 6
+ */
+export type AnsweredAspects =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string];
+/**
+ * @maxItems 6
+ */
+export type SupportedClaims =
+  | []
+  | [CoachClaim]
+  | [CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim, CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim, CoachClaim, CoachClaim, CoachClaim];
+export type Text3 = string;
+export type Note3 = string | null;
+/**
+ * @maxItems 8
+ */
+export type SourceIds =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string];
+/**
+ * @maxItems 6
+ */
+export type UnsupportedClaims =
+  | []
+  | [CoachClaim]
+  | [CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim, CoachClaim, CoachClaim]
+  | [CoachClaim, CoachClaim, CoachClaim, CoachClaim, CoachClaim, CoachClaim];
+/**
+ * @maxItems 8
+ */
+export type MissingConditions =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string]
+  | [string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string]
+  | [string, string, string, string, string, string, string, string];
+/**
+ * @maxItems 5
+ */
+export type FollowUpQuestions =
+  | []
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string]
+  | [string, string, string, string, string];
+export type SourceIds1 = string[];
+export type SourceId = string;
+export type BlockId9 = string;
+export type LineNumber3 = number;
+export type Quote8 = string;
+export type Start5 = number;
+export type End5 = number;
+export type Basis = string;
+export type Sources = CoachSource[];
+export type OverallNote = string;
 export type ChildMaterialId = string;
 export type ParentMaterialId = string;
 export type CreatedAt10 = string;
-export type Text3 = string;
+export type Text4 = string;
 export type Filename6 = string;
-export type ReviewId = string | null;
+export type ReviewId1 = string | null;
 export type Label3 = string | null;
-export type MaterialId8 = string;
+export type MaterialId11 = string;
 export type ParentAvailable = boolean;
-export type MaterialId9 = string;
+export type MaterialId12 = string;
 export type Available = boolean;
 export type CreatedAt11 = string;
-export type MaterialId10 = string;
+export type MaterialId13 = string;
 export type Children = RevisionChild[];
-export type MaterialId11 = string;
+export type MaterialId14 = string;
 export type Format1 = "md";
-export type Text4 = string;
+export type Text5 = string;
 export type Normalization = "lf";
 export type Code = string;
 export type Message = string;
@@ -404,6 +535,13 @@ export interface ContractBundle {
   repair_suggestion: RepairSuggestion;
   cross_compare_request: CrossCompareRequest;
   cross_compare_response: CrossCompareResponse;
+  grill_request: GrillRequest;
+  grill_question: GrillQuestion;
+  coach_source_ref: CoachSourceRef;
+  response_coach_request: ResponseCoachRequest;
+  response_coach_response: ResponseCoachResponse;
+  coach_claim: CoachClaim;
+  coach_source: CoachSource;
   material_revision: MaterialRevision;
   material_revision_create: MaterialRevisionCreate;
   material_revision_created: MaterialRevisionCreated;
@@ -900,15 +1038,90 @@ export interface CrossCompareResponse {
   filename_b: FilenameB;
   findings: Findings1;
 }
+/**
+ * 答辩追问请求：只接受用户显式选中的一份材料。
+ */
+export interface GrillRequest {
+  material_id: MaterialId8;
+}
+/**
+ * 答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。
+ *
+ * trigger / why / preparation 由程序按来源特征确定性生成，模型不能提供：why 是「为什么可能
+ * 被问」的人话映射，checklist 是准备方向；两者都不是答案、不是结论，也不表示真实评委会问。
+ */
+export interface GrillQuestion {
+  prompt: Prompt;
+  quote: Quote6;
+  block_id: BlockId7;
+  start: Start4;
+  end: End4;
+  trigger: Trigger;
+  why: Why1;
+  preparation: Preparation;
+}
+/**
+ * 用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。
+ */
+export interface CoachSourceRef {
+  block_id: BlockId8;
+  quote: Quote7;
+}
+/**
+ * 答辩教练请求：用户已经写出回答，教练只检查这条回答能否由给定来源支持。
+ */
+export interface ResponseCoachRequest {
+  material_id: MaterialId9;
+  question: Question1;
+  user_answer: UserAnswer;
+  source_refs?: SourceRefs;
+  review_id?: ReviewId;
+}
+/**
+ * 答辩教练输出：只评价用户已写出的回答；不给分、不代写答案、不判定现实真假。
+ */
+export interface ResponseCoachResponse {
+  material_id: MaterialId10;
+  status: Status6;
+  abstain_reason: AbstainReason;
+  answered_aspects: AnsweredAspects;
+  supported_claims: SupportedClaims;
+  unsupported_claims: UnsupportedClaims;
+  missing_conditions: MissingConditions;
+  follow_up_questions: FollowUpQuestions;
+  source_ids: SourceIds1;
+  sources: Sources;
+  overall_note: OverallNote;
+}
+/**
+ * 用户回答里的一条关键陈述；supported 一方的 source_ids 必须经服务端白名单回填。
+ */
+export interface CoachClaim {
+  text: Text3;
+  note?: Note3;
+  source_ids: SourceIds;
+}
+/**
+ * 程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。
+ */
+export interface CoachSource {
+  source_id: SourceId;
+  block_id: BlockId9;
+  line_number: LineNumber3;
+  quote: Quote8;
+  start: Start5;
+  end: End5;
+  basis: Basis;
+}
 export interface MaterialRevision {
   child_material_id: ChildMaterialId;
   parent_material_id: ParentMaterialId;
   created_at: CreatedAt10;
 }
 export interface MaterialRevisionCreate {
-  text: Text3;
+  text: Text4;
   filename: Filename6;
-  review_id?: ReviewId;
+  review_id?: ReviewId1;
   label?: Label3;
 }
 export interface MaterialRevisionCreated {
@@ -916,23 +1129,23 @@ export interface MaterialRevisionCreated {
   revision: MaterialRevision;
 }
 export interface RevisionParent {
-  material_id: MaterialId8;
+  material_id: MaterialId11;
   parent_available: ParentAvailable;
 }
 export interface RevisionChild {
-  material_id: MaterialId9;
+  material_id: MaterialId12;
   available: Available;
   created_at: CreatedAt11;
 }
 export interface RevisionContext {
-  material_id: MaterialId10;
+  material_id: MaterialId13;
   parent?: RevisionParent | null;
   children: Children;
 }
 export interface EditableSource {
-  material_id: MaterialId11;
+  material_id: MaterialId14;
   format: Format1;
-  text: Text4;
+  text: Text5;
   normalization: Normalization;
 }
 export interface ApiError {

@@ -2,7 +2,7 @@
 
 Edit here, export JSON Schema, then regenerate frontend types. IDs are opaque.
 """
-from typing import Literal
+from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -525,6 +525,103 @@ class CrossCompareResponse(Contract):
     findings: list[ConsistencyFinding]
 
 
+GRILL_PROMPT_MAX_CHARS = 200
+GrillTrigger = Literal["numeric_discrepancy", "numeric_statement", "comparative", "absolute", "generic"]
+
+
+class GrillRequest(Contract):
+    """答辩追问请求：只接受用户显式选中的一份材料。"""
+
+    material_id: str = Field(min_length=1)
+
+
+class GrillQuestion(Contract):
+    """答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。
+
+    trigger / why / preparation 由程序按来源特征确定性生成，模型不能提供：why 是「为什么可能
+    被问」的人话映射，checklist 是准备方向；两者都不是答案、不是结论，也不表示真实评委会问。
+    """
+
+    prompt: str = Field(min_length=1, max_length=GRILL_PROMPT_MAX_CHARS)
+    quote: str = Field(min_length=1)
+    block_id: str = Field(min_length=1)
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+    trigger: GrillTrigger
+    why: str = Field(min_length=1, max_length=120)
+    preparation: list[str] = Field(max_length=6)
+
+
+COACH_QUESTION_MAX_CHARS = 300
+COACH_ANSWER_MAX_CHARS = 4000
+COACH_CLAIM_MAX_CHARS = 200
+COACH_NOTE_MAX_CHARS = 120
+COACH_OVERALL_MAX_CHARS = 400
+CoachAspect = Annotated[str, Field(min_length=1, max_length=120)]
+CoachCondition = Annotated[str, Field(min_length=1, max_length=120)]
+CoachFollowUp = Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class CoachSourceRef(Contract):
+    """用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。"""
+
+    block_id: str = Field(min_length=1)
+    quote: str = Field(min_length=1)
+
+
+class ResponseCoachRequest(Contract):
+    """答辩教练请求：用户已经写出回答，教练只检查这条回答能否由给定来源支持。"""
+
+    material_id: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=COACH_QUESTION_MAX_CHARS)
+    user_answer: str = Field(min_length=1, max_length=COACH_ANSWER_MAX_CHARS)
+    source_refs: list[CoachSourceRef] = Field(default_factory=list, max_length=8)
+    review_id: str | None = None
+
+    @field_validator("question", "user_answer")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("不能为空白")
+        return value
+
+
+class CoachSource(Contract):
+    """程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。"""
+
+    source_id: str = Field(min_length=1)
+    block_id: str = Field(min_length=1)
+    line_number: int = Field(ge=1)
+    quote: str = Field(min_length=1)
+    start: int = Field(ge=0)
+    end: int = Field(ge=1)
+    basis: str = Field(min_length=1)
+
+
+class CoachClaim(Contract):
+    """用户回答里的一条关键陈述；supported 一方的 source_ids 必须经服务端白名单回填。"""
+
+    text: str = Field(min_length=1, max_length=COACH_CLAIM_MAX_CHARS)
+    note: str | None = Field(default=None, max_length=COACH_NOTE_MAX_CHARS)
+    source_ids: list[str] = Field(max_length=8)
+
+
+class ResponseCoachResponse(Contract):
+    """答辩教练输出：只评价用户已写出的回答；不给分、不代写答案、不判定现实真假。"""
+
+    material_id: str
+    status: Literal["coached", "abstain", "insufficient_context"]
+    abstain_reason: str | None = Field(max_length=COACH_NOTE_MAX_CHARS)
+    answered_aspects: list[CoachAspect] = Field(max_length=6)
+    supported_claims: list[CoachClaim] = Field(max_length=6)
+    unsupported_claims: list[CoachClaim] = Field(max_length=6)
+    missing_conditions: list[CoachCondition] = Field(max_length=8)
+    follow_up_questions: list[CoachFollowUp] = Field(max_length=5)
+    source_ids: list[str]
+    sources: list[CoachSource]
+    overall_note: str = Field(max_length=COACH_OVERALL_MAX_CHARS)
+
+
 class Review(Contract):
     # P1 Review 领域：一次评审绑定一个评分标准版本，成员材料引用已保存材料（不复制内容）。
     # P1：暂不加入 ContractBundle，前端契约导出阶段再挂。
@@ -660,6 +757,13 @@ class ContractBundle(Contract):
     repair_suggestion: RepairSuggestion
     cross_compare_request: CrossCompareRequest
     cross_compare_response: CrossCompareResponse
+    grill_request: GrillRequest
+    grill_question: GrillQuestion
+    coach_source_ref: CoachSourceRef
+    response_coach_request: ResponseCoachRequest
+    response_coach_response: ResponseCoachResponse
+    coach_claim: CoachClaim
+    coach_source: CoachSource
     material_revision: MaterialRevision
     material_revision_create: MaterialRevisionCreate
     material_revision_created: MaterialRevisionCreated

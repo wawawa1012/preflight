@@ -219,6 +219,86 @@ class GrillPureTest(unittest.TestCase):
         for forbidden in ("已满足", "已支撑", "分数", "参赛"):
             self.assertNotIn(forbidden, grill.SYSTEM_PROMPT)
 
+    # —— Sprint 2 Grill preparation：trigger + 确定性准备清单（代码生成，不额外调用模型）——
+
+    def test_preparation_checklist_is_bounded_and_covers_known_triggers(self) -> None:
+        for trigger in ("numeric_discrepancy", "numeric_statement", "comparative", "absolute", "generic"):
+            with self.subTest(trigger=trigger):
+                checklist = grill.preparation_checklist(trigger)
+                self.assertTrue(0 < len(checklist) <= 6)
+                self.assertTrue(all(item.strip() for item in checklist))
+        self.assertEqual(grill.preparation_checklist("unknown_trigger"), grill.preparation_checklist("generic"))
+
+    def test_finding_question_gets_numeric_discrepancy_trigger(self) -> None:
+        material = material_of(TEXT)
+        sources = sources_of(material)
+        self.complete._replies = [reply_of({"prompt": "95% 与 90% 的测试条件分别是什么？", "source_id": sources[0].source_id})]
+
+        questions = grill.generate_grill(material)
+
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(questions[0].trigger, "numeric_discrepancy")
+        self.assertEqual(questions[0].why, grill.why_question("numeric_discrepancy"))
+        self.assertIn("样本量", questions[0].preparation)
+        self.assertIn("测试条件（数据集、环境、时间窗口）", questions[0].preparation)
+
+    def test_statement_question_gets_statement_trigger(self) -> None:
+        material = material_of("系统抽取准确率达到 95%。\n")
+        sources = sources_of(material)
+        self.complete._replies = [reply_of({"prompt": "这个数字的出处是什么？", "source_id": sources[0].source_id})]
+
+        questions = grill.generate_grill(material)
+
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(questions[0].trigger, "numeric_statement")
+        self.assertIn("数字出处（原始记录）", questions[0].preparation)
+
+    def test_comparative_and_absolute_triggers(self) -> None:
+        comparative = material_of("本方案优于传统做法，实现更简单。\n")
+        absolute = material_of("本方案首创该方法。\n")
+        comparative_source = sources_of(comparative)[0]
+        absolute_source = sources_of(absolute)[0]
+
+        self.complete._replies = [reply_of({"prompt": "对比对象和条件是什么？", "source_id": comparative_source.source_id})]
+        comparative_question = grill.generate_grill(comparative)[0]
+        self.complete._replies = [reply_of({"prompt": "适用范围和依据是什么？", "source_id": absolute_source.source_id})]
+        absolute_question = grill.generate_grill(absolute)[0]
+
+        self.assertEqual(comparative_question.trigger, "comparative")
+        self.assertIn("对比对象（baseline）", comparative_question.preparation)
+        self.assertEqual(absolute_question.trigger, "absolute")
+        self.assertIn("限定条件或例外", absolute_question.preparation)
+
+    def test_trigger_and_preparation_are_program_owned_from_source(self) -> None:
+        material = material_of("本方案优于传统做法。\n")
+        pool = sources_of(material)
+        pool[0] = replace(pool[0], trigger="comparative")
+
+        verified = grill.verify_questions([grill.RawQuestion("对比条件是什么？", pool[0].source_id)], pool, material.blocks)
+
+        self.assertEqual(verified[0].trigger, "comparative")
+        self.assertEqual(verified[0].why, grill.why_question("comparative"))
+        self.assertEqual(verified[0].preparation, grill.preparation_checklist("comparative"))
+
+    def test_why_mapping_is_human_readable_and_hides_machine_codes(self) -> None:
+        for trigger in ("numeric_discrepancy", "numeric_statement", "comparative", "absolute", "generic"):
+            with self.subTest(trigger=trigger):
+                why = grill.why_question(trigger)
+                self.assertTrue(0 < len(why) <= 120)
+                for machine in ("numeric_inconsistency", "needs_review", "proposed_by", "llm_", "source_id", "s1"):
+                    self.assertNotIn(machine, why)
+        self.assertEqual(grill.why_question("unknown_trigger"), grill.why_question("generic"))
+
+    def test_model_cannot_supply_trigger_or_preparation(self) -> None:
+        material = material_of(TEXT)
+        source = sources_of(material)[0]
+        for extra in ("trigger", "why", "preparation"):
+            with self.subTest(extra=extra):
+                reply = reply_of({"prompt": "问题", "source_id": source.source_id, extra: "numeric_discrepancy"})
+                self.complete._replies = [reply]
+                with self.assertRaises(llm.LlmInvalidResponse):
+                    grill.generate_grill(material)
+
 
 if __name__ == "__main__":
     unittest.main()

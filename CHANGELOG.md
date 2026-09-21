@@ -1,5 +1,19 @@
 # Progress log
 
+## 2026-09-20 — Sprint 2 Actionable Review / Backend Track（待 Backend QA，未提交）
+
+工作区 `F:\project\Preflight-backend` · 分支 `sprint2/backend` · 只动 backend/contracts/docs 与 generated `frontend/src/types/contracts.ts`：
+
+- **Response Coach v1（新角色）**：`POST /api/v1/response-coach`。用户已写出回答后，教练只检查回答能否由给定来源支持；不代写、不给分、不评选最佳回答、不判定现实真假。请求 `{material_id, question, user_answer, source_refs?, review_id?}`；响应含 answered_aspects / supported_claims / unsupported_claims / missing_conditions / follow_up_questions / source_ids / 程序回填 sources / overall_note / status(coached|abstain|insufficient_context)。模型 claim 必须是 user_answer 逐字片段，否则丢弃；未知 source_id 的 supported claim 降级 unsupported；无来源池确定性 insufficient_context 且零模型调用；不落库。
+- **Source authority（沿用 Grill/Evidence）**：服务端确定性来源池（findings citations ≤12 + 前 8 条关键陈述）+ 用户 `source_refs`（≤8，逐字复验，失败 400 `source_ref_mismatch`）；模型只选 source_id，quote/block/line/span 全部代码回填；`s1...` 是请求内临时 ID，不落库。
+- **Grill preparation（确定性、零额外模型）**：`GrillQuestion` 新增程序生成字段 `trigger`（numeric_discrepancy/numeric_statement/comparative/absolute/generic）与 `preparation`（3–6 条准备清单）；模型不能提供这两字段（额外字段 502）。无来源池零调用；未知分类走 generic。
+- **Contract / 导出**：GrillRequest/GrillQuestion 与 Coach 全部契约进入 contracts.py + ContractBundle；schema.json 重导出、generated TS 重生成；新增 `contracts/fixtures/grill_question.json`、`contracts/fixtures/response_coach.json` 与 check_contracts 正/负例；RC1 checkpoint 见 `docs/architecture/sprint2-rc1-contracts.md`。
+- 未新增 Redis/Celery/WebSocket/SSE/后台任务；未改 DB schema；未做 Action Inbox / frontend progressive queue（frontend pod 负责有限并发与 stale-response guard）。
+
+验证命令（targeted，完整 suite 由 Mechanical QA 跑）：
+`& 'F:\project\Preflight\backend\.venv\Scripts\python.exe' -X utf8 -m unittest tests.test_grill tests.test_response_coach tests.test_agent_red_team tests.test_role_benchmark tests.test_role_personas tests.test_contract_export tests.test_llm tests.test_repair_suggest` → PASS；
+`scripts/export_contracts.py` + `scripts/check_contracts.py` → PASS；未调用真实 LLM、未构建 frontend、未提交。
+
 ## 2026-09-20 — Sprint 1 Usability Foundation（Integration Fix Round，待 Mechanical QA，未提交）
 
 本轮只动 backend/contracts/docs 与 generated `frontend/src/types/contracts.ts`（其他 frontend 未触碰）：

@@ -236,7 +236,10 @@ class AgentRedTeam(unittest.TestCase):
         material = self.material("准确率95%")
         self.assertEqual(self.evidence(material, "准确率95%").candidates[0].review_status, "unreviewed")
         self.assertEqual(find_numeric_findings(inspect_statements(material.blocks), material.blocks), [])
-        self.assertEqual(set(self.challenge(material, "95% 基于什么样本？")[0].model_dump()), {"prompt", "quote", "block_id", "start", "end"})
+        self.assertEqual(
+            set(self.challenge(material, "95% 基于什么样本？")[0].model_dump()),
+            {"prompt", "quote", "block_id", "start", "end", "trigger", "why", "preparation"},
+        )
         # Adding a real comparison enables Repair without changing its responsibility.
         comparison = self.material("准确率95%\n准确率93%")
         self.assertEqual(set(self.repair(comparison, "先核对条件再统一表述").model_dump()), {"suggestion", "action"})

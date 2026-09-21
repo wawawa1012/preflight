@@ -10,7 +10,11 @@ from app.contracts import (
     ContractBundle,
     CriterionEvidenceLink,
     EvidenceAnnotation,
+    GrillQuestion,
+    GrillRequest,
     MaterialPreflightReport,
+    ResponseCoachRequest,
+    ResponseCoachResponse,
     RubricDraft,
     RubricPublish,
     RunReport,
@@ -262,8 +266,77 @@ except ValidationError:
     pass
 else:
     raise AssertionError("Unconfirmed rubric publish was accepted")
+
+
+def check_grill_question_fixture(fixture: dict) -> None:
+    """Grill preparation fixture：trigger 属于已知枚举，preparation 是有限非空清单。"""
+    GrillRequest.model_validate(fixture["request"])
+    question = GrillQuestion.model_validate(fixture["question"])
+    assert question.trigger in ("numeric_discrepancy", "numeric_statement", "comparative", "absolute", "generic")
+    assert 0 < len(question.why) <= 120, "why must be a bounded human-readable sentence"
+    for machine in ("numeric_inconsistency", "needs_review", "proposed_by", "llm_", "source_id", "s1"):
+        assert machine not in question.why, "why must not expose raw machine codes"
+    assert 0 < len(question.preparation) <= 6, "preparation checklist must be bounded"
+    assert all(item.strip() for item in question.preparation)
+
+
+grill_question_raw = json.loads((ROOT / "contracts/fixtures/grill_question.json").read_text(encoding="utf-8"))
+assert grill_question_raw["test_only"] is True
+check_grill_question_fixture(grill_question_raw)
+tampered_trigger = json.loads(json.dumps(grill_question_raw))
+tampered_trigger["question"]["trigger"] = "model_invented_trigger"
+try:
+    check_grill_question_fixture(tampered_trigger)
+except ValidationError:
+    pass
+else:
+    raise AssertionError("Unknown grill trigger was accepted")
+
+
+def check_coach_fixture(fixture: dict) -> None:
+    """Response Coach fixture：supported 来源必须回填、unsupported 不得带来源、claim 必须出自回答。"""
+    request = ResponseCoachRequest.model_validate(
+        {
+            "material_id": fixture["response"]["material_id"],
+            "question": fixture["question"],
+            "user_answer": fixture["user_answer"],
+        }
+    )
+    response = ResponseCoachResponse.model_validate(fixture["response"])
+    assert request.user_answer == fixture["user_answer"]
+    source_ids = [source.source_id for source in response.sources]
+    assert len(set(source_ids)) == len(source_ids), "backfilled source ids must be unique"
+    assert source_ids == response.source_ids, "top-level source_ids must match backfilled sources"
+    for claim in response.supported_claims:
+        assert claim.text in request.user_answer, "supported claim must be a verbatim answer fragment"
+        assert claim.source_ids, "supported claim must carry at least one verified source id"
+        assert set(claim.source_ids) <= set(source_ids)
+    for claim in response.unsupported_claims:
+        assert claim.text in request.user_answer, "unsupported claim must be a verbatim answer fragment"
+        assert claim.source_ids == [], "unsupported claim must not carry sources"
+
+
+coach_raw = json.loads((ROOT / "contracts/fixtures/response_coach.json").read_text(encoding="utf-8"))
+assert coach_raw["test_only"] is True
+check_coach_fixture(coach_raw)
+tampered_coach = json.loads(json.dumps(coach_raw))
+tampered_coach["response"]["supported_claims"][0]["source_ids"] = ["s999"]
+try:
+    check_coach_fixture(tampered_coach)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Unbackfilled coach source id was accepted")
+tampered_claim = json.loads(json.dumps(coach_raw))
+tampered_claim["response"]["supported_claims"][0]["text"] = "我们获得了国家级认证"
+try:
+    check_coach_fixture(tampered_claim)
+except AssertionError:
+    pass
+else:
+    raise AssertionError("Coach claim outside user_answer was accepted")
 print(
     "PASS: schema freshness, fixture structure/references, quote checks, "
     "evidence annotation checks, criterion link checks, proposal checks, preflight report checks, "
-    "rubric draft checks, negative cases"
+    "rubric draft checks, grill preparation checks, response coach checks, negative cases"
 )

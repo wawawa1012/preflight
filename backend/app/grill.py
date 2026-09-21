@@ -8,18 +8,83 @@ import logging
 import re
 from dataclasses import dataclass
 
-from pydantic import BaseModel, Field
-
 from . import llm
 from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
-from .contracts import Block, ConsistencyCitation, ConsistencyFinding, DetectedStatement, SavedMaterial
+from .contracts import (
+    GRILL_PROMPT_MAX_CHARS,
+    Block,
+    ConsistencyCitation,
+    ConsistencyFinding,
+    DetectedStatement,
+    GrillQuestion,
+    GrillRequest,
+    SavedMaterial,
+)
 
 MAX_QUESTIONS = 5
 MAX_STATEMENTS_IN_PROMPT = 8
-PROMPT_MAX_CHARS = 200
+PROMPT_MAX_CHARS = GRILL_PROMPT_MAX_CHARS
 CONTEXT_RADIUS = 100
 logger = logging.getLogger("preflight.grill")
+
+# 问题来源特征 → 确定性准备清单。只覆盖现有 finding/信号类型；分类不了走 generic。
+# 清单是「准备方向」，不含答案、不保证真实评委会问，也不调用额外模型。
+PREPARATION_CHECKLISTS: dict[str, tuple[str, ...]] = {
+    "numeric_discrepancy": (
+        "测试条件（数据集、环境、时间窗口）",
+        "样本量",
+        "指标定义与计算口径",
+        "最终采用哪一处数值及理由",
+    ),
+    "numeric_statement": (
+        "该数字的测试条件",
+        "样本量或统计口径",
+        "数字出处（原始记录）",
+    ),
+    "comparative": (
+        "对比对象（baseline）",
+        "对比指标与口径",
+        "对比条件是否一致",
+        "支撑比较的原文依据",
+    ),
+    "absolute": (
+        "适用范围",
+        "支撑依据",
+        "限定条件或例外",
+    ),
+    "generic": (
+        "对应原文依据",
+        "适用条件",
+        "可能的边界或例外",
+    ),
+}
+
+# 为什么可能被问：机器 trigger → 人话。只描述来源特征，不暴露 kind/source_id/proposed_by 等内部码。
+WHY_BY_TRIGGER: dict[str, str] = {
+    "numeric_discrepancy": "同一度量词在材料中出现多个数值，可能被问数值口径与差异原因。",
+    "numeric_statement": "这条陈述包含具体数字，可能被问你它的出处、测试条件与统计口径。",
+    "comparative": "这条陈述包含比较说法，可能被问对比对象、指标与条件是否一致。",
+    "absolute": "这条陈述是绝对化表述，可能被问适用范围、支撑依据与限定条件。",
+    "generic": "这条陈述值得解释清楚，可能被问它的依据与适用条件。",
+}
+
+_STATEMENT_TRIGGERS = {
+    "numeric": "numeric_statement",
+    "percentage": "numeric_statement",
+    "comparative": "comparative",
+    "absolute": "absolute",
+}
+
+
+def preparation_checklist(trigger: str) -> list[str]:
+    """纯程序映射：未知 trigger 一律给有限通用清单，不调用模型。"""
+    return list(PREPARATION_CHECKLISTS.get(trigger, PREPARATION_CHECKLISTS["generic"]))
+
+
+def why_question(trigger: str) -> str:
+    """纯程序映射：未知 trigger 走通用人话，不暴露内部机器码。"""
+    return WHY_BY_TRIGGER.get(trigger, WHY_BY_TRIGGER["generic"])
 
 SYSTEM_PROMPT = (
     "你是质询官。任务：根据给定的已验证来源提出需要材料作者解释清楚的问题。"
@@ -33,22 +98,6 @@ SYSTEM_PROMPT = (
 ) + llm.UNTRUSTED_DATA_POLICY
 
 
-class GrillRequest(BaseModel):
-    """答辩追问请求：只接受用户显式选中的一份材料。"""
-
-    material_id: str = Field(min_length=1)
-
-
-class GrillQuestion(BaseModel):
-    """答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。"""
-
-    prompt: str = Field(min_length=1, max_length=PROMPT_MAX_CHARS)
-    quote: str = Field(min_length=1)
-    block_id: str = Field(min_length=1)
-    start: int = Field(ge=0)
-    end: int = Field(ge=1)
-
-
 @dataclass(frozen=True)
 class Source:
     """Ephemeral capability: only prepared sources may appear in this response."""
@@ -59,6 +108,8 @@ class Source:
     end: int
     basis: str
     context: str
+    trigger: str = "generic"
+    line_number: int = 0
 
 
 @dataclass(frozen=True)
@@ -74,7 +125,7 @@ def prepare_sources(
     sources: list[Source] = []
     seen: set[tuple[str, int, int]] = set()
 
-    def add(item: DetectedStatement | ConsistencyCitation, basis: str) -> None:
+    def add(item: DetectedStatement | ConsistencyCitation, basis: str, trigger: str) -> None:
         block = by_id.get(item.block_id)
         if block is None or not (0 <= item.start < item.end <= len(block.text)):
             return
@@ -87,14 +138,15 @@ def prepare_sources(
         # A numeric token alone loses its subject. Include only bounded local context.
         context = block.text[max(0, item.start - CONTEXT_RADIUS):item.end + CONTEXT_RADIUS]
         sources.append(Source(f"s{len(sources) + 1}", item.block_id, item.quote,
-                              item.start, item.end, basis, context))
+                              item.start, item.end, basis, context, trigger, block.locator.index))
 
     for finding in findings:
         basis = f"{finding.kind}；度量词：{finding.measure}；不同数值：{'、'.join(finding.values)}"
         for citation in finding.citations:
-            add(citation, basis)
+            add(citation, basis, "numeric_discrepancy")
     for statement in statements[:MAX_STATEMENTS_IN_PROMPT]:
-        add(statement, f"关键陈述信号：{statement.signal}（未经真假判断）")
+        trigger = _STATEMENT_TRIGGERS.get(statement.signal, "generic")
+        add(statement, f"关键陈述信号：{statement.signal}（未经真假判断）", trigger)
     return sources
 
 
@@ -158,8 +210,16 @@ def verify_questions(questions: list[RawQuestion], sources: list[Source], blocks
         if key in seen:
             continue
         seen.add(key)
-        verified.append(GrillQuestion(prompt=question.prompt, quote=source.quote,
-                                     block_id=source.block_id, start=source.start, end=source.end))
+        verified.append(GrillQuestion(
+            prompt=question.prompt,
+            quote=source.quote,
+            block_id=source.block_id,
+            start=source.start,
+            end=source.end,
+            trigger=source.trigger,
+            why=why_question(source.trigger),
+            preparation=preparation_checklist(source.trigger),
+        ))
     dropped = len(questions) - len(verified)
     if dropped:
         logger.info("grill questions dropped count=%d kept=%d", dropped, len(verified))

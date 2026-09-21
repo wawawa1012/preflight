@@ -1,0 +1,40 @@
+{
+  "test_only": true,
+  "question": "95% 基于什么样本？",
+  "user_answer": "我们在 240 份文档上做了测试，系统准确率达到 95%。",
+  "response": {
+    "material_id": "mat_fixture",
+    "status": "coached",
+    "abstain_reason": null,
+    "answered_aspects": ["回答了准确率数值"],
+    "supported_claims": [
+      {
+        "text": "系统准确率达到 95%",
+        "note": "来源直接给出 95%",
+        "source_ids": ["s1"]
+      }
+    ],
+    "unsupported_claims": [
+      {
+        "text": "在 240 份文档上做了测试",
+        "note": "材料未给出样本量与测试集",
+        "source_ids": []
+      }
+    ],
+    "missing_conditions": ["样本量"],
+    "follow_up_questions": ["如果被问样本量，准备怎么回答？"],
+    "source_ids": ["s1"],
+    "sources": [
+      {
+        "source_id": "s1",
+        "block_id": "mat_fixture-blk-0",
+        "line_number": 1,
+        "quote": "95%",
+        "start": 9,
+        "end": 12,
+        "basis": "关键陈述信号：percentage（未经真假判断）"
+      }
+    ],
+    "overall_note": "数值有来源，但测试条件仍需说明。"
+  }
+}

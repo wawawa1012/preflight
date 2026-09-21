@@ -202,6 +202,119 @@
       "title": "Claim",
       "type": "object"
     },
+    "CoachClaim": {
+      "additionalProperties": false,
+      "description": "用户回答里的一条关键陈述；supported 一方的 source_ids 必须经服务端白名单回填。",
+      "properties": {
+        "text": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Source Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "text",
+        "source_ids"
+      ],
+      "title": "CoachClaim",
+      "type": "object"
+    },
+    "CoachSource": {
+      "additionalProperties": false,
+      "description": "程序回填的已验证来源：模型只选择 source_id，quote/block/坐标由代码给出。",
+      "properties": {
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "block_id": {
+          "minLength": 1,
+          "title": "Block Id",
+          "type": "string"
+        },
+        "line_number": {
+          "minimum": 1,
+          "title": "Line Number",
+          "type": "integer"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        },
+        "basis": {
+          "minLength": 1,
+          "title": "Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "block_id",
+        "line_number",
+        "quote",
+        "start",
+        "end",
+        "basis"
+      ],
+      "title": "CoachSource",
+      "type": "object"
+    },
+    "CoachSourceRef": {
+      "additionalProperties": false,
+      "description": "用户显式选择带入 Coach 的来源（来自当前追问或材料原文）；服务端逐条复验。",
+      "properties": {
+        "block_id": {
+          "minLength": 1,
+          "title": "Block Id",
+          "type": "string"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "block_id",
+        "quote"
+      ],
+      "title": "CoachSourceRef",
+      "type": "object"
+    },
     "ConsistencyCitation": {
       "additionalProperties": false,
       "description": "I8 待核对问题的引用：quote == text[start:end]，可点回原文 Drawer。",
@@ -1220,6 +1333,91 @@
       "title": "FindingSetDiffResponse",
       "type": "object"
     },
+    "GrillQuestion": {
+      "additionalProperties": false,
+      "description": "答辩追问：quote == block.text[start:end]（复验通过才返回，否则整条丢弃）。\n\ntrigger / why / preparation 由程序按来源特征确定性生成，模型不能提供：why 是「为什么可能\n被问」的人话映射，checklist 是准备方向；两者都不是答案、不是结论，也不表示真实评委会问。",
+      "properties": {
+        "prompt": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "block_id": {
+          "minLength": 1,
+          "title": "Block Id",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        },
+        "trigger": {
+          "enum": [
+            "numeric_discrepancy",
+            "numeric_statement",
+            "comparative",
+            "absolute",
+            "generic"
+          ],
+          "title": "Trigger",
+          "type": "string"
+        },
+        "why": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Why",
+          "type": "string"
+        },
+        "preparation": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Preparation",
+          "type": "array"
+        }
+      },
+      "required": [
+        "prompt",
+        "quote",
+        "block_id",
+        "start",
+        "end",
+        "trigger",
+        "why",
+        "preparation"
+      ],
+      "title": "GrillQuestion",
+      "type": "object"
+    },
+    "GrillRequest": {
+      "additionalProperties": false,
+      "description": "答辩追问请求：只接受用户显式选中的一份材料。",
+      "properties": {
+        "material_id": {
+          "minLength": 1,
+          "title": "Material Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id"
+      ],
+      "title": "GrillRequest",
+      "type": "object"
+    },
     "Locator": {
       "additionalProperties": false,
       "properties": {
@@ -2054,6 +2252,167 @@
         "action"
       ],
       "title": "RepairSuggestion",
+      "type": "object"
+    },
+    "ResponseCoachRequest": {
+      "additionalProperties": false,
+      "description": "答辩教练请求：用户已经写出回答，教练只检查这条回答能否由给定来源支持。",
+      "properties": {
+        "material_id": {
+          "minLength": 1,
+          "title": "Material Id",
+          "type": "string"
+        },
+        "question": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "user_answer": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "User Answer",
+          "type": "string"
+        },
+        "source_refs": {
+          "items": {
+            "$ref": "#/$defs/CoachSourceRef"
+          },
+          "maxItems": 8,
+          "title": "Source Refs",
+          "type": "array"
+        },
+        "review_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Id"
+        }
+      },
+      "required": [
+        "material_id",
+        "question",
+        "user_answer"
+      ],
+      "title": "ResponseCoachRequest",
+      "type": "object"
+    },
+    "ResponseCoachResponse": {
+      "additionalProperties": false,
+      "description": "答辩教练输出：只评价用户已写出的回答；不给分、不代写答案、不判定现实真假。",
+      "properties": {
+        "material_id": {
+          "title": "Material Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "coached",
+            "abstain",
+            "insufficient_context"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "abstain_reason": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Abstain Reason"
+        },
+        "answered_aspects": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Answered Aspects",
+          "type": "array"
+        },
+        "supported_claims": {
+          "items": {
+            "$ref": "#/$defs/CoachClaim"
+          },
+          "maxItems": 6,
+          "title": "Supported Claims",
+          "type": "array"
+        },
+        "unsupported_claims": {
+          "items": {
+            "$ref": "#/$defs/CoachClaim"
+          },
+          "maxItems": 6,
+          "title": "Unsupported Claims",
+          "type": "array"
+        },
+        "missing_conditions": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Missing Conditions",
+          "type": "array"
+        },
+        "follow_up_questions": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Follow Up Questions",
+          "type": "array"
+        },
+        "source_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Ids",
+          "type": "array"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/CoachSource"
+          },
+          "title": "Sources",
+          "type": "array"
+        },
+        "overall_note": {
+          "maxLength": 400,
+          "title": "Overall Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "material_id",
+        "status",
+        "abstain_reason",
+        "answered_aspects",
+        "supported_claims",
+        "unsupported_claims",
+        "missing_conditions",
+        "follow_up_questions",
+        "source_ids",
+        "sources",
+        "overall_note"
+      ],
+      "title": "ResponseCoachResponse",
       "type": "object"
     },
     "Review": {
@@ -3242,6 +3601,27 @@
     "cross_compare_response": {
       "$ref": "#/$defs/CrossCompareResponse"
     },
+    "grill_request": {
+      "$ref": "#/$defs/GrillRequest"
+    },
+    "grill_question": {
+      "$ref": "#/$defs/GrillQuestion"
+    },
+    "coach_source_ref": {
+      "$ref": "#/$defs/CoachSourceRef"
+    },
+    "response_coach_request": {
+      "$ref": "#/$defs/ResponseCoachRequest"
+    },
+    "response_coach_response": {
+      "$ref": "#/$defs/ResponseCoachResponse"
+    },
+    "coach_claim": {
+      "$ref": "#/$defs/CoachClaim"
+    },
+    "coach_source": {
+      "$ref": "#/$defs/CoachSource"
+    },
     "material_revision": {
       "$ref": "#/$defs/MaterialRevision"
     },
@@ -3307,6 +3687,13 @@
     "repair_suggestion",
     "cross_compare_request",
     "cross_compare_response",
+    "grill_request",
+    "grill_question",
+    "coach_source_ref",
+    "response_coach_request",
+    "response_coach_response",
+    "coach_claim",
+    "coach_source",
     "material_revision",
     "material_revision_create",
     "material_revision_created",

@@ -5,7 +5,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
 
-from . import criteria_builder, cross_compare, diff, grill, llm, repair_suggest, rubric_store, storage
+from . import (
+    criteria_builder,
+    cross_compare,
+    diff,
+    grill,
+    llm,
+    repair_suggest,
+    response_coach,
+    rubric_store,
+    storage,
+)
 from .claim_inspector import inspect_statements
 from .consistency import find_numeric_findings
 from .contracts import (
@@ -31,6 +41,8 @@ from .contracts import (
     ProposalCandidate,
     ProposalCandidateReject,
     RepairSuggestion,
+    ResponseCoachRequest,
+    ResponseCoachResponse,
     Review,
     ReviewCreate,
     ReviewDetail,
@@ -265,12 +277,44 @@ def create_diff(payload: diff.FindingSetDiffRequest) -> diff.FindingSetDiffRespo
 
 
 # 答辩追问：当前材料的 findings + 陈述 → LLM；引用复验不过则丢弃。不落库。
+# trigger/preparation 由程序按来源特征生成，模型只选 source_id。
 @app.post("/api/v1/grill", response_model=list[grill.GrillQuestion])
 def create_grill(payload: grill.GrillRequest) -> list[grill.GrillQuestion]:
     material = storage.get_material(payload.material_id)
     if material is None:
         raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id}"])
     return grill.generate_grill(material)
+
+
+def _load_review_context(review_id: str | None, material_id: str) -> response_coach.ReviewContext | None:
+    """可选 Review 上下文：只取标题与 criterion 标题（有界），不塞整份 Review。"""
+    if review_id is None:
+        return None
+    review = storage.get_review_detail(review_id)
+    if review is None:
+        raise LookupFailed("review_not_found", "找不到该 Review", [f"id={review_id}"])
+    if all(entry.material_id != material_id for entry in review.materials):
+        raise response_coach.CoachRequestRejected(
+            "review_material_mismatch",
+            "该材料不在该 Review 中",
+            [f"review_id={review_id}", f"material_id={material_id}"],
+        )
+    rubric = rubric_store.get_rubric(review.rubric_id, review.rubric_revision)
+    if rubric is None:
+        raise LookupFailed(
+            "rubric_not_found", "找不到该评分标准版本", [f"{review.rubric_id} rev{review.rubric_revision}"]
+        )
+    return response_coach.build_review_context(review.title, rubric.title, [item.title for item in rubric.criteria])
+
+
+# 答辩教练：检查用户已写出的回答能否由材料来源支持；不代写、不落库、不给分。
+@app.post("/api/v1/response-coach", response_model=ResponseCoachResponse)
+def create_response_coach(payload: ResponseCoachRequest) -> ResponseCoachResponse:
+    material = storage.get_material(payload.material_id)
+    if material is None:
+        raise LookupFailed("material_not_found", "找不到该材料", [f"id={payload.material_id}"])
+    review_context = _load_review_context(payload.review_id, payload.material_id)
+    return response_coach.review_answer(payload, material, review_context)
 
 
 # 修复建议：一条「待核对问题」交给 LLM 给改稿方向；不落库、不改材料。
@@ -606,6 +650,12 @@ async def quote_not_found(request: Request, exc: QuoteNotFound) -> JSONResponse:
 @app.exception_handler(repair_suggest.CitationMismatch)
 async def citation_mismatch(request: Request, exc: repair_suggest.CitationMismatch) -> JSONResponse:
     error = ApiError(code="citation_mismatch", message=exc.message, details=exc.details)
+    return JSONResponse(status_code=400, content=error.model_dump())
+
+
+@app.exception_handler(response_coach.CoachRequestRejected)
+async def coach_request_rejected(request: Request, exc: response_coach.CoachRequestRejected) -> JSONResponse:
+    error = ApiError(code=exc.code, message=exc.message, details=exc.details)
     return JSONResponse(status_code=400, content=error.model_dump())
 
 
