@@ -12,7 +12,7 @@ const emit = defineEmits<{ 'open-source': [source: AssessmentSourceVM] }>()
 // 分数/区间只在 assessed 且标准确实定义了量化评分时出现；区间保持 12–15 / 20。
 const scoring = computed(() => (props.item.state === 'assessed' ? scoringText(props.item.scoring) : null))
 
-// 状态 badge 只表达结果状态：assessed=emerald、insufficient=amber、abstain=slate、failed=red。
+// 状态 badge 只表达结果状态：assessed=emerald、insufficient=amber、abstain/not_scorable=slate、failed=red。
 const badgeClass = computed(() => {
   switch (props.item.state) {
     case 'assessed':
@@ -20,6 +20,7 @@ const badgeClass = computed(() => {
     case 'insufficient':
       return 'border-amber-700/50 bg-amber-950/20 text-amber-200'
     case 'abstain':
+    case 'not_scorable':
       return 'border-slate-700 bg-slate-800/40 text-slate-300'
     case 'failed':
       return 'border-red-800/60 bg-red-950/30 text-red-300'
@@ -44,6 +45,10 @@ const badgeClass = computed(() => {
       <p class="mt-3 text-sm font-medium text-slate-200">{{ NOT_SCORABLE_NOTE }}</p>
       <p class="mt-1 text-xs leading-relaxed text-slate-500">{{ NOT_SCORABLE_HINT }}</p>
     </template>
+    <!-- not_scorable：badge 已说明状态，不显示分数位，只给仍可参考的提示。 -->
+    <p v-else-if="props.item.state === 'not_scorable'" class="mt-3 text-xs leading-relaxed text-slate-500">
+      {{ NOT_SCORABLE_HINT }}
+    </p>
 
     <!-- 档位/anchor 的人话：低权重，附在分数之下。 -->
     <p v-if="props.item.levelLabel" class="mt-1.5 text-xs text-slate-400">{{ props.item.levelLabel }}</p>
@@ -80,6 +85,21 @@ const badgeClass = computed(() => {
         >
           <span aria-hidden="true" class="shrink-0 text-amber-500/70">·</span>
           <span class="min-w-0">{{ gap }}</span>
+        </li>
+      </ul>
+    </template>
+
+    <!-- 注意事项：评估方对本次判断的保留说明，低权重呈现。 -->
+    <template v-if="props.item.caveats.length > 0">
+      <p class="mt-4 text-xs tracking-widest text-slate-500">注意事项</p>
+      <ul class="mt-1.5 space-y-1">
+        <li
+          v-for="(caveat, index) in props.item.caveats"
+          :key="index"
+          class="flex items-baseline gap-2 text-xs leading-relaxed text-slate-500"
+        >
+          <span aria-hidden="true" class="shrink-0 text-slate-600">·</span>
+          <span class="min-w-0">{{ caveat }}</span>
         </li>
       </ul>
     </template>

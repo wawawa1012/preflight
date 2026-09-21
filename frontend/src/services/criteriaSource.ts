@@ -62,7 +62,8 @@ export const MAX_SOURCE_TEXT_CHARS = 20000
 export const MAX_CRITERIA = 50
 
 // 手工草稿的 source_text 快照：由用户最终确认的标题、每条要求与所需依据组成，不是占位串。
-// 只有 source_type === 'manual' 走这里；外部来源（plain_text/markdown/rubric_json）的原文原样保留，
+// 用户定义了评分档位时一并序列化（满分 + 每档名称/条件/分值或区间），让发布的 manual 标准
+// 来源文本诚实包含评分规则。只有 source_type === 'manual' 走这里；外部来源原文原样保留，
 // 绝不改写成 manual 来绕过 provenance 校验。
 export function manualSourceSnapshot(draft: RubricDraft): string {
   const lines = [`手工创建标准：${draft.title.trim()}`, '']
@@ -71,9 +72,68 @@ export function manualSourceSnapshot(draft: RubricDraft): string {
     lines.push(`审查要求：${criterion.requirement.trim()}`)
     const evidence = criterion.required_evidence.map((item) => item.trim()).filter((item) => item !== '')
     if (evidence.length > 0) lines.push(`所需依据：${evidence.join('；')}`)
+    if (criterion.scoring_definition_version) {
+      const maxScore = typeof criterion.max_score === 'number' ? criterion.max_score : '未填'
+      lines.push(`评分档位（满分 ${maxScore}）：`)
+      for (const level of criterion.rubric_levels ?? []) {
+        const name = level.label.trim()
+        const condition = (level.description ?? '').trim()
+        const head = [name, condition].filter((part) => part !== '').join('：')
+        const scoreText =
+          typeof level.score === 'number'
+            ? `${level.score} 分`
+            : typeof level.min_score === 'number' && typeof level.max_score === 'number'
+              ? `${level.min_score}–${level.max_score} 分`
+              : ''
+        lines.push(`- ${head}${scoreText ? ` — ${scoreText}` : ''}`)
+      }
+    }
     lines.push('')
   })
   return lines.join('\n').trimEnd()
+}
+
+// 评分档位预检：与 backend Criterion.executable_scoring 对齐，问题文案指明第几条。
+// 允许部分 criterion 量化、部分不量化；总分只在全部量化时出现（backend 判定）。
+function scoringProblems(criterion: CriterionDraft, index: number): string[] {
+  if (criterion.scoring_definition_version !== 'anchors-v1') return []
+  const label = `第 ${index + 1} 条要求`
+  const problems: string[] = []
+  const rawMax = criterion.max_score
+  const maxScore = typeof rawMax === 'number' && Number.isFinite(rawMax) && rawMax > 0 ? rawMax : null
+  if (maxScore === null) problems.push(`${label}的满分必须填写且大于 0。`)
+  const levels = criterion.rubric_levels ?? []
+  if (levels.length < 2) problems.push(`${label}至少需要两个评分档位。`)
+  levels.forEach((level, levelIndex) => {
+    const at = `${label}的第 ${levelIndex + 1} 个评分档位`
+    if (level.label.trim() === '') problems.push(`${at}缺少名称。`)
+    if ((level.description ?? '').trim() === '') problems.push(`${at}缺少达成条件。`)
+    const score = level.score
+    const min = level.min_score
+    const max = level.max_score
+    if (typeof score === 'number' && (typeof min === 'number' || typeof max === 'number')) {
+      problems.push(`${at}只能选择固定分值或区间，不能同时填写。`)
+    } else if (typeof score === 'number') {
+      if (!Number.isFinite(score) || score < 0 || (maxScore !== null && score > maxScore)) {
+        problems.push(`${at}的固定分值必须在 0 到满分之间。`)
+      }
+    } else if (typeof min === 'number' && typeof max === 'number') {
+      if (
+        !Number.isFinite(min) ||
+        !Number.isFinite(max) ||
+        min < 0 ||
+        min > max ||
+        (maxScore !== null && max > maxScore)
+      ) {
+        problems.push(`${at}的区间必须满足 0 ≤ 下限 ≤ 上限 ≤ 满分。`)
+      }
+    } else if (typeof min === 'number' || typeof max === 'number') {
+      problems.push(`${at}的区间必须同时填写下限与上限。`)
+    } else {
+      problems.push(`${at}需要填写固定分值或区间。`)
+    }
+  })
+  return problems
 }
 
 export interface PublishDraftResult {
@@ -97,6 +157,7 @@ export function preparePublish(draft: RubricDraft): PublishDraftResult {
     if (criterion.required_evidence.some((item) => item.trim() === '')) {
       problems.push(`第 ${index + 1} 条要求的所需依据不能有空行。`)
     }
+    problems.push(...scoringProblems(criterion, index))
   })
 
   const isManual = draft.source_type === 'manual'
@@ -107,6 +168,8 @@ export function preparePublish(draft: RubricDraft): PublishDraftResult {
   }
   if (problems.length > 0) return { ok: false, problems, payload: null }
 
+  // draft 级联动：任一 criterion 量化 → sum_points_v1；全部不量化 → 字段不出现。
+  const anyScoring = draft.criteria.some((criterion) => criterion.scoring_definition_version === 'anchors-v1')
   return {
     ok: true,
     problems: [],
@@ -115,6 +178,7 @@ export function preparePublish(draft: RubricDraft): PublishDraftResult {
       title,
       source_text: sourceText,
       criteria: draft.criteria.map((criterion, index) => ({ ...criterion, order: index })),
+      scoring_aggregation: anyScoring ? 'sum_points_v1' : undefined,
       confirmed: true,
     } as RubricPublish,
   }

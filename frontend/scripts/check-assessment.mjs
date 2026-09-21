@@ -1,10 +1,11 @@
 // Sprint 4 可解释评估 leaf 组件检查（真实 SSR 渲染 + 源码纪律，不引入测试框架）：
 // 四个 leaf 组件（CriterionAssessmentCard / AssessmentSummary / AssessmentSnapshotMeta / AssessmentCompare）
 // 按 VM 呈现：
-//   - 区间保持 12–15 / 20，绝不压成中点；assessed+none 只说未定义量化评分；
-//   - insufficient/abstain/failed 不显示分数，状态文案如实；
+//   - 区间保持 12–15 / 20，绝不压成中点；assessed+none 与 not_scorable 只说未定义量化评分；
+//   - insufficient/abstain/failed 不显示分数，状态文案如实；caveats 低权重呈现；
 //   - total unavailable/not_scorable 中性呈现并列出缺依据条目；
-//   - compare 不可比较说明变化项、newly assessable 不说「从 0 分」、重叠区间显示重叠说明。
+//   - compare 不可比较逐条转述 reason code；comparable 透传 observation 与三个变化维度；
+//     区间重叠只由 observation range_overlaps 表达，不做本地几何判断。
 // 合成数据只存在于本脚本（test-only）。
 // 运行：cd frontend && node scripts/check-assessment.mjs
 import { readFileSync } from 'node:fs'
@@ -29,8 +30,15 @@ const sourceFiles = {
 
 const RANGE_TEXT = '12–15 / 20'
 const NOT_SCORABLE = '该标准未定义量化评分'
+const NOT_SCORABLE_HINT = '仍可参考下方的解释、依据与缺口；如需打分，请在标准中为该条补充评分档位。'
 const NEWLY_NOTE = '本次已有足够依据进行评估'
 const OVERLAP_NOTE = '两次评估区间有重叠'
+const TRUTH_NOTE = '以下对比是同口径下观察到的评估变化，不构成修改效果的因果证明。'
+const OBS_STATUS_NOTE = '评估状态发生变化'
+const FLAG_SCORE = '评分/区间发生变化'
+const FLAG_REASON = '评估原因发生变化'
+const PROMPT_MISMATCH_NOTE = '评估方法的执行条件发生变化，因此不能把两次结果直接归因于材料修改。'
+const MATERIAL_SCOPE_NOTE = '材料范围发生变化，两次结果不能直接比较。'
 
 function source(overrides = {}) {
   return {
@@ -55,6 +63,7 @@ function item(overrides = {}) {
     why: '两次实验都给出了完整操作步骤与随机种子。',
     sources: [source()],
     missing: [],
+    caveats: [],
     ...overrides,
   }
 }
@@ -94,6 +103,20 @@ try {
   check('卡片 assessed+none 显示「该标准未定义量化评分」', noneHtml.includes(NOT_SCORABLE), noneHtml.slice(0, 200))
   check('卡片 assessed+none 不出现分数位', !noneHtml.includes('/ 20') && !noneHtml.includes(RANGE_TEXT))
 
+  // 2b. not_scorable：badge 说状态、不显示分数位、给出仍可参考的 hint。
+  const notScorableHtml = await render(mod.card, {
+    item: item({ state: 'not_scorable', scoring: { kind: 'none' }, levelLabel: null }),
+  })
+  check('卡片 not_scorable badge 显示「该标准未定义量化评分」', notScorableHtml.includes(NOT_SCORABLE), notScorableHtml.slice(0, 200))
+  check('卡片 not_scorable 不显示分数位', !notScorableHtml.includes('/ 20') && !notScorableHtml.includes(RANGE_TEXT))
+  check('卡片 not_scorable 显示 hint', notScorableHtml.includes(NOT_SCORABLE_HINT))
+
+  // 2c. caveats：有则低权重渲染，无则不出现。
+  const caveatText = '本次仅依据摘要判断，未核对原始图表。'
+  const caveatHtml = await render(mod.card, { item: item({ caveats: [caveatText] }) })
+  check('卡片渲染 caveats 注意事项', caveatHtml.includes('注意事项') && caveatHtml.includes(caveatText))
+  check('无 caveats 时不显示注意事项', !/>\s*注意事项\s*</.test(rangeHtml))
+
   // 3. insufficient：状态文案如实，且不显示数字分数（即便 VM 带 scoring）。
   const insufficientHtml = await render(mod.card, {
     item: item({ state: 'insufficient', scoring: { kind: 'range', min: 5, max: 9, outOf: 20 }, missing: ['缺少对照组说明'] }),
@@ -117,8 +140,8 @@ try {
     '总分 unavailable 列出缺依据条目名',
     unavailableHtml.includes('方法可复现性') && unavailableHtml.includes('结果一致性'),
   )
-  const notScorableHtml = await render(mod.summary, { total: { kind: 'not_scorable' } })
-  check('总分 not_scorable 显示「该标准未定义量化评分」', notScorableHtml.includes(NOT_SCORABLE))
+  const notScorableTotalHtml = await render(mod.summary, { total: { kind: 'not_scorable' } })
+  check('总分 not_scorable 显示「该标准未定义量化评分」', notScorableTotalHtml.includes(NOT_SCORABLE))
   check('总分不可计算不用红色警报', !sourceFiles.summary.includes('text-red'))
 
   // 6. Snapshot 元信息：主行三要素 + 方法进 details。
@@ -140,32 +163,16 @@ try {
   )
   check('元信息方法收进 details', metaHtml.includes('<details') && metaHtml.includes('评估方法 v2：逐条对照标准档位。'))
 
-  // 7. compare：不可比较说明变化项。
+  // 7. compare：不可比较逐条转述 reason code 的冻结文案。
   const notComparableHtml = await render(mod.compare, {
-    comparison: { kind: 'not_comparable', changedAspects: ['rubric', 'materials'] },
+    comparison: { kind: 'not_comparable', reasonCodes: ['prompt_version_mismatch', 'material_scope_mismatch'] },
   })
-  check(
-    'compare not_comparable 说明变化项',
-    notComparableHtml.includes('两次评估不可直接比较') &&
-      notComparableHtml.includes('标准版本') &&
-      notComparableHtml.includes('材料范围') &&
-      notComparableHtml.includes('已变化'),
-  )
+  check('compare not_comparable 说明不可直接比较', notComparableHtml.includes('两次评估不可直接比较'))
+  check('compare 显示 prompt_version_mismatch 冻结文案', notComparableHtml.includes(PROMPT_MISMATCH_NOTE))
+  check('compare 显示 material_scope_mismatch 冻结文案', notComparableHtml.includes(MATERIAL_SCOPE_NOTE))
 
   const entryTitle = '方法可复现性'
-  // before=null → newly assessable，不是「从 0 分」。
-  const newlyHtml = await render(mod.compare, {
-    comparison: {
-      kind: 'comparable',
-      entries: [
-        { criterionId: 'c1', title: entryTitle, before: null, after: item(), changeNote: '补充了实验步骤。' },
-      ],
-    },
-  })
-  check('compare before=null 显示「本次已有足够依据进行评估」', newlyHtml.includes(NEWLY_NOTE))
-  check('compare before=null 不出现「从 0 分」', !newlyHtml.includes('从 0 分') && !newlyHtml.includes('从0分'))
-
-  // 每条 criterion：before → after 的分数/区间展示 + changeNote。
+  // comparable：before → after + observation 文案 + 三个变化维度并列 + truth note。
   const scoreHtml = await render(mod.compare, {
     comparison: {
       kind: 'comparable',
@@ -175,15 +182,23 @@ try {
           title: entryTitle,
           before: item({ scoring: { kind: 'score', value: 10, outOf: 20 } }),
           after: item({ scoring: { kind: 'range', min: 12, max: 15, outOf: 20 } }),
-          changeNote: '依据补充后区间上移。',
+          observation: 'status_changed',
+          scoreChanged: true,
+          anchorChanged: false,
+          reasonChanged: true,
         },
       ],
     },
   })
   check('compare 显示 before 分数 / after 区间', scoreHtml.includes('10 / 20') && scoreHtml.includes(RANGE_TEXT))
-  check('compare 显示 changeNote', scoreHtml.includes('依据补充后区间上移。'))
+  check('compare 显示 COMPARISON_TRUTH_NOTE', scoreHtml.includes(TRUTH_NOTE))
+  check('compare 显示 observation 文案', scoreHtml.includes(OBS_STATUS_NOTE))
+  check(
+    'compare 显示 flag 文案（score + reason 并列，互不覆盖）',
+    scoreHtml.includes(FLAG_SCORE) && scoreHtml.includes(FLAG_REASON),
+  )
 
-  // 重叠区间 → RANGE_OVERLAP_NOTE（纯几何事实）。
+  // 区间重叠由 backend observation range_overlaps 表达，不做本地几何判断。
   const overlapHtml = await render(mod.compare, {
     comparison: {
       kind: 'comparable',
@@ -193,13 +208,60 @@ try {
           title: entryTitle,
           before: item({ scoring: { kind: 'range', min: 10, max: 15, outOf: 20 } }),
           after: item({ scoring: { kind: 'range', min: 12, max: 15, outOf: 20 } }),
-          changeNote: '补充依据后区间收窄。',
+          observation: 'range_overlaps',
+          scoreChanged: false,
+          anchorChanged: false,
+          reasonChanged: false,
         },
       ],
     },
   })
-  check('compare 重叠区间显示「两次评估区间有重叠」', overlapHtml.includes(OVERLAP_NOTE))
+  check('compare range_overlaps observation 显示「两次评估区间有重叠」', overlapHtml.includes(OVERLAP_NOTE))
   check('compare 提供 open-source 动作入口', sourceFiles.compare.includes("emit('open-source', source)"))
+
+  // newly_assessable：before 也存在（状态不足），不出现「从 0 分」；observation note 自然出现。
+  const newlyHtml = await render(mod.compare, {
+    comparison: {
+      kind: 'comparable',
+      entries: [
+        {
+          criterionId: 'c1',
+          title: entryTitle,
+          before: item({ state: 'insufficient', scoring: { kind: 'none' } }),
+          after: item(),
+          observation: 'newly_assessable',
+          scoreChanged: false,
+          anchorChanged: false,
+          reasonChanged: false,
+        },
+      ],
+    },
+  })
+  check('compare newly_assessable 显示「本次已有足够依据进行评估」', newlyHtml.includes(NEWLY_NOTE))
+  check('compare newly_assessable 不出现「从 0 分」', !newlyHtml.includes('从 0 分') && !newlyHtml.includes('从0分'))
+
+  // range_shifted_upward：方向由区间本身表达，无 observation 文案，不透传原始枚举名。
+  const shiftedHtml = await render(mod.compare, {
+    comparison: {
+      kind: 'comparable',
+      entries: [
+        {
+          criterionId: 'c4',
+          title: entryTitle,
+          before: item({ scoring: { kind: 'range', min: 5, max: 8, outOf: 20 } }),
+          after: item({ scoring: { kind: 'range', min: 12, max: 15, outOf: 20 } }),
+          observation: 'range_shifted_upward',
+          scoreChanged: true,
+          anchorChanged: false,
+          reasonChanged: false,
+        },
+      ],
+    },
+  })
+  check(
+    'compare range_shifted 无独立 observation 文案且不透传原始枚举名',
+    shiftedHtml.includes(RANGE_TEXT) && !shiftedHtml.includes('range_shifted_upward'),
+  )
 
   // 8. 措辞纪律：四个组件源码不含禁用词、不出现「提升 N 分」。
   const banned = ['AI 评分', '真实得分', '最终得分', 'confidence', '置信度']
@@ -212,6 +274,7 @@ try {
   check('组件源码不含 AI评分（无空格变体）', !allSource.includes('AI评分'))
   const boostPattern = /提升\s*\d+(?:\.\d+)?\s*分/
   check('组件源码不含「提升 N 分」表述', !boostPattern.test(allSource))
+  check('compare 不做本地区间几何判断', !sourceFiles.compare.includes('rangesOverlap'))
 
   // 9. 边界纪律：组件不发请求、不读 store、不解释 locator.kind。
   check(
